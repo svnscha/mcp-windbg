@@ -6,11 +6,50 @@ A Model Context Protocol server providing tools to analyze Windows crash dumps u
 
 This MCP server integrates with [CDB](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/opening-a-crash-dump-file-using-cdb) to enable AI models to analyze Windows crash dumps.
 
+## TL;DR 
+
+### What is this?
+
+- Primarily, a tool that enables AI to interact with WinDBG.
+- The whole "magic" is giving LLMs the ability to execute debugger commands. Used creatively, this is quite powerful and a big productivity improvement.
+
+This means, that this is:
+
+- A bridge connecting LLMs (AI) with WinDBG (CDB) for assisted crash dump analysis.
+- A way to get immediate first-level triage analysis, useful for categorizing crash dumps or auto-analyzing simple cases.
+- A platform for natural language-based "vibe" analysis, allowing you to ask the LLM to inspect specific areas:
+  - Examples:
+    - "Show me the call stack with `k` and explain what might be causing this access violation"
+    - "Execute `!peb` and tell me if there are any environment variables that might affect this crash"
+    - "Examine frame 3 and analyze the parameters passed to this function"
+    - "Use `dx -r2` on this object and explain its state" (equivalent to `dx -r2 ((MyClass*)0x12345678)`)
+    - "Analyze this heap address with `!heap -p -a 0xABCD1234` and check for buffer overflow"
+    - "Run `.ecxr` followed by `k` and explain the exception's root cause"
+    - "Check for timing issues in the thread pool with `!runaway` and `!threads`"
+    - "Examine memory around this address with `db/dw/dd` to identify corruption patterns"
+    - ...and many other analytical approaches based on your specific crash scenario
+
+### What is this not?
+
+- A magical solution that automatically fixes all issues.
+- A full-featured product with custom AI. Instead, it's a **simple Python wrapper around CDB** that **relies** on the **LLM's WinDBG** expertise, best complemented by your own domain knowledge.
+
+## Blog
+
+I've written about the whole journey in blog.
+
+- [The Future of Crash Analysis: AI Meets WinDBG](https://svnscha.de/posts/ai-meets-windbg/)
+
 ## Prerequisites
 
 - Python 3.10 or higher
 - Windows operating system with **Debugging Tools for Windows** installed.
   - This is part of the [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/).
+- A LLM supporting Model Context Protocol.
+    - I have tested with Claude 3.7 Sonnet through GitHub Copilot and I am pretty statisfied with the results.
+  - For GitHub Copilot, requires Model Context Protocol in Chat feature enabled.
+  - See [Extending Copilot Chat with the Model Context Protocol (MCP)](https://docs.github.com/en/copilot/customizing-copilot/extending-copilot-chat-with-mcp).
+
 
 ## Development Setup
 
@@ -42,7 +81,41 @@ pip install -e ".[test]"
 
 ## Usage
 
-### Starting the MCP Server
+### Integrating with VS Code
+
+To integrate this MCP server with Visual Studio Code:
+
+1. Create a `.vscode/mcp.json` file in your workspace with the following configuration:
+
+```json
+{
+    "servers": {
+        "mcp_server_windbg": {
+            "type": "stdio",
+            "command": "${workspaceFolder}/.venv/Scripts/python",
+            "args": [
+                "-m",
+                "mcp_server_windbg"
+            ],
+            "env": {
+                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
+            }
+        },
+    }
+}
+```
+
+Alternatively, edit your user settings to enable it globally (independent of workspace).
+Once added and with Model Context Protocol in Chat feature enabled, the tools from this model context protocol server are available in Agent mode.
+
+That's how it should look like:
+
+![Visual Studio Code Integration](images/vscode-integration.png)
+
+
+### Starting the MCP Server (optional)
+
+If integrated through Copilot, you don't need this. The IDE will auto-start the MCP.
 
 Start the server using the module command:
 
@@ -63,29 +136,6 @@ Available options:
 - `--timeout TIMEOUT`: Command timeout in seconds (default: 30)
 - `--verbose`: Enable verbose output
 
-### Integrating with VS Code
-
-To integrate this MCP server with Visual Studio Code:
-
-1. Create a `.vscode/mcp.json` file in your project with the following configuration:
-
-```json
-{
-    "servers": {
-        "mcp_server_windbg": {
-            "type": "stdio",
-            "command": "${workspaceFolder}/.venv/Scripts/python",
-            "args": [
-                "-m",
-                "mcp_server_windbg"
-            ],
-            "env": {
-                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
-            }
-        },
-    }
-}
-```
 
 2. Customize the configuration as needed:
    - Adjust the Python interpreter path if needed
