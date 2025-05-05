@@ -110,7 +110,7 @@ Once added and with Model Context Protocol in Chat feature enabled, the tools fr
 
 That's how it should look like:
 
-![Visual Studio Code Integration](images/vscode-integration.png)
+![Visual Studio Code Integration](./images/vscode-integration.png)
 
 
 ### Starting the MCP Server (optional)
