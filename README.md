@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/svnscha-mcp-windbg-badge.png)](https://mseep.ai/app/svnscha-mcp-windbg)
+
 # MCP Server for WinDBG Crash Analysis
 
 A Model Context Protocol server providing tools to analyze Windows crash dumps using WinDBG/CDB.
