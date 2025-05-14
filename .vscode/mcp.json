@@ -8,7 +8,7 @@
                 "mcp_server_windbg"
             ],
             "env": {
-                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
+                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols;${workspaceFolder}\\build\\out"
             }
         },
     }
