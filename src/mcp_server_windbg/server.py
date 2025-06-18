@@ -65,7 +65,7 @@ class ListWindbgDumpsParams(BaseModel):
     """Parameters for listing crash dumps in a directory."""
     directory_path: Optional[str] = Field(
         default=None,
-        description="Directory path to search for .dmp files. If not specified, will use the configured dump path from registry."
+        description="Directory path to search for dump files. If not specified, will use the configured dump path from registry."
     )
     recursive: bool = Field(
         default=False,
@@ -183,7 +183,7 @@ async def serve(
             Tool(
                 name="list_windbg_dumps",
                 description="""
-                List Windows crash dump (.dmp) files in the specified directory.
+                List Windows crash dump files in the specified directory.
                 This tool helps you discover available crash dumps that can be analyzed.
                 """,
                 inputSchema=ListWindbgDumpsParams.model_json_schema(),
@@ -201,7 +201,7 @@ async def serve(
                     
                     if local_dumps_path:
                         # Find dump files in the local dumps directory
-                        search_pattern = os.path.join(local_dumps_path, "*.dmp")
+                        search_pattern = os.path.join(local_dumps_path, "*.*dmp")
                         dump_files = glob.glob(search_pattern)
                         
                         if dump_files:
@@ -301,7 +301,7 @@ async def serve(
                     ))
                 
                 # Determine search pattern based on recursion flag
-                search_pattern = os.path.join(args.directory_path, "**", "*.dmp") if args.recursive else os.path.join(args.directory_path, "*.dmp")
+                search_pattern = os.path.join(args.directory_path, "**", "*.*dmp") if args.recursive else os.path.join(args.directory_path, "*.*dmp")
                 
                 # Find all dump files
                 dump_files = glob.glob(search_pattern, recursive=args.recursive)
@@ -312,7 +312,7 @@ async def serve(
                 if not dump_files:
                     return [TextContent(
                         type="text",
-                        text=f"No crash dump files (*.dmp) found in {args.directory_path}"
+                        text=f"No crash dump files (*.*dmp) found in {args.directory_path}"
                     )]
                 
                 # Format the results
