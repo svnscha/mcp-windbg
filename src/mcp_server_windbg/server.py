@@ -16,7 +16,7 @@ from mcp.types import (
     INVALID_PARAMS,
     INTERNAL_ERROR,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Dictionary to store CDB sessions keyed by dump file path
 active_sessions: Dict[str, CDBSession] = {}
@@ -50,15 +50,38 @@ class OpenWindbgDump(BaseModel):
     include_threads: bool = Field(description="Whether to include thread information")
 
 
+class OpenWindbgRemote(BaseModel):
+    """Parameters for connecting to a remote debug session."""
+    connection_string: str = Field(description="Remote connection string (e.g., 'tcp:Port=50001,Server=10.254.56.186')")
+    include_stack_trace: bool = Field(default=False, description="Whether to include stack traces in the analysis")
+    include_modules: bool = Field(default=False, description="Whether to include loaded module information")
+    include_threads: bool = Field(default=False, description="Whether to include thread information")
+
+
 class RunWindbgCmdParams(BaseModel):
     """Parameters for executing a WinDBG command."""
-    dump_path: str = Field(description="Path to the Windows crash dump file")
+    dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
+    connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=50001,Server=10.254.56.186')")
     command: str = Field(description="WinDBG command to execute")
+
+    @model_validator(mode='after')
+    def validate_connection_params(self):
+        """Validate that exactly one of dump_path or connection_string is provided."""
+        if not self.dump_path and not self.connection_string:
+            raise ValueError("Either dump_path or connection_string must be provided")
+        if self.dump_path and self.connection_string:
+            raise ValueError("dump_path and connection_string are mutually exclusive")
+        return self
 
 
 class CloseWindbgDumpParams(BaseModel):
     """Parameters for unloading a crash dump."""
     dump_path: str = Field(description="Path to the Windows crash dump file to unload")
+
+
+class CloseWindbgRemoteParams(BaseModel):
+    """Parameters for closing a remote debugging connection."""
+    connection_string: str = Field(description="Remote connection string to close")
 
 
 class ListWindbgDumpsParams(BaseModel):
@@ -74,25 +97,36 @@ class ListWindbgDumpsParams(BaseModel):
 
 
 def get_or_create_session(
-    dump_path: str,
+    dump_path: Optional[str] = None,
+    connection_string: Optional[str] = None,
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     timeout: int = 30,
     verbose: bool = False
 ) -> CDBSession:
     """Get an existing CDB session or create a new one."""
-    abs_dump_path = os.path.abspath(dump_path)
+    if not dump_path and not connection_string:
+        raise ValueError("Either dump_path or connection_string must be provided")
+    if dump_path and connection_string:
+        raise ValueError("dump_path and connection_string are mutually exclusive")
     
-    if abs_dump_path not in active_sessions or active_sessions[abs_dump_path] is None:
+    # Create session identifier
+    if dump_path:
+        session_id = os.path.abspath(dump_path)
+    else:
+        session_id = f"remote:{connection_string}"
+    
+    if session_id not in active_sessions or active_sessions[session_id] is None:
         try:
             session = CDBSession(
-                dump_path=abs_dump_path,
+                dump_path=dump_path,
+                remote_connection=connection_string,
                 cdb_path=cdb_path,
                 symbols_path=symbols_path,
                 timeout=timeout,
                 verbose=verbose
             )
-            active_sessions[abs_dump_path] = session
+            active_sessions[session_id] = session
             return session
         except Exception as e:
             raise McpError(ErrorData(
@@ -100,17 +134,26 @@ def get_or_create_session(
                 message=f"Failed to create CDB session: {str(e)}"
             ))
     
-    return active_sessions[abs_dump_path]
+    return active_sessions[session_id]
 
 
-def unload_session(dump_path: str) -> bool:
+def unload_session(dump_path: Optional[str] = None, connection_string: Optional[str] = None) -> bool:
     """Unload and clean up a CDB session."""
-    abs_dump_path = os.path.abspath(dump_path)
+    if not dump_path and not connection_string:
+        return False
+    if dump_path and connection_string:
+        return False
     
-    if abs_dump_path in active_sessions and active_sessions[abs_dump_path] is not None:
+    # Create session identifier
+    if dump_path:
+        session_id = os.path.abspath(dump_path)
+    else:
+        session_id = f"remote:{connection_string}"
+    
+    if session_id in active_sessions and active_sessions[session_id] is not None:
         try:
-            active_sessions[abs_dump_path].shutdown()
-            del active_sessions[abs_dump_path]
+            active_sessions[session_id].shutdown()
+            del active_sessions[session_id]
             return True
         except Exception:
             return False
@@ -165,10 +208,18 @@ async def serve(
                 inputSchema=OpenWindbgDump.model_json_schema(),
             ),
             Tool(
+                name="open_windbg_remote",
+                description="""
+                Connect to a remote debugging session using WinDBG/CDB.
+                This tool establishes a remote debugging connection and allows you to analyze the target process.
+                """,
+                inputSchema=OpenWindbgRemote.model_json_schema(),
+            ),
+            Tool(
                 name="run_windbg_cmd",
                 description="""
-                Execute a specific WinDBG command on a loaded crash dump.
-                This tool allows you to run any WinDBG command on the crash dump and get the output.
+                Execute a specific WinDBG command on a loaded crash dump or remote session.
+                This tool allows you to run any WinDBG command and get the output.
                 """,
                 inputSchema=RunWindbgCmdParams.model_json_schema(),
             ),
@@ -179,6 +230,14 @@ async def serve(
                 Use this tool when you're done analyzing a crash dump to free up resources.
                 """,
                 inputSchema=CloseWindbgDumpParams.model_json_schema(),
+            ),
+            Tool(
+                name="close_windbg_remote",
+                description="""
+                Close a remote debugging connection and release resources.
+                Use this tool when you're done with a remote debugging session to free up resources.
+                """,
+                inputSchema=CloseWindbgRemoteParams.model_json_schema(),
             ),
             Tool(
                 name="list_windbg_dumps",
@@ -227,7 +286,7 @@ async def serve(
                 
                 args = OpenWindbgDump(**arguments)
                 session = get_or_create_session(
-                    args.dump_path, cdb_path, symbols_path, timeout, verbose
+                    dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
                 )
                 
                 results = []
@@ -252,6 +311,37 @@ async def serve(
                     threads = session.send_command("~")
                     results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
                 
+                return [TextContent(type="text", text="".join(results))]
+            
+            elif name == "open_windbg_remote":
+                args = OpenWindbgRemote(**arguments)
+                session = get_or_create_session(
+                    connection_string=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
+                )
+                
+                results = []
+                
+                # Get target information for remote debugging
+                target_info = session.send_command("!peb")
+                results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
+                
+                # Get current state
+                current_state = session.send_command("r")
+                results.append("### Current Registers\n```\n" + "\n".join(current_state) + "\n```\n\n")
+                
+                # Optional
+                if args.include_stack_trace:
+                    stack = session.send_command("kb")
+                    results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
+                
+                if args.include_modules:
+                    modules = session.send_command("lm")
+                    results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
+                
+                if args.include_threads:
+                    threads = session.send_command("~")
+                    results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
+
                 return [TextContent(
                     type="text",
                     text="".join(results)
@@ -260,7 +350,8 @@ async def serve(
             elif name == "run_windbg_cmd":
                 args = RunWindbgCmdParams(**arguments)
                 session = get_or_create_session(
-                    args.dump_path, cdb_path, symbols_path, timeout, verbose
+                    dump_path=args.dump_path, connection_string=args.connection_string, 
+                    cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
                 )
                 output = session.send_command(args.command)
                 
@@ -271,7 +362,7 @@ async def serve(
                 
             elif name == "close_windbg_dump":
                 args = CloseWindbgDumpParams(**arguments)
-                success = unload_session(args.dump_path)
+                success = unload_session(dump_path=args.dump_path)
                 if success:
                     return [TextContent(
                         type="text",
@@ -281,6 +372,20 @@ async def serve(
                     return [TextContent(
                         type="text",
                         text=f"No active session found for crash dump: {args.dump_path}"
+                    )]
+
+            elif name == "close_windbg_remote":
+                args = CloseWindbgRemoteParams(**arguments)
+                success = unload_session(connection_string=args.connection_string)
+                if success:
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully closed remote connection: {args.connection_string}"
+                    )]
+                else:
+                    return [TextContent(
+                        type="text",
+                        text=f"No active session found for remote connection: {args.connection_string}"
                     )]
 
             elif name == "list_windbg_dumps":

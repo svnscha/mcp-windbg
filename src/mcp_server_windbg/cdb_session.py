@@ -27,7 +27,8 @@ class CDBError(Exception):
 class CDBSession:
     def __init__(
         self, 
-        dump_path: str, 
+        dump_path: Optional[str] = None,
+        remote_connection: Optional[str] = None,
         cdb_path: Optional[str] = None, 
         symbols_path: Optional[str] = None,
         initial_commands: Optional[List[str]] = None,
@@ -39,7 +40,8 @@ class CDBSession:
         Initialize a new CDB debugging session.
         
         Args:
-            dump_path: Path to the crash dump file
+            dump_path: Path to the crash dump file (mutually exclusive with remote_connection)
+            remote_connection: Remote debugging connection string (e.g., "tcp:Port=50001,Server=10.254.56.186")
             cdb_path: Custom path to cdb.exe. If None, will try to find it automatically
             symbols_path: Custom symbols path. If None, uses default Windows symbols
             initial_commands: List of commands to run when CDB starts
@@ -52,10 +54,17 @@ class CDBSession:
             FileNotFoundError: If the dump file cannot be found
             ValueError: If invalid parameters are provided
         """
-        if not dump_path or not os.path.isfile(dump_path):
+        # Validate that exactly one of dump_path or remote_connection is provided
+        if not dump_path and not remote_connection:
+            raise ValueError("Either dump_path or remote_connection must be provided")
+        if dump_path and remote_connection:
+            raise ValueError("dump_path and remote_connection are mutually exclusive")
+            
+        if dump_path and not os.path.isfile(dump_path):
             raise FileNotFoundError(f"Dump file not found: {dump_path}")
             
         self.dump_path = dump_path
+        self.remote_connection = remote_connection
         self.timeout = timeout
         self.verbose = verbose
         
@@ -65,7 +74,13 @@ class CDBSession:
             raise CDBError("Could not find cdb.exe. Please provide a valid path.")
         
         # Prepare command args
-        cmd_args = [self.cdb_path, "-z", dump_path]
+        cmd_args = [self.cdb_path]
+        
+        # Add connection type specific arguments
+        if self.dump_path:
+            cmd_args.extend(["-z", self.dump_path])
+        elif self.remote_connection:
+            cmd_args.extend(["-remote", self.remote_connection])
         
         # Add symbols path if provided
         if symbols_path:
@@ -199,8 +214,14 @@ class CDBSession:
         try:
             if self.process and self.process.poll() is None:
                 try:
-                    self.process.stdin.write("q\n")
-                    self.process.stdin.flush()
+                    if self.remote_connection:
+                        # For remote connections, send CTRL+B to detach
+                        self.process.stdin.write("\x02")  # CTRL+B
+                        self.process.stdin.flush()
+                    else:
+                        # For dump files, send 'q' to quit
+                        self.process.stdin.write("q\n")
+                        self.process.stdin.flush()
                     self.process.wait(timeout=1)
                 except Exception:
                     pass
@@ -213,6 +234,15 @@ class CDBSession:
                 print(f"Error during shutdown: {e}")
         finally:
             self.process = None
+
+    def get_session_id(self) -> str:
+        """Get a unique identifier for this CDB session."""
+        if self.dump_path:
+            return os.path.abspath(self.dump_path)
+        elif self.remote_connection:
+            return f"remote:{self.remote_connection}"
+        else:
+            raise CDBError("Session has no valid identifier")
 
     def __enter__(self):
         """Support for context manager protocol"""
