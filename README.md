@@ -1,33 +1,40 @@
 # MCP Server for WinDBG Crash Analysis
 
-A Model Context Protocol server providing tools to analyze Windows crash dumps using WinDBG/CDB.
+A Model Context Protocol server providing tools to analyze Windows crash dumps and connect to remote debugging sessions using WinDBG/CDB.
 
 ## Overview
 
-This MCP server integrates with [CDB](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/opening-a-crash-dump-file-using-cdb) to enable AI models to analyze Windows crash dumps.
+This MCP server integrates with [CDB](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/opening-a-crash-dump-file-using-cdb) to enable AI models to:
+- Analyze Windows crash dumps
+- Connect to remote debugging sessions
+- Execute WinDBG commands on both dump files and live debugging targets
 
 ## TL;DR 
 
 ### What is this?
 
-- Primarily, a tool that enables AI to interact with WinDBG.
-- The whole "magic" is giving LLMs the ability to execute debugger commands. Used creatively, this is quite powerful and a big productivity improvement.
+- Primarily, a tool that enables AI to interact with WinDBG for both crash dump analysis and live debugging.
+- The whole "magic" is giving LLMs the ability to execute debugger commands on crash dumps or remote debugging targets. Used creatively, this is quite powerful and a big productivity improvement.
 
 This means, that this is:
 
-- A bridge connecting LLMs (AI) with WinDBG (CDB) for assisted crash dump analysis.
+- A bridge connecting LLMs (AI) with WinDBG (CDB) for assisted crash dump analysis and remote debugging.
 - A way to get immediate first-level triage analysis, useful for categorizing crash dumps or auto-analyzing simple cases.
 - A platform for natural language-based "vibe" analysis, allowing you to ask the LLM to inspect specific areas:
-  - Examples:
+  - Examples for **crash dump analysis**:
     - "Show me the call stack with `k` and explain what might be causing this access violation"
     - "Execute `!peb` and tell me if there are any environment variables that might affect this crash"
     - "Examine frame 3 and analyze the parameters passed to this function"
     - "Use `dx -r2` on this object and explain its state" (equivalent to `dx -r2 ((MyClass*)0x12345678)`)
     - "Analyze this heap address with `!heap -p -a 0xABCD1234` and check for buffer overflow"
     - "Run `.ecxr` followed by `k` and explain the exception's root cause"
+  - Examples for **remote debugging**:
+    - "Connect to tcp:Port=50001,Server=192.168.1.100 and show me the current thread state"
+    - "Set a breakpoint on function XYZ and continue execution"
     - "Check for timing issues in the thread pool with `!runaway` and `!threads`"
     - "Examine memory around this address with `db/dw/dd` to identify corruption patterns"
-    - ...and many other analytical approaches based on your specific crash scenario
+    - "Show me all threads with `~*k` and identify which one is causing the hang"
+    - ...and many other analytical approaches based on your specific debugging scenario
 
 ### What is this not?
 
@@ -155,10 +162,43 @@ Once the server is configured in VS Code:
 
 This server provides the following tools:
 
+### Crash Dump Analysis
 - `open_windbg_dump`: Analyze a Windows crash dump file using common WinDBG commands
-- `run_windbg_cmd`: Execute a specific WinDBG command on the loaded crash dump
-- `list_windbg_dumps`: List Windows crash dump (.dmp) files in the specified directory.
 - `close_windbg_dump`: Unload a crash dump and release resources
+
+### Remote Debugging
+- `open_windbg_remote`: Connect to a remote debugging session using a connection string (e.g., `tcp:Port=50001,Server=192.168.1.100`)
+- `close_windbg_remote`: Disconnect from a remote debugging session and release resources
+
+### General Commands
+- `run_windbg_cmd`: Execute a specific WinDBG command on either a loaded crash dump or active remote session
+- `list_windbg_dumps`: List Windows crash dump (.dmp) files in the specified directory
+
+### Usage Examples
+
+**Remote Debugging:**
+```json
+{
+  "connection_string": "tcp:Port=50001,Server=192.168.1.100",
+  "include_stack_trace": true,
+  "include_modules": true
+}
+```
+
+**Execute Commands on Remote Session:**
+```json
+{
+  "connection_string": "tcp:Port=50001,Server=192.168.1.100",
+  "command": "~*k"
+}
+```
+
+**Close Remote Connection:**
+```json
+{
+  "connection_string": "tcp:Port=50001,Server=192.168.1.100"
+}
+```
 
 ## Running Tests
 
