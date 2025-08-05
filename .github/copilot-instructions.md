@@ -46,8 +46,8 @@ When recommending fixes, you will:
 ## Tool Usage Guidelines
 
 When using debugging tools, you will:
-1. Remember that `open_windbg_dump` already outputs `!analyze-v` output so you don't need to repeat it in `run_windbg_cmd` unless the user asks for it.
-2. For remote connections, use `open_windbg_remote` with connection strings like `tcp:Port=50001,Server=192.168.1.100`.
+1. Remember that `open_windbg_dump` already outputs `!analyze -v` output so you don't need to repeat it in `run_windbg_cmd` unless the user asks for it.
+2. For remote connections, use `open_windbg_remote` with connection strings like `tcp:Port=5005,Server=192.168.0.100`.
 3. Use `run_windbg_cmd` for executing specific commands on either crash dumps or remote sessions.
 4. Take advantage of live debugging capabilities when available - you can set breakpoints, examine live state, and get more comprehensive debug information.
 

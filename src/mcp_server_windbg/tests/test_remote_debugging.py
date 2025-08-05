@@ -16,7 +16,7 @@ from mcp_server_windbg.server import get_or_create_session, unload_session
 class CDBServerProcess:
     """Helper class to manage a CDB server process for testing."""
     
-    def __init__(self, port: int = 50000):
+    def __init__(self, port: int = 5005):
         self.port = port
         self.process: Optional[subprocess.Popen] = None
         self.output_lines = []
@@ -142,8 +142,8 @@ class TestRemoteDebugging:
     
     def test_remote_debugging_workflow(self):
         """Test the complete remote debugging workflow."""
-        server = CDBServerProcess(port=50000)
-        connection_string = "tcp:Port=50000,Server=127.0.0.1"
+        server = CDBServerProcess(port=5005)
+        connection_string = "tcp:Port=5005,Server=127.0.0.1"
         
         try:
             # Start the CDB server process
@@ -185,7 +185,7 @@ class TestRemoteDebugging:
             CDBSession()
             
         with pytest.raises(ValueError, match="dump_path and remote_connection are mutually exclusive"):
-            CDBSession(dump_path="test.dmp", remote_connection="tcp:Port=50000,Server=127.0.0.1")
+            CDBSession(dump_path="test.dmp", remote_connection="tcp:Port=5005,Server=127.0.0.1")
             
     def test_invalid_remote_connection(self):
         """Test handling of invalid remote connections."""
@@ -201,8 +201,8 @@ if __name__ == "__main__":
     # Run a simple test manually
     print("Running remote debugging test...")
     
-    server = CDBServerProcess(port=50001)
-    connection_string = "tcp:Port=50001,Server=127.0.0.1"
+    server = CDBServerProcess(port=5005)
+    connection_string = "tcp:Port=5005,Server=127.0.0.1"
     
     try:
         print("Starting CDB server...")

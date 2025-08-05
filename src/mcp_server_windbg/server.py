@@ -52,7 +52,7 @@ class OpenWindbgDump(BaseModel):
 
 class OpenWindbgRemote(BaseModel):
     """Parameters for connecting to a remote debug session."""
-    connection_string: str = Field(description="Remote connection string (e.g., 'tcp:Port=50001,Server=10.254.56.186')")
+    connection_string: str = Field(description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
     include_stack_trace: bool = Field(default=False, description="Whether to include stack traces in the analysis")
     include_modules: bool = Field(default=False, description="Whether to include loaded module information")
     include_threads: bool = Field(default=False, description="Whether to include thread information")
@@ -61,7 +61,7 @@ class OpenWindbgRemote(BaseModel):
 class RunWindbgCmdParams(BaseModel):
     """Parameters for executing a WinDBG command."""
     dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
-    connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=50001,Server=10.254.56.186')")
+    connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
     command: str = Field(description="WinDBG command to execute")
 
     @model_validator(mode='after')

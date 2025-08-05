@@ -41,7 +41,7 @@ class CDBSession:
         
         Args:
             dump_path: Path to the crash dump file (mutually exclusive with remote_connection)
-            remote_connection: Remote debugging connection string (e.g., "tcp:Port=50001,Server=10.254.56.186")
+            remote_connection: Remote debugging connection string (e.g., "tcp:Port=5005,Server=192.168.0.100")
             cdb_path: Custom path to cdb.exe. If None, will try to find it automatically
             symbols_path: Custom symbols path. If None, uses default Windows symbols
             initial_commands: List of commands to run when CDB starts

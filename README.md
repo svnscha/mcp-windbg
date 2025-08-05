@@ -29,7 +29,7 @@ This means, that this is:
     - "Analyze this heap address with `!heap -p -a 0xABCD1234` and check for buffer overflow"
     - "Run `.ecxr` followed by `k` and explain the exception's root cause"
   - Examples for **remote debugging**:
-    - "Connect to tcp:Port=50001,Server=192.168.1.100 and show me the current thread state"
+    - "Connect to tcp:Port=5005,Server=192.168.0.100 and show me the current thread state"
     - "Set a breakpoint on function XYZ and continue execution"
     - "Check for timing issues in the thread pool with `!runaway` and `!threads`"
     - "Examine memory around this address with `db/dw/dd` to identify corruption patterns"
@@ -167,38 +167,12 @@ This server provides the following tools:
 - `close_windbg_dump`: Unload a crash dump and release resources
 
 ### Remote Debugging
-- `open_windbg_remote`: Connect to a remote debugging session using a connection string (e.g., `tcp:Port=50001,Server=192.168.1.100`)
+- `open_windbg_remote`: Connect to a remote debugging session using a connection string (e.g., `tcp:Port=5005,Server=192.168.0.100`)
 - `close_windbg_remote`: Disconnect from a remote debugging session and release resources
 
 ### General Commands
 - `run_windbg_cmd`: Execute a specific WinDBG command on either a loaded crash dump or active remote session
 - `list_windbg_dumps`: List Windows crash dump (.dmp) files in the specified directory
-
-### Usage Examples
-
-**Remote Debugging:**
-```json
-{
-  "connection_string": "tcp:Port=50001,Server=192.168.1.100",
-  "include_stack_trace": true,
-  "include_modules": true
-}
-```
-
-**Execute Commands on Remote Session:**
-```json
-{
-  "connection_string": "tcp:Port=50001,Server=192.168.1.100",
-  "command": "~*k"
-}
-```
-
-**Close Remote Connection:**
-```json
-{
-  "connection_string": "tcp:Port=50001,Server=192.168.1.100"
-}
-```
 
 ## Running Tests
 
