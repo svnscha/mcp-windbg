@@ -31,7 +31,7 @@ class CDBServerProcess:
             if not cdb_path:
                 raise Exception("Could not find cdb.exe")
                 
-            # Start CDB in debug mode
+            # Use CDB to launch and debug a new instance of CDB
             self.process = subprocess.Popen(
                 [cdb_path, "-o", cdb_path],
                 stdin=subprocess.PIPE,
@@ -101,8 +101,6 @@ class CDBServerProcess:
         default_paths = [
             r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe",
             r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x86\cdb.exe",
-            r"C:\Program Files\Debugging Tools for Windows (x64)\cdb.exe",
-            r"C:\Program Files\Debugging Tools for Windows (x86)\cdb.exe",
         ]
         
         for path in default_paths:
