@@ -30,4 +30,6 @@ build-backend = "setuptools.build_meta"
 testpaths = ["src/mcp_server_windbg/tests"]
 
 [project.optional-dependencies]
-test = ["pytest>=7.0.0"]
+test = ["pytest>=7.0.0",
+        "psutil>=7.0.0"
+]

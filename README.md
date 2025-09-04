@@ -170,6 +170,10 @@ This server provides the following tools:
 - `open_windbg_remote`: Connect to a remote debugging session using a connection string (e.g., `tcp:Port=5005,Server=192.168.0.100`)
 - `close_windbg_remote`: Disconnect from a remote debugging session and release resources
 
+### Local Debugging with WinDbg backed via .js script
+- `attach_windbg`: Connect to a local WinDbg session (instead of running cdb.exe). The session needs to load the windbg_mcp_plugin.js util (`.scriptload /path/to/windbg_mcp_plugin.js`)
+- `close_windbg_attach`: Close the channel to a running local WinDbg session.
+
 ### General Commands
 - `run_windbg_cmd`: Execute a specific WinDBG command on either a loaded crash dump or active remote session
 - `list_windbg_dumps`: List Windows crash dump (.dmp) files in the specified directory
@@ -181,6 +185,8 @@ To run the tests:
 ```bash
 pytest
 ```
+
+For live testing of attached windbg session, make sure the `DbgX.Shell.exe` process is running and that the `windbg_mcp_plugin.js` script is running inside it after `!mcp_init`
 
 ## Troubleshooting
 

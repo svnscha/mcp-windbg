@@ -5,6 +5,7 @@ import winreg
 from typing import Dict, Optional
 
 from .cdb_session import CDBSession, CDBError
+from .windbg_session import WinDbgSession
 
 from mcp.shared.exceptions import McpError
 from mcp.server import Server
@@ -58,9 +59,27 @@ class OpenWindbgRemote(BaseModel):
     include_threads: bool = Field(default=False, description="Whether to include thread information")
 
 
+class AttachWindbgParams(BaseModel):
+    """Attach to an already-running WinDbg instance that has
+    windbg_mcp_plugin.js loaded and initialised with mcp_init.
+    """
+    timeout: int | None = Field(
+        default=None,
+        description="Optional timeout (in seconds) to wait for the attach handshake."
+    )
+    verbose: bool = Field(
+        default=False,
+        description="Emit verbose logging during the attach process."
+    )
+
+
 class RunWindbgCmdParams(BaseModel):
     """Parameters for executing a WinDBG command."""
-    dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
+    dump_path: Optional[str] = Field(
+        default=None,
+        description=("Path to the dump file *when talking to CDB*.  "
+                     "Omit this when you have previously called `attach_windbg`.")
+    )
     connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
     command: str = Field(description="WinDBG command to execute")
 
@@ -83,6 +102,10 @@ class CloseWindbgRemoteParams(BaseModel):
     """Parameters for closing a remote debugging connection."""
     connection_string: str = Field(description="Remote connection string to close")
 
+class CloseWindbgAttachParams(BaseModel):
+    """Parameters for disconnecting from an attached WinDbg (.js) session."""
+    # intentionally empty – we close the single attached session keyed by __windbg_attach__
+    pass
 
 class ListWindbgDumpsParams(BaseModel):
     """Parameters for listing crash dumps in a directory."""
@@ -115,7 +138,7 @@ def get_or_create_session(
         session_id = os.path.abspath(dump_path)
     else:
         session_id = f"remote:{connection_string}"
-    
+
     if session_id not in active_sessions or active_sessions[session_id] is None:
         try:
             session = CDBSession(
@@ -137,19 +160,23 @@ def get_or_create_session(
     return active_sessions[session_id]
 
 
-def unload_session(dump_path: Optional[str] = None, connection_string: Optional[str] = None) -> bool:
+def unload_session(dump_path: Optional[str] = None,
+                   connection_string: Optional[str] = None,
+                   is_windbg_attach: Optional[bool] = None) -> bool:
     """Unload and clean up a CDB session."""
-    if not dump_path and not connection_string:
+    if not dump_path and not connection_string and not is_windbg_attach:
         return False
-    if dump_path and connection_string:
+    if sum(x is not None for x in (dump_path, connection_string, is_windbg_attach)) > 1:
         return False
     
     # Create session identifier
     if dump_path:
         session_id = os.path.abspath(dump_path)
-    else:
+    elif connection_string:
         session_id = f"remote:{connection_string}"
-    
+    else:
+        session_id = "__windbg_attach__"
+
     if session_id in active_sessions and active_sessions[session_id] is not None:
         try:
             active_sessions[session_id].shutdown()
@@ -179,6 +206,60 @@ def execute_common_analysis_commands(session: CDBSession) -> dict:
     
     return results
 
+
+# -----------------------------------------------------------------
+# Attach to a running WinDbg-JS session
+# -----------------------------------------------------------------
+def handle_attach_windbg(
+    arguments: dict,
+    *,
+    timeout: int,
+    verbose: bool,
+) -> list[TextContent]:
+    """
+    Attach to an existing WinDbg instance that has `windbg_mcp_plugin.js`
+    loaded and initialised with `mcp_init`.
+
+    The JS plug-in drops a temp JSON file (windbg_mcp_<id>.json) that the
+    Python side polls for; creating a WinDbgSession with dump_path=None
+    triggers that handshake.
+    """
+    # WinDbg support may be optional – fail gracefully if the import failed
+    if WinDbgSession is None:                                   # set in the top-level try/except
+        raise McpError(ErrorData(
+            code=INTERNAL_ERROR,
+            message="WinDbg support is not available (WinDbgSession import failed)"
+        ))
+
+    # Parse optional params (timeout / verbose) – both are optional
+    params = AttachWindbgParams(**arguments)
+
+    # Always use the same key in the registry so we re-use the session
+    key = "__windbg_attach__"
+
+    try:
+        if key not in active_sessions or active_sessions[key] is None:
+            # Create a *new* attach-mode session (dump_path=None)
+            session = WinDbgSession(
+                dump_path=None,
+                timeout=params.timeout or timeout,
+                verbose=params.verbose or verbose,
+            )
+            active_sessions[key] = session
+        else:
+            session = active_sessions[key]
+
+        banner = (
+            f"[V] Attached to WinDbg session **{getattr(session, 'session_id', 'unknown')}**\n\n"
+            f"You can now use `run_windbg_cmd` to execute debugger commands."
+        )
+        return [TextContent(type="text", text=banner)]
+
+    except Exception as e:                                      # pragma: no cover
+        raise McpError(ErrorData(
+            code=INTERNAL_ERROR,
+            message=f"Failed to attach to WinDbg: {e}"
+        ))
 
 async def serve(
     cdb_path: Optional[str] = None,
@@ -216,9 +297,19 @@ async def serve(
                 inputSchema=OpenWindbgRemote.model_json_schema(),
             ),
             Tool(
+                name="attach_windbg",
+                description="""
+                Attach to a live WinDbg session that has 'windbg_mcp_plugin.js' loaded
+                and initialised (via mcp_init).  Use this when you already have WinDbg
+                open with a dump, TTD trace, or live target and simply want the MCP
+                server to talk to that session instead of launching CDB.
+                """,
+                inputSchema=AttachWindbgParams.model_json_schema(),
+            ),
+            Tool(
                 name="run_windbg_cmd",
                 description="""
-                Execute a specific WinDBG command on a loaded crash dump or remote session.
+                Execute a specific WinDBG command on a loaded crash dump, remote cdb session or remote session attached with .js script.
                 This tool allows you to run any WinDBG command and get the output.
                 """,
                 inputSchema=RunWindbgCmdParams.model_json_schema(),
@@ -238,6 +329,15 @@ async def serve(
                 Use this tool when you're done with a remote debugging session to free up resources.
                 """,
                 inputSchema=CloseWindbgRemoteParams.model_json_schema(),
+            ),
+            Tool(
+                name="close_windbg_attach",
+                description="""
+                Disconnect from a live WinDbg session previously attached with 'attach_windbg'.
+                This signals the JS plugin to shut down (via a _shutdown.json) and clears
+                the server-side session cache.
+                """,
+                inputSchema=CloseWindbgAttachParams.model_json_schema(),
             ),
             Tool(
                 name="list_windbg_dumps",
@@ -312,32 +412,32 @@ async def serve(
                     results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
                 
                 return [TextContent(type="text", text="".join(results))]
-            
+
             elif name == "open_windbg_remote":
                 args = OpenWindbgRemote(**arguments)
                 session = get_or_create_session(
                     connection_string=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
                 )
-                
+
                 results = []
-                
+
                 # Get target information for remote debugging
                 target_info = session.send_command("!peb")
                 results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
-                
+
                 # Get current state
                 current_state = session.send_command("r")
                 results.append("### Current Registers\n```\n" + "\n".join(current_state) + "\n```\n\n")
-                
+
                 # Optional
                 if args.include_stack_trace:
                     stack = session.send_command("kb")
                     results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
-                
+
                 if args.include_modules:
                     modules = session.send_command("lm")
                     results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
-                
+
                 if args.include_threads:
                     threads = session.send_command("~")
                     results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
@@ -346,13 +446,34 @@ async def serve(
                     type="text",
                     text="".join(results)
                 )]
-                
+
+            elif name == "attach_windbg":
+                return handle_attach_windbg(
+                    arguments,
+                    timeout=timeout,
+                    verbose=verbose,
+                )
+
             elif name == "run_windbg_cmd":
                 args = RunWindbgCmdParams(**arguments)
-                session = get_or_create_session(
-                    dump_path=args.dump_path, connection_string=args.connection_string, 
-                    cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
-                )
+                # ── decide which engine we target ─────────────────────────────
+                if args.dump_path or args.connection_string:
+                    # Classic CDB flow (keyed by dump path)
+                    session = get_or_create_session(
+                        dump_path=args.dump_path, connection_string=args.connection_string,
+                        cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
+                    )
+                else:
+                    # No dump_path -> expect exactly one attached WinDbg session
+                    key = "__windbg_attach__"
+                    session = active_sessions.get(key)
+                    if session is None:
+                        raise McpError(ErrorData(
+                            code=INVALID_PARAMS,
+                            message=("No dump_path provided and no active WinDbg "
+                                     "attachment found.  Call `attach_windbg` first "
+                                     "or supply a dump_path.")
+                        ))
                 output = session.send_command(args.command)
                 
                 return [TextContent(
@@ -377,6 +498,21 @@ async def serve(
             elif name == "close_windbg_remote":
                 args = CloseWindbgRemoteParams(**arguments)
                 success = unload_session(connection_string=args.connection_string)
+                if success:
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully closed remote connection: {args.connection_string}"
+                    )]
+                else:
+                    return [TextContent(
+                        type="text",
+                        text=f"No active session found for remote connection: {args.connection_string}"
+                    )]
+
+            elif name == "close_windbg_attach":
+                # no args needed; keep the parsing for symmetry/validation
+                _ = CloseWindbgAttachParams(**arguments)
+                success = unload_session("__windbg_attach__")
                 if success:
                     return [TextContent(
                         type="text",
