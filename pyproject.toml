@@ -1,5 +1,5 @@
 [project]
-name = "mcp-server-windbg"
+name = "mcp-windbg"
 version = "0.1.0"
 description = "A Model Context Protocol server providing tools to analyze Windows crash dumps using WinDBG/CDB"
 readme = "README.md"
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mcp-server-windbg = "mcp_server_windbg:main"
+mcp-windbg = "mcp_server_windbg:main"
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]

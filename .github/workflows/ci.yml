@@ -41,6 +41,32 @@ jobs:
         # Test that the CLI entry point works
         uv run python -m mcp_server_windbg --help || echo "CLI help command completed"
 
+    - name: Check version consistency
+      run: |
+        # Extract version from pyproject.toml
+        $PYPROJECT_VERSION = (Select-String -Path "pyproject.toml" -Pattern 'version = "([^"]+)"').Matches[0].Groups[1].Value
+        Write-Host "pyproject.toml version: $PYPROJECT_VERSION"
+        
+        # Extract version from server.json
+        $SERVER_JSON = Get-Content "server.json" | ConvertFrom-Json
+        $SERVER_VERSION = $SERVER_JSON.version
+        $PACKAGE_VERSION = $SERVER_JSON.packages[0].version
+        Write-Host "server.json version: $SERVER_VERSION"
+        Write-Host "server.json package version: $PACKAGE_VERSION"
+        
+        # Check if all versions match
+        if ($PYPROJECT_VERSION -ne $SERVER_VERSION) {
+          Write-Error "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != server.json ($SERVER_VERSION)"
+          exit 1
+        }
+        
+        if ($PYPROJECT_VERSION -ne $PACKAGE_VERSION) {
+          Write-Error "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != server.json package ($PACKAGE_VERSION)"
+          exit 1
+        }
+        
+        Write-Host "✓ All versions are consistent: $PYPROJECT_VERSION"
+
   build:
     runs-on: windows-latest
     needs: test
