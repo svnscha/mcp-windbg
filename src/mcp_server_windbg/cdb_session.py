@@ -173,6 +173,18 @@ class CDBSession:
             self.process.stdin.flush()
             
             if not self.ready_event.wait(timeout=timeout or self.timeout):
+                # Check if CDB process has exited due to dump file error
+                if self.process.poll() is not None:
+                    # Process has exited, check output for specific errors
+                    output_text = '\n'.join(self.output_lines)
+                    if "Could not open dump file" in output_text:
+                        raise CDBError("Could not open dump file - invalid file format")
+                    elif "invalid file format" in output_text:
+                        raise CDBError("Dump file has invalid file format")
+                    elif "Debuggee initialization failed" in output_text:
+                        raise CDBError("Debuggee initialization failed - invalid dump file")
+                    else:
+                        raise CDBError(f"CDB process exited unexpectedly (exit code: {self.process.returncode})")
                 raise CDBError(f"Timed out waiting for CDB prompt")
         except IOError as e:
             raise CDBError(f"Failed to communicate with CDB: {str(e)}")
