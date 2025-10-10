@@ -14,6 +14,11 @@ COMMAND_MARKER_PATTERN = re.compile(r"COMMAND_COMPLETED_MARKER")
 
 # Default paths where cdb.exe might be located
 DEFAULT_CDB_PATHS = [
+    # Microsoft Store WinDbg Preview locations (architecture-specific)
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\cdbX64.exe"),
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\cdbX86.exe"), 
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\cdbARM64.exe"),
+    # Traditional Windows SDK locations
     r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe",
     r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x86\cdb.exe",
     r"C:\Program Files\Debugging Tools for Windows (x64)\cdb.exe",

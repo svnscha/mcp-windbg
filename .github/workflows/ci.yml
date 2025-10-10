@@ -16,51 +16,47 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-    - uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x64
 
-    - name: Install Windows SDK with Debugging Tools
-      run: |
-        Write-Host "Installing Windows SDK with Debugging Tools..."
-        # Download Windows SDK installer
-        $url = "https://go.microsoft.com/fwlink/?linkid=2196127"
-        $installer = "winsdksetup.exe"
-        
-        Write-Host "Downloading Windows SDK installer..."
-        Invoke-WebRequest -Uri $url -OutFile $installer
-        
-        Write-Host "Installing Windows SDK with debugging tools..."
-        Start-Process -FilePath $installer -ArgumentList "/quiet", "/features", "OptionId.WindowsDesktopDebuggers" -Wait -NoNewWindow
-        
-        Write-Host "✅ Windows SDK installation completed"
+    - name: Install WinDbg Preview
+      run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
 
-    - name: Add Windows Debugging Tools to PATH
+    - name: Verify WinDbg Installation
       run: |
-        # Find and add Windows Debugging Tools to PATH
-        $debuggerPaths = @(
-          "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64",
-          "${env:ProgramFiles}\Windows Kits\10\Debuggers\x64",
-          "${env:ProgramFiles(x86)}\Windows Kits\8.1\Debuggers\x64",
-          "${env:ProgramFiles}\Windows Kits\8.1\Debuggers\x64"
-        )
+        Write-Host "Verifying CDB installation..."
+        $localAppData = $env:LOCALAPPDATA
+        $windowsAppsPath = "$localAppData\Microsoft\WindowsApps"
         
-        foreach ($path in $debuggerPaths) {
-          if (Test-Path "$path\cdb.exe") {
-            Write-Host "Found Windows Debugging Tools at: $path"
-            echo "$path" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-            break
+        $cdbExecutables = @("cdbX64.exe", "cdbX86.exe", "cdbARM64.exe", "cdb.exe")
+        $foundCdb = $false
+        
+        foreach ($exe in $cdbExecutables) {
+          $fullPath = Join-Path $windowsAppsPath $exe
+          if (Test-Path $fullPath) {
+            Write-Host "Found CDB executable: $fullPath"
+            try {
+              & $fullPath -version
+              Write-Host "CDB version check successful"
+              $foundCdb = $true
+              break
+            } catch {
+              Write-Host "ERROR: Found CDB but execution failed: $fullPath"
+            }
           }
         }
         
-        # Verify CDB is available
-        $cdb = Get-Command cdb.exe -ErrorAction SilentlyContinue
-        if ($cdb) {
-          Write-Host "✅ CDB available at: $($cdb.Source)"
-          & cdb.exe -version
-        } else {
-          Write-Host "⚠️ CDB not found - tests will be skipped"
+        if (-not $foundCdb) {
+          Write-Host "ERROR: No working CDB executable found"
+          Write-Host "Searched locations:"
+          foreach ($exe in $cdbExecutables) {
+            $fullPath = Join-Path $windowsAppsPath $exe
+            Write-Host "  - $fullPath"
+          }
+          Write-Host "WindowsApps directory contents:"
+          Get-ChildItem $windowsAppsPath -Name | Where-Object { $_ -like "*cdb*" } | ForEach-Object { Write-Host "  - $_" }
+          exit 1
         }
+        
+        Write-Host "CDB verification completed successfully"
 
     - name: Install uv
       uses: astral-sh/setup-uv@v3

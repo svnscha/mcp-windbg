@@ -98,12 +98,9 @@ class CDBServerProcess:
         
     def _find_cdb_executable(self) -> Optional[str]:
         """Find the cdb.exe executable."""
-        default_paths = [
-            r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe",
-            r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x86\cdb.exe",
-        ]
+        from mcp_server_windbg.cdb_session import DEFAULT_CDB_PATHS
         
-        for path in default_paths:
+        for path in DEFAULT_CDB_PATHS:
             if os.path.isfile(path):
                 return path
         return None
@@ -140,6 +137,11 @@ class TestRemoteDebugging:
     
     def test_remote_debugging_workflow(self):
         """Test the complete remote debugging workflow."""
+        # Skip if CDB is not available
+        from mcp_server_windbg.cdb_session import DEFAULT_CDB_PATHS
+        if not any(os.path.exists(path) for path in DEFAULT_CDB_PATHS):
+            pytest.skip("CDB executable not found")
+            
         server = CDBServerProcess(port=5005)
         connection_string = "tcp:Port=5005,Server=127.0.0.1"
         
