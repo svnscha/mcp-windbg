@@ -22,44 +22,6 @@ jobs:
     - name: Install WinDbg Preview
       run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
 
-    - name: Verify WinDbg Installation
-      run: |
-        Write-Host "Verifying CDB installation..."
-        $localAppData = $env:LOCALAPPDATA
-        $windowsAppsPath = "$localAppData\Microsoft\WindowsApps"
-        
-        $cdbExecutables = @("cdbX64.exe", "cdbX86.exe", "cdbARM64.exe", "cdb.exe")
-        $foundCdb = $false
-        
-        foreach ($exe in $cdbExecutables) {
-          $fullPath = Join-Path $windowsAppsPath $exe
-          if (Test-Path $fullPath) {
-            Write-Host "Found CDB executable: $fullPath"
-            try {
-              & $fullPath -version
-              Write-Host "CDB version check successful"
-              $foundCdb = $true
-              break
-            } catch {
-              Write-Host "ERROR: Found CDB but execution failed: $fullPath"
-            }
-          }
-        }
-        
-        if (-not $foundCdb) {
-          Write-Host "ERROR: No working CDB executable found"
-          Write-Host "Searched locations:"
-          foreach ($exe in $cdbExecutables) {
-            $fullPath = Join-Path $windowsAppsPath $exe
-            Write-Host "  - $fullPath"
-          }
-          Write-Host "WindowsApps directory contents:"
-          Get-ChildItem $windowsAppsPath -Name | Where-Object { $_ -like "*cdb*" } | ForEach-Object { Write-Host "  - $_" }
-          exit 1
-        }
-        
-        Write-Host "CDB verification completed successfully"
-
     - name: Install uv
       uses: astral-sh/setup-uv@v3
       with:
@@ -70,62 +32,6 @@ jobs:
 
     - name: Install dependencies
       run: uv sync --dev
-
-    - name: Diagnose CDB and dump file
-      run: |
-        Write-Host "=== CDB and Dump File Diagnostics ==="
-        
-        # Check dump file
-        $dumpFile = "src/mcp_server_windbg/tests/dumps/DemoCrash1.exe.7088.dmp"
-        if (Test-Path $dumpFile) {
-          $fileInfo = Get-Item $dumpFile
-          Write-Host "Dump file exists: $($fileInfo.FullName)"
-          Write-Host "File size: $($fileInfo.Length) bytes"
-          Write-Host "Last modified: $($fileInfo.LastWriteTime)"
-        } else {
-          Write-Host "ERROR: Dump file not found at $dumpFile"
-        }
-        
-        # Test CDB with dump file
-        $windowsAppsPath = "$env:LOCALAPPDATA\Microsoft\WindowsApps"
-        $cdbExe = Join-Path $windowsAppsPath "cdbX64.exe"
-        
-        if (Test-Path $cdbExe) {
-          Write-Host "Testing CDB with dump file..."
-          Write-Host "CDB executable: $cdbExe"
-          
-          try {
-            # Test basic dump file loading
-            $output = & $cdbExe -z $dumpFile -c "lm; q" 2>&1
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "SUCCESS: CDB loaded dump file successfully"
-              Write-Host "CDB output preview:"
-              $output | Select-Object -First 10 | ForEach-Object { Write-Host "  $_" }
-            } else {
-              Write-Host "ERROR: CDB failed to load dump file (exit code: $LASTEXITCODE)"
-              Write-Host "CDB error output:"
-              $output | ForEach-Object { Write-Host "  $_" }
-            }
-          } catch {
-            Write-Host "ERROR: Failed to execute CDB: $_"
-          }
-        } else {
-          Write-Host "ERROR: CDB executable not found at $cdbExe"
-        }
-        
-        # Check Python CDB path detection
-        Write-Host "Checking Python CDB path detection..."
-        uv run python -c "
-        from mcp_server_windbg.cdb_session import DEFAULT_CDB_PATHS
-        import os
-        print('DEFAULT_CDB_PATHS:')
-        for i, path in enumerate(DEFAULT_CDB_PATHS):
-            exists = os.path.exists(path)
-            print(f'  {i+1}. {path} -> {exists}')
-            if exists:
-                print(f'     Found first working CDB at: {path}')
-                break
-        "
 
     - name: Run tests
       run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
@@ -141,7 +47,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         lfs: true
 
@@ -160,7 +66,7 @@ jobs:
       run: uv run twine check dist/*
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist-packages
         path: dist/
