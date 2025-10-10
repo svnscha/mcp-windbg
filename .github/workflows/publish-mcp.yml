@@ -1,0 +1,69 @@
+name: Publish to MCP Registry
+
+on:
+  push:
+    tags: ["v*"]  # Triggers on version tags like v1.0.0
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write  # Required for OIDC authentication
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
+
+      - name: Update version in server.json to match tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Updating server.json version to $VERSION"
+          # Update version in server.json using sed (more reliable than jq on GitHub Actions)
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/g" server.json
+          # Also update the package version in server.json
+          sed -i "s/\"identifier\": \"mcp-server-windbg\",/\"identifier\": \"mcp-server-windbg\",/" server.json
+          sed -i "s/\"version\": \"[^\"]*\",/\"version\": \"$VERSION\",/g" server.json
+          cat server.json
+
+      - name: Build package
+        run: uv build
+
+      - name: Check package
+        run: uv run twine check dist/*
+
+      - name: Publish to PyPI
+        run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Install MCP Publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/latest/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Login to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
+
+      - name: Verify publication
+        run: |
+          sleep 30  # Wait for registry to update
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Checking if server appears in registry..."
+          curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.svnscha/mcp-server-windbg" | grep -q "mcp-server-windbg" && echo "✓ Server found in registry!" || echo "⚠ Server not yet visible in registry (may take some time)"
