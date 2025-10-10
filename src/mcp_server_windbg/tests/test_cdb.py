@@ -13,7 +13,7 @@ def setup_cdb_session():
     
     if not any(os.path.exists(path) for path in DEFAULT_CDB_PATHS):
         pytest.skip("CDB executable not found")
-        
+    
     return CDBSession(
         dump_path=TEST_DUMP_PATH,
         timeout=20,

@@ -1,0 +1,48 @@
+name: Publish to MCP Registry
+
+on:
+  push:
+    tags: ["v*"]      # Triggers on version tags like v1.0.0
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write  # Required for OIDC authentication
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Build package
+        run: uv build
+
+      - name: Check package
+        run: uv run twine check dist/*
+
+      - name: Publish to PyPI
+        run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Install MCP Publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/v1.2.3/mcp-publisher_1.2.3_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64.tar.gz" | tar xz mcp-publisher
+
+      - name: Login to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

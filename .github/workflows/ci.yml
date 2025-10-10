@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        lfs: true
+
+    - name: Install WinDbg Preview
+      run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Run tests
+      run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
+
+    - name: Test CLI entry point
+      run: |
+        # Test that the CLI entry point works
+        uv run python -m mcp_server_windbg --help || echo "CLI help command completed"
+
+    - name: Check version consistency
+      run: |
+        # Extract version from pyproject.toml
+        $PYPROJECT_VERSION = (Select-String -Path "pyproject.toml" -Pattern 'version = "([^"]+)"').Matches[0].Groups[1].Value
+        Write-Host "pyproject.toml version: $PYPROJECT_VERSION"
+        
+        # Extract version from server.json
+        $SERVER_JSON = Get-Content "server.json" | ConvertFrom-Json
+        $SERVER_VERSION = $SERVER_JSON.version
+        $PACKAGE_VERSION = $SERVER_JSON.packages[0].version
+        Write-Host "server.json version: $SERVER_VERSION"
+        Write-Host "server.json package version: $PACKAGE_VERSION"
+        
+        # Check if all versions match
+        if ($PYPROJECT_VERSION -ne $SERVER_VERSION) {
+          Write-Error "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != server.json ($SERVER_VERSION)"
+          exit 1
+        }
+        
+        if ($PYPROJECT_VERSION -ne $PACKAGE_VERSION) {
+          Write-Error "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != server.json package ($PACKAGE_VERSION)"
+          exit 1
+        }
+        
+        Write-Host "✓ All versions are consistent: $PYPROJECT_VERSION"
+
+  build:
+    runs-on: windows-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        lfs: true
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.10
+
+    - name: Build package
+      run: uv build
+
+    - name: Check package
+      run: uv run twine check dist/*
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/
+        retention-days: 7

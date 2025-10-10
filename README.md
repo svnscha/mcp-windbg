@@ -2,6 +2,8 @@
 
 A Model Context Protocol server providing tools to analyze Windows crash dumps and connect to remote debugging sessions using WinDBG/CDB.
 
+<!-- mcp-name: io.github.svnscha/mcp-windbg -->
+
 ## Overview
 
 This MCP server integrates with [CDB](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/opening-a-crash-dump-file-using-cdb) to enable AI models to:

@@ -10,7 +10,7 @@ from typing import Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from mcp_server_windbg.cdb_session import CDBSession, CDBError
-from mcp_server_windbg.server import get_or_create_session, unload_session
+from mcp_server_windbg.server import get_or_create_session, unload_session, DEFAULT_CDB_PATHS
 
 
 class CDBServerProcess:
@@ -98,12 +98,7 @@ class CDBServerProcess:
         
     def _find_cdb_executable(self) -> Optional[str]:
         """Find the cdb.exe executable."""
-        default_paths = [
-            r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe",
-            r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x86\cdb.exe",
-        ]
-        
-        for path in default_paths:
+        for path in DEFAULT_CDB_PATHS:
             if os.path.isfile(path):
                 return path
         return None
