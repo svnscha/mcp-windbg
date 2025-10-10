@@ -34,4 +34,4 @@ jobs:
         run: uv run twine check dist/*
 
       - name: Publish to TestPyPI
-        run: uv publish --repository testpypi --token ${{ secrets.TEST_PYPI_API_TOKEN }}
+        run: uv publish --publish-url https://test.pypi.org/legacy/ --token ${{ secrets.TEST_PYPI_API_TOKEN }}
