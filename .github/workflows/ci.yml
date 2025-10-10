@@ -29,39 +29,10 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev
 
-    - name: Check Windows Debugging Tools
-      run: |
-        # Check if Windows Debugging Tools are available
-        $cdbPaths = @(
-          "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe",
-          "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x86\cdb.exe",
-          "${env:ProgramFiles}\Windows Kits\10\Debuggers\x64\cdb.exe",
-          "${env:ProgramFiles}\Windows Kits\10\Debuggers\x86\cdb.exe"
-        )
-        
-        $foundCdb = $false
-        foreach ($path in $cdbPaths) {
-          if (Test-Path $path) {
-            Write-Host "Found CDB at: $path"
-            & $path -version
-            $foundCdb = $true
-            break
-          }
-        }
-        
-        if (-not $foundCdb) {
-          Write-Host "##[warning]Windows Debugging Tools (CDB) not found. Some tests may be skipped."
-          Write-Host "To install: Download Windows SDK from https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/"
-        } else {
-          Write-Host "CDB is available for testing"
-        }
-
-    - name: Run linting (basic syntax check)
-      run: |
-        uv run python -m py_compile src/mcp_server_windbg/__init__.py
-        uv run python -m py_compile src/mcp_server_windbg/__main__.py
-        uv run python -m py_compile src/mcp_server_windbg/server.py
-        uv run python -m py_compile src/mcp_server_windbg/cdb_session.py
+    - name: Setup Developer Command Prompt
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
 
     - name: Run tests
       run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
