@@ -6,11 +6,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "svnscha" }]
 keywords = ["windbg", "cdb", "mcp", "llm", "crash-analysis"]
-license = { text = "MIT" }
+license = "MIT"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
 ]
@@ -29,6 +28,7 @@ build-backend = "setuptools.build_meta"
 [dependency-groups]
 dev = [
     "pytest>=7.0.0",
+    "twine>=4.0.0",
 ]
 
 [tool.pytest.ini_options]
