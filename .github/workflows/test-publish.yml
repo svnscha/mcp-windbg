@@ -1,7 +1,8 @@
 name: Test Publish to TestPyPI
 
 on:
-  workflow_dispatch:  # Manual triggering only
+  pull_request:  # Trigger on any pull request
+  workflow_dispatch:  # Also allow manual triggering
 
 jobs:
   test-publish:
