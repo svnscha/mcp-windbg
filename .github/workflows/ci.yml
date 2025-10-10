@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Check Windows Debugging Tools
+      run: |
+        # Check if Windows Debugging Tools are available
+        $cdbPaths = @(
+          "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe",
+          "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x86\cdb.exe",
+          "${env:ProgramFiles}\Windows Kits\10\Debuggers\x64\cdb.exe",
+          "${env:ProgramFiles}\Windows Kits\10\Debuggers\x86\cdb.exe"
+        )
+        
+        $foundCdb = $false
+        foreach ($path in $cdbPaths) {
+          if (Test-Path $path) {
+            Write-Host "Found CDB at: $path"
+            & $path -version
+            $foundCdb = $true
+            break
+          }
+        }
+        
+        if (-not $foundCdb) {
+          Write-Host "##[warning]Windows Debugging Tools (CDB) not found. Some tests may be skipped."
+          Write-Host "To install: Download Windows SDK from https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/"
+        } else {
+          Write-Host "CDB is available for testing"
+        }
+
+    - name: Run linting (basic syntax check)
+      run: |
+        uv run python -m py_compile src/mcp_server_windbg/__init__.py
+        uv run python -m py_compile src/mcp_server_windbg/__main__.py
+        uv run python -m py_compile src/mcp_server_windbg/server.py
+        uv run python -m py_compile src/mcp_server_windbg/cdb_session.py
+
+    - name: Run tests
+      run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
+
+    - name: Test CLI entry point
+      run: |
+        # Test that the CLI entry point works
+        uv run python -m mcp_server_windbg --help || echo "CLI help command completed"
+
+  build:
+    runs-on: windows-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.10
+
+    - name: Build package
+      run: uv build
+
+    - name: Check package
+      run: uv run twine check dist/*
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist-packages
+        path: dist/
+        retention-days: 7

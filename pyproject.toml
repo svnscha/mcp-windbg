@@ -26,6 +26,11 @@ mcp-server-windbg = "mcp_server_windbg:main"
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["src/mcp_server_windbg/tests"]
 
