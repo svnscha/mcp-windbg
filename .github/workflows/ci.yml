@@ -15,8 +15,8 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
+    - uses: actions/checkout@v5
+    - uses: ilammy/msvc-dev-cmd@v1
 
     - name: Install uv
       uses: astral-sh/setup-uv@v3
@@ -28,11 +28,6 @@ jobs:
 
     - name: Install dependencies
       run: uv sync --dev
-
-    - name: Setup Developer Command Prompt
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x64
 
     - name: Run tests
       run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
