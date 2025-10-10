@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
+      with:
+        lfs: true
 
     - name: Install WinDbg Preview
       run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
@@ -80,6 +82,21 @@ jobs:
           Write-Host "Dump file exists: $($fileInfo.FullName)"
           Write-Host "File size: $($fileInfo.Length) bytes"
           Write-Host "Last modified: $($fileInfo.LastWriteTime)"
+          
+          # Check if file looks like LFS pointer (small text file) vs actual binary
+          $firstBytes = Get-Content $dumpFile -AsByteStream -TotalCount 100 -ErrorAction SilentlyContinue
+          if ($firstBytes -and $firstBytes.Length -gt 0) {
+            $firstBytesHex = ($firstBytes[0..9] | ForEach-Object { $_.ToString("X2") }) -join " "
+            Write-Host "First 10 bytes (hex): $firstBytesHex"
+            
+            # Check if it's an LFS pointer file (would start with "version https://git-lfs")
+            $firstText = [System.Text.Encoding]::ASCII.GetString($firstBytes[0..20])
+            if ($firstText -like "*version*lfs*") {
+              Write-Host "WARNING: File appears to be LFS pointer, not actual dump file!"
+            } else {
+              Write-Host "File appears to be binary dump file (good)"
+            }
+          }
         } else {
           Write-Host "ERROR: Dump file not found at $dumpFile"
         }
@@ -140,6 +157,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        lfs: true
 
     - name: Install uv
       uses: astral-sh/setup-uv@v3
