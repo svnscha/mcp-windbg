@@ -30,7 +30,7 @@ jobs:
       run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v3
+      uses: astral-sh/setup-uv@v7
       with:
         version: "latest"
 
@@ -64,7 +64,7 @@ jobs:
         lfs: true
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v3
+      uses: astral-sh/setup-uv@v7
       with:
         version: "latest"
 
