@@ -5,105 +5,48 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.5] - 2025-10-11
+## [0.2.6] - 2025-10-10
 
-### Devops
-- Publishing to PyPi
+**What's New in This Release**
 
-## [0.2.4] - 2025-10-11
+This release focuses on making mcp-windbg more reliable, faster, and easier to use for everyone - from beginners to advanced users.
 
-### Added
-- Introduced Documentation (Wiki)
+### New Features
 
-### Changed
-- Update README.md
-- Refactor mcp-server-windbg to mcp-windbg
-- Refactor mcp_server_windbg to mcp_windbg
+**Core**
+- Live debugging session support via `open_windbg_remote` and `close_windbg_remote`
+- Extended dump file support for `.mdmp` and `.hdmp` formats
+- Microsoft Store WinDbg CDB compatibility
 
-## [0.2.3] - 2025-10-11
+**Devops**
+- Set up continuous integration that automatically tests the code with Python versions 3.10 through 3.14
+- Added automatic dependency updates to keep everything secure and up-to-date
+- Streamlined the release process so new versions reach users faster
 
-### Changed
-- Minor fixes
+**Development**
+- Switched to `uv` - a lightning-fast Python package manager that's 10-100x faster than pip
+- Development setup is now much quicker with commands like `uv sync` and `uv run`
+- More reliable builds with locked dependency versions
 
-## [0.2.0] - 2025-10-10
+**Documentation**
+- Added comprehensive debugging instructions for AI assistants ([`AGENTS.md`](AGENTS.md))
+- Created structured templates to help analyze crash dumps more effectively ([`.github/prompts/dump-triage.prompt.md`](.github/prompts/dump-triage.prompt.md))
+- All documentation is now available in the [repository Wiki](https://github.com/svnscha/mcp-windbg/wiki) for easy access
+- Simplified the main [`README.md`](README.md) to focus on getting started quickly
+- Added this structured [`CHANGELOG.md`](CHANGELOG.md) to track all project changes
 
-### Added
+### Improvements
 
-- **CI/CD Pipeline**: GitHub Actions workflows for automated testing and publishing
-  - Multi-Python version testing (3.10, 3.11, 3.12) on Windows runners
-  - Automated dependency updates via Dependabot
-  - Package publishing workflow for MCP distribution
+**Performance Boost**: Build times are significantly faster thanks to the new tooling
+**Enhanced Security**: Automatic scanning and updates keep dependencies secure
 
-- **Modern Python Tooling**: Migrated from pip to uv for faster dependency management
-  - Reproducible builds with uv.lock
-  - 10-100x faster dependency resolution
-  - Streamlined development commands (`uv sync`, `uv run`, `uv build`)
+### 🤝 Community Contributions
 
-- **Enhanced Developer Experience**
-  - Comprehensive debugging agent instructions (`AGENTS.md`)
-  - Structured dump triage prompt templates
-  - Improved documentation and troubleshooting guides
+Special thanks to [@sooknarine](https://github.com/sooknarine) for these valuable contributions:
+- [Find local dumps with other common extensions #6](https://github.com/svnscha/mcp-windbg/pull/6) - Now finds more crash dump files automatically
+- [Add support for remote debugging #10](https://github.com/svnscha/mcp-windbg/pull/10) - Connect to live debugging sessions
 
-### Improved
-- **Performance**: Significantly faster build times with uv integration
-- **Security**: Automated dependency updates and vulnerability scanning
 
 ## [0.1.0] - 2025-05-03
 
-### Added
-- **Core MCP Server Implementation**
-  - Model Context Protocol server for Windows debugging tools
-  - Integration with WinDbg/CDB for crash dump analysis and remote debugging
-  - Python 3.10+ support with modern async architecture
-
-- **Crash Dump Analysis Tools**
-  - `open_windbg_dump`: Comprehensive crash dump analysis with `!analyze -v` output
-  - `run_windbg_cmd`: Execute any WinDbg command on loaded dump files
-  - `close_windbg_dump`: Proper resource cleanup for dump sessions
-  - Support for stack traces, module information, and thread analysis
-
-- **Remote Debugging Capabilities**
-  - `open_windbg_remote`: Connect to live debugging sessions via TCP
-  - `close_windbg_remote`: Clean disconnect from remote debugging targets
-  - Real-time command execution on live processes
-
-- **File Discovery and Management**
-  - `list_windbg_dumps`: Discover crash dumps in specified directories
-  - **Automatic Local Dump Detection**: Find dumps in Windows registry-configured paths (contributed by @jeff)
-  - Support for common dump file extensions (.dmp)
-  - Recursive directory scanning capabilities
-
-- **VS Code Integration**
-  - Complete MCP configuration for VS Code Copilot integration
-  - Agent mode support with natural language debugging queries
-  - Seamless integration with GitHub Copilot's Model Context Protocol features
-
-- **Advanced Configuration**
-  - Customizable CDB executable path
-  - Configurable symbol paths with Microsoft symbol server defaults
-  - Timeout controls for long-running analysis operations
-  - Verbose logging for debugging server issues
-
-- **Documentation and Examples**
-  - Comprehensive README with setup instructions
-  - VS Code integration guide with sample configurations
-  - Symbol server configuration examples
-  - Natural language query examples for both dump analysis and remote debugging
-
-### Technical Features
-- **Robust Error Handling**: Comprehensive error management for CDB interactions
-- **Resource Management**: Proper session lifecycle management with cleanup
-- **Cross-Platform Foundation**: Windows-focused with extensible architecture
-- **Testing Framework**: pytest-based test suite for reliability
-
-### Development Tools
-- **Modern Python Packaging**: pyproject.toml configuration with setuptools
-- **Development Dependencies**: Isolated test dependencies for clean development
-- **MIT License**: Open source license for community contributions
-
----
-
-## Contributors
-
-- **@svnscha** - Initial implementation and core architecture
-- **@jeff** - Improvement: Find local dumps with other common extensions (#6)
+- Initial version as blogged about.
