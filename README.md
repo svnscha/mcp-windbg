@@ -39,7 +39,7 @@ pip install mcp-windbg
 ```
 
 
-## Configuration
+## Configuration for Visual Studio Code
 
 To make MCP servers available in all your workspaces, use the global user configuration:
 
