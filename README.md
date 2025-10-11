@@ -27,7 +27,7 @@ Not a magical auto-fix solution. It's a Python wrapper around CDB that leverages
 ### Prerequisites
 - Windows with [Debugging Tools for Windows](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) or [WinDbg from Microsoft Store](https://apps.microsoft.com/detail/9pgjgd53tn86).
 - Python 3.10 or higher
-- Any MCP-compatible client (GitHub Copilot, Claude Desktop, Cline, etc.)
+- Any MCP-compatible client (GitHub Copilot, Claude Desktop, Cline, Cursor, Windsurf etc.)
 - Configure MCP server in your chosen client
 
 > [!TIP]
