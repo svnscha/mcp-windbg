@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from mcp_server_windbg.cdb_session import CDBSession, CDBError, DEFAULT_CDB_PATHS
+from mcp_windbg.cdb_session import CDBSession, CDBError, DEFAULT_CDB_PATHS
 
 # Path to the test dump file
 TEST_DUMP_PATH = os.path.join(os.path.dirname(__file__), 'dumps', 'DemoCrash1.exe.7088.dmp')

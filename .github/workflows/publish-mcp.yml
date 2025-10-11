@@ -9,8 +9,24 @@ jobs:
   build-and-test:
     uses: ./.github/workflows/build-and-test.yml
 
-  publish:
+  verify-build:
     runs-on: windows-latest
+    needs: build-and-test
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.build-and-test.outputs.artifact-name }}
+        path: dist/
+
+    - name: List downloaded artifacts
+      run: |
+        Write-Host "Downloaded artifacts:"
+        Get-ChildItem -Path "dist/" -Recurse | Format-Table Name, Length, LastWriteTime
+
+  publish-pypi:
+    runs-on: ubuntu-latest
     needs: build-and-test
     permissions:
       id-token: write  # OIDC for trusted publishing
@@ -25,8 +41,8 @@ jobs:
 
     - name: List downloaded artifacts
       run: |
-        Write-Host "Downloaded artifacts:"
-        Get-ChildItem -Path "dist/" -Recurse | Format-Table Name, Length, LastWriteTime
+        echo "Downloaded artifacts:"
+        ls -la dist/
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
@@ -35,18 +51,18 @@ jobs:
 
     - name: Create GitHub Release Summary
       run: |
-        Write-Host "## 🎉 Package Published Successfully!"
-        Write-Host "📦 Published to **PyPI**: https://pypi.org/project/mcp-windbg/"
-        Write-Host ""
-        Write-Host "### Installation"
-        Write-Host '```bash'
-        Write-Host 'pip install mcp-windbg'
-        Write-Host '```'
-        Write-Host "" >> $env:GITHUB_STEP_SUMMARY
+        echo "## 🎉 Package Published Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "📦 Published to **PyPI**: https://pypi.org/project/mcp-windbg/" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Installation" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo 'pip install mcp-windbg' >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
 
   publish-mcp-registry:
     runs-on: ubuntu-latest
-    needs: [build-and-test, publish]
+    needs: [build-and-test, publish-pypi]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       id-token: write  # Required for OIDC authentication

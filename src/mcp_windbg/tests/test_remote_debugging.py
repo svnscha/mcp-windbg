@@ -9,8 +9,8 @@ from typing import Optional
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from mcp_server_windbg.cdb_session import CDBSession, CDBError, DEFAULT_CDB_PATHS
-from mcp_server_windbg.server import get_or_create_session, unload_session
+from mcp_windbg.cdb_session import CDBSession, CDBError, DEFAULT_CDB_PATHS
+from mcp_windbg.server import get_or_create_session, unload_session
 
 
 class CDBServerProcess:
@@ -156,7 +156,7 @@ class TestRemoteDebugging:
                 print(f"First command failed (this might be expected): {e}")
 
             # Test that session exists in active sessions
-            from mcp_server_windbg.server import active_sessions
+            from mcp_windbg.server import active_sessions
             session_id = f"remote:{connection_string}"
             assert session_id in active_sessions, "Session not found in active sessions"
 

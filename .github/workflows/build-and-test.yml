@@ -41,12 +41,12 @@ jobs:
       run: uv sync --dev
 
     - name: Run tests
-      run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
+      run: uv run pytest src/mcp_windbg/tests/ -v --tb=short
 
     - name: Test CLI entry point
       run: |
         # Test that the CLI entry point works
-        uv run python -m mcp_server_windbg --help || echo "CLI help command completed"
+        uv run python -m mcp_windbg --help || echo "CLI help command completed"
 
     - name: Check version consistency
       run: .\scripts\check-version-consistency.ps1

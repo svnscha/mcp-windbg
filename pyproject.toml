@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mcp-windbg = "mcp_server_windbg:main"
+mcp-windbg = "mcp_windbg:main"
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]
@@ -32,7 +32,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["src/mcp_server_windbg/tests"]
+testpaths = ["src/mcp_windbg/tests"]
 
 [project.optional-dependencies]
 test = ["pytest>=8.4.0"]
