@@ -38,9 +38,14 @@ Not a magical auto-fix solution. It's a Python wrapper around CDB that leverages
 pip install mcp-windbg
 ```
 
-### Configuration
 
-Create `.vscode/mcp.json` in your workspace:
+## Configuration
+
+To make MCP servers available in all your workspaces, use the global user configuration:
+
+1. Press `F1`, type `>` and select **MCP: Open User Configuration**.
+2. Paste the following JSON snippet into your user configuration:
+
 ```json
 {
     "servers": {
@@ -56,7 +61,9 @@ Create `.vscode/mcp.json` in your workspace:
 }
 ```
 
-> **Other MCP Clients**: Configuration for Claude Desktop, Cline, and other clients is available in the [Installation documentation](https://github.com/svnscha/mcp-windbg/wiki/Installation).
+This enables MCP Windbg in any workspace, without needing a local `.vscode/mcp.json` file.
+
+> **Workspace-specific and alternative configuration**: See [Installation documentation](https://github.com/svnscha/mcp-windbg/wiki/Installation) for details on configuring Claude Desktop, Cline, and other clients, or for workspace-only setup.
 
 Once configured, restart your MCP client and start debugging:
 
