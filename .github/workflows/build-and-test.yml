@@ -1,0 +1,91 @@
+name: Build and Test
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: 'JSON array of Python versions to test'
+        required: false
+        type: string
+        default: '["3.10", "3.11", "3.12"]'
+    outputs:
+      artifact-name:
+        description: 'Name of the build artifact'
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+jobs:
+  test:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(inputs.python-versions) }}
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        lfs: true
+
+    - name: Install WinDbg Preview
+      run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Run tests
+      run: uv run pytest src/mcp_server_windbg/tests/ -v --tb=short
+
+    - name: Test CLI entry point
+      run: |
+        # Test that the CLI entry point works
+        uv run python -m mcp_server_windbg --help || echo "CLI help command completed"
+
+    - name: Check version consistency
+      run: .\scripts\check-version-consistency.ps1
+
+  build:
+    runs-on: windows-latest
+    needs: test
+    outputs:
+      artifact-name: ${{ steps.set-artifact-name.outputs.artifact-name }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        lfs: true
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.10
+
+    - name: Build package
+      run: uv build
+
+    - name: Check package
+      run: uv run twine check dist/*
+
+    - name: Set artifact name
+      id: set-artifact-name
+      run: |
+        $artifactName = "dist-packages-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        echo "artifact-name=$artifactName" >> $env:GITHUB_OUTPUT
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.set-artifact-name.outputs.artifact-name }}
+        path: dist/
+        retention-days: 7

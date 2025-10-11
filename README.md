@@ -11,7 +11,7 @@ This MCP server integrates with [CDB](https://learn.microsoft.com/en-us/windows-
 - Connect to remote debugging sessions
 - Execute WinDBG commands on both dump files and live debugging targets
 
-## TL;DR 
+## TL;DR
 
 ### What is this?
 

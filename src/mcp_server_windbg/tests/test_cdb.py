@@ -10,10 +10,10 @@ def setup_cdb_session():
     """Helper function to create a CDB session"""
     if not os.path.exists(TEST_DUMP_PATH):
         pytest.skip("Test dump file not found")
-    
+
     if not any(os.path.exists(path) for path in DEFAULT_CDB_PATHS):
         pytest.skip("CDB executable not found")
-    
+
     return CDBSession(
         dump_path=TEST_DUMP_PATH,
         timeout=20,
@@ -37,12 +37,12 @@ def test_command_sequence():
         # Basic command sequence
         commands = ["version", ".sympath", "!analyze -v", "lm", "~"]
         results = []
-        
+
         for cmd in commands:
             output = session.send_command(cmd)
             results.append((cmd, output))
             assert len(output) > 0
-        
+
         # Check expected output patterns
         assert any("Microsoft (R) Windows Debugger" in line for line in results[0][1])
         assert any("Symbol search path is:" in line for line in results[1][1])
@@ -56,11 +56,11 @@ def test_module_inspection():
     try:
         # Get module list
         modules_output = session.send_command("lm")
-        
+
         # Find a common Windows module
         target_modules = ['ntdll', 'kernel32']
         module_name = None
-        
+
         for target in target_modules:
             for line in modules_output:
                 if target in line.lower():
@@ -73,14 +73,14 @@ def test_module_inspection():
                         break
             if module_name:
                 break
-        
+
         assert module_name is not None
-        
+
         # Get module details
         module_info = session.send_command(f"lmv m {module_name}")
         assert len(module_info) > 0
         assert any(module_name.lower() in line.lower() for line in module_info)
-        
+
         # Get stack info
         stack_info = session.send_command("k 5")
         assert len(stack_info) > 0
@@ -93,7 +93,7 @@ def test_thread_context():
     try:
         # Get thread list
         thread_list = session.send_command("~")
-        
+
         # Select first thread
         thread_id = "0"
         for line in thread_list:
@@ -102,13 +102,13 @@ def test_thread_context():
                 if len(parts) > 1:
                     thread_id = parts[1].strip(":")
                     break
-        
+
         # Switch to thread and check registers
         session.send_command(f"~{thread_id}s")
         registers = session.send_command("r")
         assert len(registers) > 0
         assert any("eax" in line.lower() or "rax" in line.lower() for line in registers)
-        
+
         # Check stack trace
         stack = session.send_command("k")
         assert len(stack) > 0
