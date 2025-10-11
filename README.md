@@ -10,27 +10,17 @@ This MCP server integrates with [CDB](https://learn.microsoft.com/en-us/windows-
 
 ## What is this?
 
-**Primarily**, a tool that enables AI to interact with WinDbg for both crash dump analysis and live debugging. The "magic" is giving LLMs the ability to execute debugger commands on crash dumps or remote debugging targets.
+An AI-powered tool that bridges LLMs with WinDbg for crash dump analysis and live debugging. Execute debugger commands through natural language queries like *"Show me the call stack and explain this access violation"*.
 
-This means you can:
-- Get immediate first-level triage analysis for categorizing crash dumps
-- Perform natural language-based analysis: *"Show me the call stack and explain what might be causing this access violation"*
-- Auto-analyze simple cases and get insights for complex debugging scenarios
-- Connect to live debugging sessions for real-time analysis
+## What This is Not
 
-**What this is NOT**: A magical solution that automatically fixes all issues. It's a **simple Python wrapper around CDB** that **relies** on the **LLM's WinDbg** expertise.
+Not a magical auto-fix solution. It's a Python wrapper around CDB that leverages LLM knowledge to assist with debugging.
 
-## MCP Compatibility
+## Usage Modes
 
-This server implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), making it compatible with any MCP-enabled client:
-
-- **GitHub Copilot** - Recommended for VS Code users
-- **Claude Desktop** - Anthropic's desktop application
-- **Cline** - VS Code extension for autonomous coding
-- **Continue** - Open-source coding assistant
-- **Any other MCP client** - The protocol is open and extensible
-
-The beauty of MCP is that you write the server once, and it works everywhere. Choose your favorite AI assistant!
+- **Crash Dump Analysis**: Examine Windows crash dumps
+- **Live Debugging**: Connect to remote debugging targets
+- **Directory Analysis**: Process multiple dumps for patterns
 
 ## Quick Start
 
@@ -74,16 +64,22 @@ Once configured, restart your MCP client and start debugging:
 Analyze the crash dump at C:\dumps\app.dmp
 ```
 
-## Tools
+## MCP Compatibility
+
+This server implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), making it compatible with any MCP-enabled client:
+
+The beauty of MCP is that you write the server once, and it works everywhere. Choose your favorite AI assistant!
+
+### Tools
 
 | Tool | Purpose | Use Case |
 |------|---------|----------|
-| [`list_windbg_dumps`](#list_windbg_dumps) | List crash dump files | Discovery and batch analysis |
-| [`open_windbg_dump`](#open_windbg_dump) | Analyze crash dumps | Initial crash dump analysis |
-| [`close_windbg_dump`](#close_windbg_dump) | Cleanup dump sessions | Resource management |
-| [`open_windbg_remote`](#open_windbg_remote) | Connect to remote debugging | Live debugging sessions |
-| [`close_windbg_remote`](#close_windbg_remote) | Cleanup remote sessions | Resource management |
-| [`run_windbg_cmd`](#run_windbg_cmd) | Execute WinDbg commands | Custom analysis and investigation |
+| [`list_windbg_dumps`](https://github.com/svnscha/mcp-windbg/wiki/Tools#list_windbg_dumps) | List crash dump files | Discovery and batch analysis |
+| [`open_windbg_dump`](https://github.com/svnscha/mcp-windbg/wiki/Tools#open_windbg_dump) | Analyze crash dumps | Initial crash dump analysis |
+| [`close_windbg_dump`](https://github.com/svnscha/mcp-windbg/wiki/Tools#close_windbg_dump) | Cleanup dump sessions | Resource management |
+| [`open_windbg_remote`](https://github.com/svnscha/mcp-windbg/wiki/Tools#open_windbg_remote) | Connect to remote debugging | Live debugging sessions |
+| [`close_windbg_remote`](https://github.com/svnscha/mcp-windbg/wiki/Tools#close_windbg_remote) | Cleanup remote sessions | Resource management |
+| [`run_windbg_cmd`](https://github.com/svnscha/mcp-windbg/wiki/Tools#run_windbg_cmd) | Execute WinDbg commands | Custom analysis and investigation |
 
 ## Documentation
 
