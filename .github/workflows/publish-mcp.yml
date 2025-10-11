@@ -29,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-test
     permissions:
-      id-token: write  # OIDC for trusted publishing
       contents: read
 
     steps:
@@ -44,10 +43,15 @@ jobs:
         echo "Downloaded artifacts:"
         ls -la dist/
 
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
       with:
-        print-hash: true
+        version: "latest"
+
+    - name: Publish to PyPI
+      run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
+      env:
+        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
     - name: Create GitHub Release Summary
       run: |

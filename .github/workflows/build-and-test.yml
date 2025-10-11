@@ -26,7 +26,7 @@ jobs:
       with:
         lfs: true
 
-    - name: Install WinDbg Preview
+    - name: Install WinDbg from Microsoft Store
       run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
 
     - name: Install uv
