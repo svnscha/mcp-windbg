@@ -18,7 +18,7 @@ Perform comprehensive analysis of a single Windows crash dump with detailed meta
 
 **Tool:** `open_windbg_dump`
 - **Parameters:**
-  - `dump_path`: Provided dump file path  
+  - `dump_path`: Provided dump file path
   - `include_stack_trace`: true
   - `include_modules`: true
   - `include_threads`: true
@@ -44,8 +44,8 @@ and tell him to wait since the analysis keeps running in the background and will
 
 ```markdown
 # Crash Dump Analysis Report
-**Analysis Date:** [Current Date]  
-**Dump File:** [filename.dmp]  
+**Analysis Date:** [Current Date]
+**Dump File:** [filename.dmp]
 **File Path:** [Full path to dump file]
 
 ## Executive Summary
@@ -80,8 +80,8 @@ Frame Module!Function+Offset                               Parameters
 [0]   module!function+0x123                              param1, param2, param3
 [1]   module!function+0x456                              param1, param2
 [2]   module!function+0x789                              param1
-[3]   module!function+0xabc                              
-[4]   module!function+0xdef                              
+[3]   module!function+0xabc
+[4]   module!function+0xdef
 [5]   [Continue with full stack...]
 ```
 

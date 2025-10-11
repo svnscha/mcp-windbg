@@ -16,7 +16,7 @@ on:
 jobs:
   test:
     runs-on: windows-latest
-    
+
     strategy:
       matrix:
         python-version: ${{ fromJson(inputs.python-versions) }}
@@ -56,7 +56,7 @@ jobs:
     needs: test
     outputs:
       artifact-name: ${{ steps.set-artifact-name.outputs.artifact-name }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
