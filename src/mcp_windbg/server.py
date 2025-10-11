@@ -34,12 +34,12 @@ def get_local_dumps_path() -> Optional[str]:
     except (OSError, WindowsError):
         # Registry key might not exist or other issues
         pass
-    
+
     # Default Windows dump location
     default_path = os.path.join(os.environ.get("LOCALAPPDATA", ""), "CrashDumps")
     if os.path.exists(default_path) and os.path.isdir(default_path):
         return default_path
-        
+
     return None
 
 class OpenWindbgDump(BaseModel):
@@ -59,10 +59,10 @@ class OpenWindbgRemote(BaseModel):
 
 
 class RunWindbgCmdParams(BaseModel):
-    """Parameters for executing a WinDBG command."""
+    """Parameters for executing a WinDbg command."""
     dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
     connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
-    command: str = Field(description="WinDBG command to execute")
+    command: str = Field(description="WinDbg command to execute")
 
     @model_validator(mode='after')
     def validate_connection_params(self):
@@ -109,13 +109,13 @@ def get_or_create_session(
         raise ValueError("Either dump_path or connection_string must be provided")
     if dump_path and connection_string:
         raise ValueError("dump_path and connection_string are mutually exclusive")
-    
+
     # Create session identifier
     if dump_path:
         session_id = os.path.abspath(dump_path)
     else:
         session_id = f"remote:{connection_string}"
-    
+
     if session_id not in active_sessions or active_sessions[session_id] is None:
         try:
             session = CDBSession(
@@ -133,7 +133,7 @@ def get_or_create_session(
                 code=INTERNAL_ERROR,
                 message=f"Failed to create CDB session: {str(e)}"
             ))
-    
+
     return active_sessions[session_id]
 
 
@@ -143,13 +143,13 @@ def unload_session(dump_path: Optional[str] = None, connection_string: Optional[
         return False
     if dump_path and connection_string:
         return False
-    
+
     # Create session identifier
     if dump_path:
         session_id = os.path.abspath(dump_path)
     else:
         session_id = f"remote:{connection_string}"
-    
+
     if session_id in active_sessions and active_sessions[session_id] is not None:
         try:
             active_sessions[session_id].shutdown()
@@ -157,18 +157,18 @@ def unload_session(dump_path: Optional[str] = None, connection_string: Optional[
             return True
         except Exception:
             return False
-    
+
     return False
 
 
 def execute_common_analysis_commands(session: CDBSession) -> dict:
     """
     Execute common analysis commands and return the results.
-    
+
     Returns a dictionary with the results of various analysis commands.
     """
     results = {}
-    
+
     try:
         results["info"] = session.send_command(".lastevent")
         results["exception"] = session.send_command("!analyze -v")
@@ -176,7 +176,7 @@ def execute_common_analysis_commands(session: CDBSession) -> dict:
         results["threads"] = session.send_command("~")
     except CDBError as e:
         results["error"] = str(e)
-    
+
     return results
 
 
@@ -186,7 +186,7 @@ async def serve(
     timeout: int = 30,
     verbose: bool = False,
 ) -> None:
-    """Run the WinDBG MCP server.
+    """Run the WinDbg MCP server.
 
     Args:
         cdb_path: Optional custom path to cdb.exe
@@ -195,22 +195,22 @@ async def serve(
         verbose: Whether to enable verbose output
     """
     server = Server("mcp-windbg")
-    
+
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         return [
             Tool(
                 name="open_windbg_dump",
                 description="""
-                Analyze a Windows crash dump file using WinDBG/CDB.
-                This tool executes common WinDBG commands to analyze the crash dump and returns the results.
+                Analyze a Windows crash dump file using WinDbg/CDB.
+                This tool executes common WinDbg commands to analyze the crash dump and returns the results.
                 """,
                 inputSchema=OpenWindbgDump.model_json_schema(),
             ),
             Tool(
                 name="open_windbg_remote",
                 description="""
-                Connect to a remote debugging session using WinDBG/CDB.
+                Connect to a remote debugging session using WinDbg/CDB.
                 This tool establishes a remote debugging connection and allows you to analyze the target process.
                 """,
                 inputSchema=OpenWindbgRemote.model_json_schema(),
@@ -218,8 +218,8 @@ async def serve(
             Tool(
                 name="run_windbg_cmd",
                 description="""
-                Execute a specific WinDBG command on a loaded crash dump or remote session.
-                This tool allows you to run any WinDBG command and get the output.
+                Execute a specific WinDbg command on a loaded crash dump or remote session.
+                This tool allows you to run any WinDbg command and get the output.
                 """,
                 inputSchema=RunWindbgCmdParams.model_json_schema(),
             ),
@@ -257,12 +257,12 @@ async def serve(
                 if "dump_path" not in arguments or not arguments.get("dump_path"):
                     local_dumps_path = get_local_dumps_path()
                     dumps_found_text = ""
-                    
+
                     if local_dumps_path:
                         # Find dump files in the local dumps directory
                         search_pattern = os.path.join(local_dumps_path, "*.*dmp")
                         dump_files = glob.glob(search_pattern)
-                        
+
                         if dump_files:
                             dumps_found_text = f"\n\nI found {len(dump_files)} crash dump(s) in {local_dumps_path}:\n\n"
                             for i, dump_file in enumerate(dump_files[:10]):  # Limit to 10 dumps to avoid clutter
@@ -270,74 +270,74 @@ async def serve(
                                     size_mb = round(os.path.getsize(dump_file) / (1024 * 1024), 2)
                                 except (OSError, IOError):
                                     size_mb = "unknown"
-                                
+
                                 dumps_found_text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
-                                
+
                             if len(dump_files) > 10:
                                 dumps_found_text += f"\n... and {len(dump_files) - 10} more dump files.\n"
-                                
+
                             dumps_found_text += "\nYou can analyze one of these dumps by specifying its path."
-                    
+
                     return [TextContent(
                         type="text",
                         text=f"Please provide a path to a crash dump file to analyze.{dumps_found_text}\n\n"
                               f"You can use the 'list_windbg_dumps' tool to discover available crash dumps."
                     )]
-                
+
                 args = OpenWindbgDump(**arguments)
                 session = get_or_create_session(
                     dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
                 )
-                
+
                 results = []
-                
+
                 crash_info = session.send_command(".lastevent")
                 results.append("### Crash Information\n```\n" + "\n".join(crash_info) + "\n```\n\n")
-                
+
                 # Run !analyze -v
                 analysis = session.send_command("!analyze -v")
                 results.append("### Crash Analysis\n```\n" + "\n".join(analysis) + "\n```\n\n")
-                
+
                 # Optional
                 if args.include_stack_trace:
                     stack = session.send_command("kb")
                     results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
-                
+
                 if args.include_modules:
                     modules = session.send_command("lm")
                     results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
-                
+
                 if args.include_threads:
                     threads = session.send_command("~")
                     results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
-                
+
                 return [TextContent(type="text", text="".join(results))]
-            
+
             elif name == "open_windbg_remote":
                 args = OpenWindbgRemote(**arguments)
                 session = get_or_create_session(
                     connection_string=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
                 )
-                
+
                 results = []
-                
+
                 # Get target information for remote debugging
                 target_info = session.send_command("!peb")
                 results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
-                
+
                 # Get current state
                 current_state = session.send_command("r")
                 results.append("### Current Registers\n```\n" + "\n".join(current_state) + "\n```\n\n")
-                
+
                 # Optional
                 if args.include_stack_trace:
                     stack = session.send_command("kb")
                     results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
-                
+
                 if args.include_modules:
                     modules = session.send_command("lm")
                     results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
-                
+
                 if args.include_threads:
                     threads = session.send_command("~")
                     results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
@@ -346,20 +346,20 @@ async def serve(
                     type="text",
                     text="".join(results)
                 )]
-                
+
             elif name == "run_windbg_cmd":
                 args = RunWindbgCmdParams(**arguments)
                 session = get_or_create_session(
-                    dump_path=args.dump_path, connection_string=args.connection_string, 
+                    dump_path=args.dump_path, connection_string=args.connection_string,
                     cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
                 )
                 output = session.send_command(args.command)
-                
+
                 return [TextContent(
                     type="text",
                     text=f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
                 )]
-                
+
             elif name == "close_windbg_dump":
                 args = CloseWindbgDumpParams(**arguments)
                 success = unload_session(dump_path=args.dump_path)
@@ -390,7 +390,7 @@ async def serve(
 
             elif name == "list_windbg_dumps":
                 args = ListWindbgDumpsParams(**arguments)
-                
+
                 if args.directory_path is None:
                     args.directory_path = get_local_dumps_path()
                     if args.directory_path is None:
@@ -398,28 +398,28 @@ async def serve(
                             code=INVALID_PARAMS,
                             message="No directory path specified and no default dump path found in registry."
                         ))
-                
+
                 if not os.path.exists(args.directory_path) or not os.path.isdir(args.directory_path):
                     raise McpError(ErrorData(
                         code=INVALID_PARAMS,
                         message=f"Directory not found: {args.directory_path}"
                     ))
-                
+
                 # Determine search pattern based on recursion flag
                 search_pattern = os.path.join(args.directory_path, "**", "*.*dmp") if args.recursive else os.path.join(args.directory_path, "*.*dmp")
-                
+
                 # Find all dump files
                 dump_files = glob.glob(search_pattern, recursive=args.recursive)
-                
+
                 # Sort alphabetically for consistent results
                 dump_files.sort()
-                
+
                 if not dump_files:
                     return [TextContent(
                         type="text",
                         text=f"No crash dump files (*.*dmp) found in {args.directory_path}"
                     )]
-                
+
                 # Format the results
                 result_text = f"Found {len(dump_files)} crash dump file(s) in {args.directory_path}:\n\n"
                 for i, dump_file in enumerate(dump_files):
@@ -428,19 +428,19 @@ async def serve(
                         size_mb = round(os.path.getsize(dump_file) / (1024 * 1024), 2)
                     except (OSError, IOError):
                         size_mb = "unknown"
-                    
+
                     result_text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
-                
+
                 return [TextContent(
                     type="text",
                     text=result_text
                 )]
-            
+
             raise McpError(ErrorData(
                 code=INVALID_PARAMS,
                 message=f"Unknown tool: {name}"
             ))
-            
+
         except McpError:
             raise
         except Exception as e:
@@ -449,7 +449,7 @@ async def serve(
                 code=INTERNAL_ERROR,
                 message=f"Error executing tool {name}: {str(e)}\n{traceback_str}"
             ))
-            
+
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, options, raise_exceptions=True)

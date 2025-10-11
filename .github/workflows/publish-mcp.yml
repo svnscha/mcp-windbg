@@ -1,0 +1,141 @@
+name: Publish MCP Server
+
+on:
+  push:
+    tags: ["v*"]      # Triggers on version tags like v1.0.0
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/build-and-test.yml
+
+  verify-build:
+    runs-on: windows-latest
+    needs: build-and-test
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.build-and-test.outputs.artifact-name }}
+        path: dist/
+
+    - name: List downloaded artifacts
+      run: |
+        Write-Host "Downloaded artifacts:"
+        Get-ChildItem -Path "dist/" -Recurse | Format-Table Name, Length, LastWriteTime
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    permissions:
+      contents: read
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.build-and-test.outputs.artifact-name }}
+        path: dist/
+
+    - name: List downloaded artifacts
+      run: |
+        echo "Downloaded artifacts:"
+        ls -la dist/
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Publish to PyPI
+      run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
+      env:
+        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+    - name: Create GitHub Release Summary
+      run: |
+        echo "## 🎉 Package Published Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "📦 Published to **PyPI**: https://pypi.org/project/mcp-windbg/" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Installation" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo 'pip install mcp-windbg' >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+  create-github-release:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, publish-pypi]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write  # Required to create releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-and-test.outputs.artifact-name }}
+          path: dist/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          # Extract changelog section for this version
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          # Remove 'v' prefix if present for changelog lookup
+          CLEAN_VERSION=${VERSION#v}
+
+          # Extract the section between this version and the next version marker
+          awk -v version="[$CLEAN_VERSION]" '
+            $0 ~ "## \\[" version {found=1; next}
+            found && /^## \[/ {exit}
+            found {print}
+          ' CHANGELOG.md > release_notes.md
+
+          # If no specific version found, use auto-generated notes
+          if [ ! -s release_notes.md ]; then
+            echo "## What's Changed" > release_notes.md
+            echo "See [CHANGELOG.md](CHANGELOG.md) for detailed changes." >> release_notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ steps.version.outputs.VERSION }}
+          body_path: release_notes.md
+          files: dist/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-mcp-registry:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, publish-pypi, create-github-release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      id-token: write  # Required for OIDC authentication
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install MCP Publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/v1.2.3/mcp-publisher_1.2.3_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64.tar.gz" | tar xz mcp-publisher
+
+      - name: Login to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

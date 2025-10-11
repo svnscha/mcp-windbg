@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # Enable version updates for pip (supports pyproject.toml and requirements files)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "svnscha"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Handle both pyproject.toml and any requirements*.txt files
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "svnscha"
+    commit-message:
+      prefix: "ci"
