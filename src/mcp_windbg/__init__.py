@@ -1,12 +1,12 @@
 from .server import serve
 
 def main():
-    """MCP WinDBG Server - Windows crash dump analysis functionality for MCP"""
+    """MCP WinDbg Server - Windows crash dump analysis functionality for MCP"""
     import argparse
     import asyncio
 
     parser = argparse.ArgumentParser(
-        description="Give a model the ability to analyze Windows crash dumps with WinDBG/CDB"
+        description="Give a model the ability to analyze Windows crash dumps with WinDbg/CDB"
     )
     parser.add_argument("--cdb-path", type=str, help="Custom path to cdb.exe")
     parser.add_argument("--symbols-path", type=str, help="Custom symbols path")

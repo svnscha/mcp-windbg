@@ -59,10 +59,10 @@ class OpenWindbgRemote(BaseModel):
 
 
 class RunWindbgCmdParams(BaseModel):
-    """Parameters for executing a WinDBG command."""
+    """Parameters for executing a WinDbg command."""
     dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
     connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
-    command: str = Field(description="WinDBG command to execute")
+    command: str = Field(description="WinDbg command to execute")
 
     @model_validator(mode='after')
     def validate_connection_params(self):
@@ -186,7 +186,7 @@ async def serve(
     timeout: int = 30,
     verbose: bool = False,
 ) -> None:
-    """Run the WinDBG MCP server.
+    """Run the WinDbg MCP server.
 
     Args:
         cdb_path: Optional custom path to cdb.exe
@@ -202,15 +202,15 @@ async def serve(
             Tool(
                 name="open_windbg_dump",
                 description="""
-                Analyze a Windows crash dump file using WinDBG/CDB.
-                This tool executes common WinDBG commands to analyze the crash dump and returns the results.
+                Analyze a Windows crash dump file using WinDbg/CDB.
+                This tool executes common WinDbg commands to analyze the crash dump and returns the results.
                 """,
                 inputSchema=OpenWindbgDump.model_json_schema(),
             ),
             Tool(
                 name="open_windbg_remote",
                 description="""
-                Connect to a remote debugging session using WinDBG/CDB.
+                Connect to a remote debugging session using WinDbg/CDB.
                 This tool establishes a remote debugging connection and allows you to analyze the target process.
                 """,
                 inputSchema=OpenWindbgRemote.model_json_schema(),
@@ -218,8 +218,8 @@ async def serve(
             Tool(
                 name="run_windbg_cmd",
                 description="""
-                Execute a specific WinDBG command on a loaded crash dump or remote session.
-                This tool allows you to run any WinDBG command and get the output.
+                Execute a specific WinDbg command on a loaded crash dump or remote session.
+                This tool allows you to run any WinDbg command and get the output.
                 """,
                 inputSchema=RunWindbgCmdParams.model_json_schema(),
             ),

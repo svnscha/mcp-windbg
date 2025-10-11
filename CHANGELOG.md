@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the MCP Server for WinDBG Crash Analysis project will be documented in this file.
+All notable changes to the MCP Server for WinDbg Crash Analysis project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -53,12 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Core MCP Server Implementation**
   - Model Context Protocol server for Windows debugging tools
-  - Integration with WinDBG/CDB for crash dump analysis and remote debugging
+  - Integration with WinDbg/CDB for crash dump analysis and remote debugging
   - Python 3.10+ support with modern async architecture
 
 - **Crash Dump Analysis Tools**
   - `open_windbg_dump`: Comprehensive crash dump analysis with `!analyze -v` output
-  - `run_windbg_cmd`: Execute any WinDBG command on loaded dump files
+  - `run_windbg_cmd`: Execute any WinDbg command on loaded dump files
   - `close_windbg_dump`: Proper resource cleanup for dump sessions
   - Support for stack traces, module information, and thread analysis
 

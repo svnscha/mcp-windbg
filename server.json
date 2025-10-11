@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.svnscha/mcp-windbg",
-  "title": "MCP Server for WinDBG Crash Analysis",
-  "description": "A Model Context Protocol server for Windows crash dump analysis using WinDBG/CDB",
+  "title": "MCP Server for WinDbg Crash Analysis",
+  "description": "A Model Context Protocol server for Windows crash dump analysis using WinDbg/CDB",
   "repository": {
     "url": "https://github.com/svnscha/mcp-windbg",
     "source": "github"
