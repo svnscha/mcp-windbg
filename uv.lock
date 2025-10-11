@@ -475,7 +475,7 @@ wheels = [
 
 [[package]]
 name = "mcp-windbg"
-version = "0.2.5"
+version = "0.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
