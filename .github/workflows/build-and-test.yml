@@ -22,7 +22,7 @@ jobs:
         python-version: ${{ fromJson(inputs.python-versions) }}
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         lfs: true
 
@@ -59,7 +59,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         lfs: true
 
