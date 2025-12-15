@@ -1,6 +1,5 @@
 """Prompts package for mcp-windbg."""
 
-import os
 from pathlib import Path
 
 
