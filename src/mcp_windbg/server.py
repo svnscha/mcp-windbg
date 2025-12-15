@@ -153,10 +153,11 @@ def unload_session(dump_path: Optional[str] = None, connection_string: Optional[
     if session_id in active_sessions and active_sessions[session_id] is not None:
         try:
             active_sessions[session_id].shutdown()
-            del active_sessions[session_id]
-            return True
         except Exception:
-            return False
+            pass
+        finally:
+            del active_sessions[session_id]
+        return True
 
     return False
 
