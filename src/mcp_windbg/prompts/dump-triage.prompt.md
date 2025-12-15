@@ -1,9 +1,3 @@
----
-agent: agent
-tools: ['mcp_windbg/*']
-description: 'Comprehensive single crash dump analysis with detailed metadata extraction and structured reporting'
----
-
 Perform comprehensive analysis of a single Windows crash dump with detailed metadata extraction, callstack analysis, and structured markdown reporting.
 
 ## WORKFLOW - Execute in this exact sequence:

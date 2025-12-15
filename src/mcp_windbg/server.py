@@ -1,10 +1,12 @@
 import os
+import re
 import traceback
 import glob
 import winreg
 from typing import Dict, Optional
 
 from .cdb_session import CDBSession, CDBError
+from .prompts import load_prompt
 
 from mcp.shared.exceptions import McpError
 from mcp.server import Server
@@ -13,6 +15,10 @@ from mcp.types import (
     ErrorData,
     TextContent,
     Tool,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
+    GetPromptResult,
     INVALID_PARAMS,
     INTERNAL_ERROR,
 )
@@ -449,6 +455,63 @@ async def serve(
             raise McpError(ErrorData(
                 code=INTERNAL_ERROR,
                 message=f"Error executing tool {name}: {str(e)}\n{traceback_str}"
+            ))
+
+    # Prompt constants
+    DUMP_TRIAGE_PROMPT_NAME = "dump-triage"
+    DUMP_TRIAGE_PROMPT_TITLE = "Crash Dump Triage Analysis"
+    DUMP_TRIAGE_PROMPT_DESCRIPTION = "Comprehensive single crash dump analysis with detailed metadata extraction and structured reporting"
+
+    # Define available prompts for triage analysis
+    @server.list_prompts()
+    async def list_prompts() -> list[Prompt]:
+        return [
+            Prompt(
+                name=DUMP_TRIAGE_PROMPT_NAME,
+                title=DUMP_TRIAGE_PROMPT_TITLE,
+                description=DUMP_TRIAGE_PROMPT_DESCRIPTION,
+                arguments=[
+                    PromptArgument(
+                        name="dump_path",
+                        description="Path to the Windows crash dump file to analyze (optional - will prompt if not provided)",
+                        required=False,
+                    ),
+                ],
+            ),
+        ]
+
+    @server.get_prompt()
+    async def get_prompt(name: str, arguments: dict | None) -> GetPromptResult:
+        if arguments is None:
+            arguments = {}
+
+        if name == DUMP_TRIAGE_PROMPT_NAME:
+            dump_path = arguments.get("dump_path", "")
+            prompt_content = load_prompt("dump-triage")
+
+            # If dump_path is provided, prepend it to the prompt
+            if dump_path:
+                prompt_text = f"**Dump file to analyze:** {dump_path}\n\n{prompt_content}"
+            else:
+                prompt_text = prompt_content
+
+            return GetPromptResult(
+                description=DUMP_TRIAGE_PROMPT_DESCRIPTION,
+                messages=[
+                    PromptMessage(
+                        role="user",
+                        content=TextContent(
+                            type="text",
+                            text=prompt_text
+                        ),
+                    ),
+                ],
+            )
+
+        else:
+            raise McpError(ErrorData(
+                code=INVALID_PARAMS,
+                message=f"Unknown prompt: {name}"
             ))
 
     options = server.create_initialization_options()

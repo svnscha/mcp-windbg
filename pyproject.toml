@@ -1,6 +1,6 @@
 [project]
 name = "mcp-windbg"
-version = "0.11.0"
+version = "0.12.0"
 description = "A Model Context Protocol server providing tools to analyze Windows crash dumps using WinDbg/CDB"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,6 +28,9 @@ mcp-windbg = "mcp_windbg:main"
 [build-system]
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+mcp_windbg = ["prompts/*.prompt.md"]
 
 [dependency-groups]
 dev = [
