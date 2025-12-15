@@ -87,7 +87,7 @@ def main() -> int:
             print(file=sys.stderr)
         return 1
 
-    print("\n✓ server.json is valid against the MCP server schema")
+    print("\n[OK] server.json is valid against the MCP server schema")
     return 0
 
 
@@ -137,7 +137,7 @@ def validate_basic(server_data: dict) -> int:
             print(f"  {i}. {error}", file=sys.stderr)
         return 1
 
-    print("\n✓ server.json passes basic structural validation")
+    print("\n[OK] server.json passes basic structural validation")
     print("  (Install 'jsonschema' for full schema validation)")
     return 0
 
