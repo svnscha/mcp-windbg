@@ -1,4 +1,4 @@
-Perform comprehensive analysis of a single Windows crash dump with detailed metadata extraction, callstack analysis, and structured markdown reporting.
+Perform comprehensive analysis of a single Windows crash dump with detailed metadata extraction, call stack analysis, and structured markdown reporting.
 
 ## WORKFLOW - Execute in this exact sequence:
 
@@ -24,7 +24,7 @@ and tell him to wait since the analysis keeps running in the background and will
 **Then extract additional metadata with:** `run_windbg_cmd`
 - **Command 1:** `vertarget` (OS version and platform details)
 - **Command 2:** `lm` (loaded modules list)
-- **Command 3:** `k` (callstack)
+- **Command 3:** `k` (call stack)
 - **Command 4:** `.time` (dump creation time)
 - **Command 5:** `!peb` (process environment details)
 - **Command 6:** `r` (registers)
