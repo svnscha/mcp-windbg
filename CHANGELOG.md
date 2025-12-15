@@ -5,6 +5,23 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2025-12-15
+
+### Added
+
+- **HTTP Transport Support**: New `--transport streamable-http` option enables HTTP-based communication alongside the default stdio transport (#31)
+- **MCP Prompt API**: Implemented prompt templates for AI-assisted crash dump triage and analysis (#25)
+
+### Changed
+
+- **Updated Dependencies**: Bumped `mcp` to 1.17.0, `pydantic` to 2.12.0, and other dependencies (#26)
+- **Improved Prompt Templates**: Removed hard-coded model references from prompt templates for better flexibility (#29)
+- **Updated Dependabot Configuration**: Improved automated dependency update settings
+
+### Fixed
+
+- **Session Cleanup**: Prevent stale debugging sessions if `.shutdown()` fails (#28)
+
 ## [0.10.0] - 2025-10-10
 
 **What's New in This Release**

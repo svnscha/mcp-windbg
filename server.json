@@ -7,13 +7,13 @@
     "url": "https://github.com/svnscha/mcp-windbg",
     "source": "github"
   },
-  "version": "0.10.0",
+  "version": "0.12.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "mcp-windbg",
-      "version": "0.10.0",
+      "version": "0.12.0",
       "transport": {
         "type": "stdio"
       },

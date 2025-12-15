@@ -38,6 +38,42 @@ Not a magical auto-fix solution. It's a Python wrapper around CDB that leverages
 pip install mcp-windbg
 ```
 
+## Transport Options
+
+The MCP server supports multiple transport protocols:
+
+| Transport | Description | Use Case |
+|-----------|-------------|----------|
+| `stdio` (default) | Standard input/output | Local MCP clients like VS Code, Claude Desktop |
+| `streamable-http` | Streamable HTTP | Modern HTTP clients with bidirectional streaming |
+
+### Starting with Different Transports
+
+**Standard I/O (default):**
+```bash
+mcp-windbg
+# or explicitly
+mcp-windbg --transport stdio
+```
+
+**Streamable HTTP:**
+```bash
+mcp-windbg --transport streamable-http --host 127.0.0.1 --port 8000
+```
+Endpoint: `http://127.0.0.1:8000/mcp`
+
+### Command Line Options
+
+```
+--transport {stdio,streamable-http}  Transport protocol (default: stdio)
+--host HOST                              HTTP server host (default: 127.0.0.1)
+--port PORT                              HTTP server port (default: 8000)
+--cdb-path PATH                          Custom path to cdb.exe
+--symbols-path PATH                      Custom symbols path
+--timeout SECONDS                        Command timeout (default: 30)
+--verbose                                Enable verbose output
+```
+
 
 ## Configuration for Visual Studio Code
 
@@ -62,6 +98,27 @@ To make MCP servers available in all your workspaces, use the global user config
 ```
 
 This enables MCP Windbg in any workspace, without needing a local `.vscode/mcp.json` file.
+
+### HTTP Transport Configuration
+
+For scenarios where you need to run the MCP server separately (e.g., remote access, shared server, or debugging the server itself), you can use the HTTP transport:
+
+**1. Start the server manually:**
+```bash
+python -m mcp_windbg --transport streamable-http --host 127.0.0.1 --port 8000
+```
+
+**2. Configure VS Code to connect via HTTP:**
+```json
+{
+    "servers": {
+        "mcp_windbg_http": {
+            "type": "http",
+            "url": "http://localhost:8000/mcp"
+        }
+    }
+}
+```
 
 > **Workspace-specific and alternative configuration**: See [Installation documentation](https://github.com/svnscha/mcp-windbg/wiki/Installation) for details on configuring Claude Desktop, Cline, and other clients, or for workspace-only setup.
 

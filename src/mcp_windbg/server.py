@@ -2,21 +2,31 @@ import os
 import traceback
 import glob
 import winreg
+import logging
 from typing import Dict, Optional
+from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession, CDBError
+from .prompts import load_prompt
 
 from mcp.shared.exceptions import McpError
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import (
     ErrorData,
     TextContent,
     Tool,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
+    GetPromptResult,
     INVALID_PARAMS,
     INTERNAL_ERROR,
 )
 from pydantic import BaseModel, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 # Dictionary to store CDB sessions keyed by dump file path
 active_sessions: Dict[str, CDBSession] = {}
@@ -153,10 +163,11 @@ def unload_session(dump_path: Optional[str] = None, connection_string: Optional[
     if session_id in active_sessions and active_sessions[session_id] is not None:
         try:
             active_sessions[session_id].shutdown()
-            del active_sessions[session_id]
-            return True
         except Exception:
-            return False
+            pass
+        finally:
+            del active_sessions[session_id]
+        return True
 
     return False
 
@@ -186,13 +197,94 @@ async def serve(
     timeout: int = 30,
     verbose: bool = False,
 ) -> None:
-    """Run the WinDbg MCP server.
+    """Run the WinDbg MCP server with stdio transport.
 
     Args:
         cdb_path: Optional custom path to cdb.exe
         symbols_path: Optional custom symbols path
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
+    """
+    server = _create_server(cdb_path, symbols_path, timeout, verbose)
+
+    options = server.create_initialization_options()
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, options, raise_exceptions=True)
+
+
+async def serve_http(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    cdb_path: Optional[str] = None,
+    symbols_path: Optional[str] = None,
+    timeout: int = 30,
+    verbose: bool = False,
+) -> None:
+    """Run the WinDbg MCP server with Streamable HTTP transport.
+
+    Args:
+        host: Host to bind the HTTP server to
+        port: Port to bind the HTTP server to
+        cdb_path: Optional custom path to cdb.exe
+        symbols_path: Optional custom symbols path
+        timeout: Command timeout in seconds
+        verbose: Whether to enable verbose output
+    """
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    from starlette.types import Receive, Scope, Send
+    import uvicorn
+
+    server = _create_server(cdb_path, symbols_path, timeout, verbose)
+
+    # Create the session manager
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        json_response=True,
+    )
+
+    # ASGI handler for streamable HTTP connections
+    async def handle_streamable_http(scope: Scope, receive: Receive, send: Send) -> None:
+        await session_manager.handle_request(scope, receive, send)
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette):
+        async with session_manager.run():
+            yield
+
+    app = Starlette(
+        debug=verbose,
+        routes=[
+            Mount("/mcp", app=handle_streamable_http),
+        ],
+        lifespan=lifespan,
+    )
+
+    logger.info(f"Starting MCP WinDbg server with streamable-http transport on {host}:{port}")
+    print(f"MCP WinDbg server running on http://{host}:{port}")
+    print(f"  MCP endpoint: http://{host}:{port}/mcp")
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="info" if verbose else "warning")
+    server_instance = uvicorn.Server(config)
+    await server_instance.serve()
+
+
+def _create_server(
+    cdb_path: Optional[str] = None,
+    symbols_path: Optional[str] = None,
+    timeout: int = 30,
+    verbose: bool = False,
+) -> Server:
+    """Create and configure the MCP server with all tools and prompts.
+
+    Args:
+        cdb_path: Optional custom path to cdb.exe
+        symbols_path: Optional custom symbols path
+        timeout: Command timeout in seconds
+        verbose: Whether to enable verbose output
+
+    Returns:
+        Configured Server instance
     """
     server = Server("mcp-windbg")
 
@@ -450,9 +542,71 @@ async def serve(
                 message=f"Error executing tool {name}: {str(e)}\n{traceback_str}"
             ))
 
-    options = server.create_initialization_options()
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, options, raise_exceptions=True)
+    # Prompt constants
+    DUMP_TRIAGE_PROMPT_NAME = "dump-triage"
+    DUMP_TRIAGE_PROMPT_TITLE = "Crash Dump Triage Analysis"
+    DUMP_TRIAGE_PROMPT_DESCRIPTION = "Comprehensive single crash dump analysis with detailed metadata extraction and structured reporting"
+
+    # Define available prompts for triage analysis
+    @server.list_prompts()
+    async def list_prompts() -> list[Prompt]:
+        return [
+            Prompt(
+                name=DUMP_TRIAGE_PROMPT_NAME,
+                title=DUMP_TRIAGE_PROMPT_TITLE,
+                description=DUMP_TRIAGE_PROMPT_DESCRIPTION,
+                arguments=[
+                    PromptArgument(
+                        name="dump_path",
+                        description="Path to the Windows crash dump file to analyze (optional - will prompt if not provided)",
+                        required=False,
+                    ),
+                ],
+            ),
+        ]
+
+    @server.get_prompt()
+    async def get_prompt(name: str, arguments: dict | None) -> GetPromptResult:
+        if arguments is None:
+            arguments = {}
+
+        if name == DUMP_TRIAGE_PROMPT_NAME:
+            dump_path = arguments.get("dump_path", "")
+            try:
+                prompt_content = load_prompt("dump-triage")
+            except FileNotFoundError as e:
+                raise McpError(ErrorData(
+                    code=INTERNAL_ERROR,
+                    message=f"Prompt file not found: {e}"
+                ))
+
+            # If dump_path is provided, prepend it to the prompt
+            if dump_path:
+                prompt_text = f"**Dump file to analyze:** {dump_path}\n\n{prompt_content}"
+            else:
+                prompt_text = prompt_content
+
+            return GetPromptResult(
+                description=DUMP_TRIAGE_PROMPT_DESCRIPTION,
+                messages=[
+                    PromptMessage(
+                        role="user",
+                        content=TextContent(
+                            type="text",
+                            text=prompt_text
+                        ),
+                    ),
+                ],
+            )
+
+        else:
+            raise McpError(ErrorData(
+                code=INVALID_PARAMS,
+                message=f"Unknown prompt: {name}"
+            ))
+
+    return server
+
 
 # Clean up function to ensure all sessions are closed when the server exits
 def cleanup_sessions():
@@ -464,6 +618,7 @@ def cleanup_sessions():
         except Exception:
             pass
     active_sessions.clear()
+
 
 # Register cleanup on module exit
 import atexit

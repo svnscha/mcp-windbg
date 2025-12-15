@@ -1,67 +1,237 @@
-# Windows Debugging Agent Instructions
+# mcp-windbg Development Guide
 
-You are a specialized AI assistant designed to help with Windows debugging using mcp-windbg tools. You can analyze both crash dumps and live debugging sessions.
+This document describes the repository structure, development workflows, and release process for the mcp-windbg project.
 
-## Crash Dump Analysis
+## Repository Structure
 
-When presented with a crash dump file, you will:
-1. Begin with initial triage by analyzing the crash dump and presenting the key findings from the default tool output.
-2. Provide a concise description of the initial analysis, highlighting any notable issues detected.
-3. Continue automated analysis using useful follow-up commands and prompt intermediate results as part of your analysis.
-4. Always tell the user which command you are executing using markdown code blocks.
+```
+mcp-windbg/
+├── src/mcp_windbg/           # Main source code
+│   ├── __init__.py           # Entry point, CLI argument parsing
+│   ├── __main__.py           # Module entry point
+│   ├── server.py             # MCP server implementation
+│   ├── cdb_session.py        # CDB/WinDbg session management
+│   ├── prompts/              # Prompt templates for AI assistants
+│   │   └── dump-triage.prompt.md
+│   └── tests/                # Test suite
+│       ├── test_cdb.py       # Core CDB functionality tests
+│       ├── test_remote_debugging.py  # Remote debugging tests
+│       └── dumps/            # Test crash dump files (Git LFS)
+├── scripts/                  # Utility scripts
+│   └── check-version-consistency.ps1  # Validates version sync
+├── examples/                 # Example crash programs (C++)
+│   ├── build.ps1             # Build script for examples
+│   └── *.cpp                 # Various crash scenarios
+├── .github/
+│   ├── workflows/            # CI/CD pipelines
+│   │   ├── ci.yml            # Main CI entry point
+│   │   ├── build-and-test.yml # Build and test workflow
+│   │   └── publish-mcp.yml   # PyPI publishing workflow
+│   ├── dependabot.yml        # Automated dependency updates
+│   └── prompts/              # GitHub Copilot prompt files
+├── pyproject.toml            # Python project configuration
+├── server.json               # MCP server manifest
+├── CHANGELOG.md              # Version history
+└── README.md                 # User documentation
+```
 
-## Remote/Live Debugging
+## Version Management
 
-When connecting to a remote debugging session, you will:
-1. Begin by connecting to the remote target using `open_windbg_remote` with the provided connection string.
-2. Assess the current state of the target process with commands like `r`, `k`, and `!peb`.
-3. Live systems typically have more debug information available than crash dumps, so dig deeper to understand the full context.
-4. Use commands like `~*k` to examine all threads, `!runaway` for timing analysis, and `!locks` for synchronization issues.
-5. Take advantage of the ability to set breakpoints, single-step, and examine live memory state.
-6. Always tell the user which command you are executing using markdown code blocks.
+**Critical**: Version numbers must be synchronized across three files:
 
-## Directory Analysis
+| File | Location |
+|------|----------|
+| [pyproject.toml](pyproject.toml) | `version = "X.Y.Z"` |
+| [server.json](server.json) | `"version": "X.Y.Z"` and `"packages[0].version": "X.Y.Z"` |
+| [CHANGELOG.md](CHANGELOG.md) | `## [X.Y.Z] - YYYY-MM-DD` |
 
-When prompted with a directory, you will:
-1. List the directory contents using the `list_windbg_dumps` tool.
-2. Do a one-by-one analysis to provide a detailed overview of the crash dumps. Include the most relevant stack frame, crashing image name, version, and timestamp, if available. Then, think and explain your reasoning to understand if crashes are duplicates, related, or similar.
-4. After creating a one-by-one analysis, ask the user to provide a shortened markdown table summary.
-5. Ask the user to pick one of the crash dumps to begin with detailed analysis. Suggest the most relevant to begin with and explain why, based on the analysis performed.
+Run the version consistency check before committing:
+```powershell
+.\scripts\check-version-consistency.ps1
+```
 
-## Heap Corruption Analysis
+This check also runs automatically in CI.
 
-When analyzing a heap corruption (in either crash dumps or live sessions), you will:
-1. Try to determine the corruption type.
-2. Inspect surrounding memory and the heap header.
-3. Gather information about parameters of the most relevant stack frame and offer to analyze the members and structs if available to check for any hints regarding the heap corruption.
-4. For live debugging sessions, consider using `!heap -p -a <address>` for more detailed heap analysis.
-5. Provide a summary of the findings and suggest possible next steps for further investigation.
+## Making a New Release
 
-## Fix Recommendations
+### 1. Update Version Numbers
 
-When recommending fixes, you will:
-1. Question if the easy fix is the right fix. Just adding nullptr checks may not be the best solution.
-2. Ask the user to consider if the fix is a workaround or a real solution.
-3. Ask the user to reconsider alternative approaches that tackle the issue at its root.
-4. For live debugging, consider suggesting preventive measures that can be tested immediately.
+Update all three files with the new version:
 
-## Tool Usage Guidelines
+```powershell
+# Example: Updating to version 0.13.0
+# Edit pyproject.toml: version = "0.13.0"
+# Edit server.json: "version": "0.13.0" (both places)
+# Edit CHANGELOG.md: ## [0.13.0] - 2025-XX-XX
+```
 
-When using debugging tools, you will:
-1. Remember that `open_windbg_dump` already outputs `!analyze -v` output so you don't need to repeat it in `run_windbg_cmd` unless the user asks for it.
-2. For remote connections, use `open_windbg_remote` with connection strings like `tcp:Port=5005,Server=192.168.0.100`.
-3. Use `run_windbg_cmd` for executing specific commands on either crash dumps or remote sessions.
-4. Take advantage of live debugging capabilities when available - you can set breakpoints, examine live state, and get more comprehensive debug information.
+### 2. Update CHANGELOG.md
 
-## Session Cleanup
+Follow [Keep a Changelog](https://keepachangelog.com/) format:
 
-When analysis seems to be fully complete and the user doesn't ask for follow-ups, you will:
-1. Ask the user to close crash dump sessions using `close_windbg_dump` tool.
-2. Ask the user to close remote debugging sessions using `close_windbg_remote` tool.
+```markdown
+## [0.13.0] - 2025-01-15
 
-## General Guidelines
+### Added
+- New feature description
 
-Always remember to be concise and clear in your explanations, and provide the user with actionable insights based on the analysis performed.
-Suggest follow-up scenarios or commands that could help in further diagnosing the issue.
-If possible, use workspace source code reference for further analysis.
-Live debugging sessions typically provide more comprehensive information than crash dumps, so leverage this when available to provide deeper insights.
+### Changed
+- Modified behavior description
+
+### Fixed
+- Bug fix description
+```
+
+### 3. Verify and Commit
+
+```powershell
+# Verify versions are in sync
+.\scripts\check-version-consistency.ps1
+
+# Run tests locally
+uv run pytest src/mcp_windbg/tests/ -v
+
+# Commit changes
+git add pyproject.toml server.json CHANGELOG.md
+git commit -m "chore: bump version to 0.13.0"
+```
+
+### 4. Create Release Tag
+
+```powershell
+git tag v0.13.0
+git push origin main
+git push origin v0.13.0
+```
+
+The `publish-mcp.yml` workflow triggers on `v*` tags and:
+- Runs full test suite
+- Builds the package
+- Publishes to PyPI
+- Creates a GitHub Release
+
+## Running Tests
+
+### Prerequisites
+
+- Windows with WinDbg/CDB installed (via Microsoft Store or SDK)
+- Python 3.10+ with `uv` package manager
+
+### Install Development Dependencies
+
+```powershell
+uv sync --dev
+```
+
+### Run All Tests
+
+```powershell
+uv run pytest src/mcp_windbg/tests/ -v
+```
+
+### Run Specific Test Files
+
+```powershell
+# Core CDB tests
+uv run pytest src/mcp_windbg/tests/test_cdb.py -v
+
+# Remote debugging tests
+uv run pytest src/mcp_windbg/tests/test_remote_debugging.py -v
+```
+
+### Test Requirements
+
+- Tests require a working CDB installation (auto-detected from common paths)
+- Test dump files are stored in `src/mcp_windbg/tests/dumps/` via Git LFS
+- Remote debugging tests may take longer due to server setup/teardown
+
+## Development Workflow
+
+### Local Development
+
+```powershell
+# Install in development mode
+uv sync --dev
+
+# Run the server locally (stdio mode)
+uv run python -m mcp_windbg --verbose
+
+# Run with HTTP transport
+uv run python -m mcp_windbg --transport streamable-http --port 8000
+```
+
+### Code Quality
+
+The project uses:
+- `pytest` for testing
+- Type hints throughout the codebase
+- Pydantic for data validation
+
+### Adding New Features
+
+1. Create/modify code in `src/mcp_windbg/`
+2. Add corresponding tests in `src/mcp_windbg/tests/`
+3. Update CHANGELOG.md with the new feature
+4. Run tests locally before pushing
+
+## CI/CD Pipeline
+
+### Workflows
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | Push/PR to main | Runs build-and-test |
+| `build-and-test.yml` | Called by other workflows | Tests on Python 3.10-3.14 |
+| `publish-mcp.yml` | Tag `v*` | Publishes to PyPI |
+
+### CI Steps
+
+1. Install WinDbg from Microsoft Store
+2. Set up Python via `uv`
+3. Install dependencies
+4. Run pytest test suite
+5. Verify CLI entry point
+6. Check version consistency
+7. Build and verify package
+
+## Dependencies
+
+### Runtime Dependencies (pyproject.toml)
+
+- `mcp` - Model Context Protocol SDK
+- `pydantic` - Data validation
+- `starlette` - HTTP transport support
+- `uvicorn` - ASGI server
+
+### Development Dependencies
+
+- `pytest` - Testing framework
+- `twine` - Package verification
+
+### Updating Dependencies
+
+Dependabot automatically creates PRs for dependency updates weekly. Review and merge as appropriate.
+
+## Troubleshooting
+
+### CDB Not Found
+
+The server looks for CDB in these locations:
+- `C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe`
+- `C:\Program Files\Debugging Tools for Windows\cdb.exe`
+- Microsoft Store WinDbg location
+
+Set `CDB_PATH` environment variable to use a custom path.
+
+### Tests Skipped
+
+If tests are skipped:
+- Ensure CDB is installed and accessible
+- Check that test dump files exist (run `git lfs pull`)
+
+### Version Mismatch Errors
+
+If CI fails on version consistency:
+- Run `.\scripts\check-version-consistency.ps1` locally
+- Ensure all three version locations are updated
+

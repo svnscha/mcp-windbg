@@ -1,32 +1,48 @@
 version: 2
 updates:
-  # Enable version updates for pip (supports pyproject.toml and requirements files)
+  # Python dependencies from pyproject.toml
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+      timezone: "UTC"
     open-pull-requests-limit: 10
     reviewers:
       - "svnscha"
+    labels:
+      - "dependencies"
+      - "python"
     commit-message:
-      prefix: "deps"
-      include: "scope"
-    # Handle both pyproject.toml and any requirements*.txt files
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-patch"]
+      prefix: "deps(python)"
+    groups:
+      # Group minor/patch updates together to reduce noise
+      python-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
-  # Enable version updates for GitHub Actions
+  # GitHub Actions workflow dependencies
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+      timezone: "UTC"
     open-pull-requests-limit: 5
     reviewers:
       - "svnscha"
+    labels:
+      - "dependencies"
+      - "github-actions"
     commit-message:
-      prefix: "ci"
+      prefix: "ci(deps)"
+    groups:
+      # Group all GitHub Actions updates
+      actions:
+        patterns:
+          - "*"
