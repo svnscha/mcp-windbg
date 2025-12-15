@@ -547,7 +547,7 @@ wheels = [
 
 [[package]]
 name = "mcp-windbg"
-version = "0.12.0"
+version = "0.12.1"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
@@ -563,6 +563,7 @@ test = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "jsonschema" },
     { name = "pytest" },
     { name = "twine" },
 ]
@@ -579,6 +580,7 @@ provides-extras = ["test"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "pytest", specifier = ">=8.4.0" },
     { name = "twine", specifier = ">=6.2.0" },
 ]

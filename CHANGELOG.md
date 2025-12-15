@@ -5,6 +5,18 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2025-12-15
+
+### Added
+
+- **HTTP Transport in Registry**: Added `streamable-http` transport configuration to server.json for MCP registry discovery
+- **Schema Validation in CI**: New `validate-server-schema.py` script validates server.json against the official MCP schema
+
+### Fixed
+
+- **Registry Schema Update**: Updated MCP server schema version from 2025-09-29 to 2025-10-17 for compatibility with registry.modelcontextprotocol.io
+- **CI Cache Warning**: Disabled unnecessary dependency caching in PyPI publish job to eliminate spurious warnings
+
 ## [0.12.0] - 2025-12-15
 
 ### Added

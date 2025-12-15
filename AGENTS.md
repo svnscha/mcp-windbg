@@ -50,7 +50,12 @@ Run the version consistency check before committing:
 .\scripts\check-version-consistency.ps1
 ```
 
-This check also runs automatically in CI.
+Run the server.json schema validation:
+```powershell
+uv run python scripts/validate-server-schema.py
+```
+
+Both checks also run automatically in CI.
 
 ## Making a New Release
 

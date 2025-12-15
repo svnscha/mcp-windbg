@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.svnscha/mcp-windbg",
   "title": "MCP Server for WinDbg Crash Analysis",
   "description": "A Model Context Protocol server for Windows crash dump analysis using WinDbg/CDB",
@@ -7,16 +7,58 @@
     "url": "https://github.com/svnscha/mcp-windbg",
     "source": "github"
   },
-  "version": "0.12.0",
+  "version": "0.12.1",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "mcp-windbg",
-      "version": "0.12.0",
+      "version": "0.12.1",
       "transport": {
         "type": "stdio"
       },
+      "runtimeHint": "uvx",
+      "environmentVariables": [
+        {
+          "description": "Custom path to cdb.exe (optional)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "CDB_PATH"
+        },
+        {
+          "description": "Symbol path for Windows debugging (optional, defaults to Microsoft symbol server)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "_NT_SYMBOL_PATH"
+        }
+      ]
+    },
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "mcp-windbg",
+      "version": "0.12.1",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:{port}/mcp"
+      },
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--transport",
+          "value": "streamable-http"
+        },
+        {
+          "type": "named",
+          "name": "--port",
+          "valueHint": "port",
+          "default": "8000",
+          "description": "Port for HTTP transport"
+        }
+      ],
       "environmentVariables": [
         {
           "description": "Custom path to cdb.exe (optional)",

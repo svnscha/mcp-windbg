@@ -51,6 +51,9 @@ jobs:
     - name: Check version consistency
       run: .\scripts\check-version-consistency.ps1
 
+    - name: Validate server.json schema
+      run: uv run python scripts/validate-server-schema.py
+
   build:
     runs-on: windows-latest
     needs: test
