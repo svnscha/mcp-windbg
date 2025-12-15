@@ -1,15 +1,19 @@
 {
-    "servers": {
-        "mcp_windbg": {
-            "type": "stdio",
-            "command": "${workspaceFolder}/.venv/Scripts/python",
-            "args": [
-                "-m",
-                "mcp_windbg"
-            ],
-            "env": {
-                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols;${workspaceFolder}\\build\\out"
-            }
-        },
-    }
+  "servers": {
+    "mcp_windbg": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/Scripts/python",
+      "args": [
+        "-m",
+        "mcp_windbg"
+      ],
+      "env": {
+        "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols;${workspaceFolder}\\build\\out"
+      }
+    },
+    "mcp_windbg_http": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    },
+  }
 }

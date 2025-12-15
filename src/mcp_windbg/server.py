@@ -3,7 +3,9 @@ import re
 import traceback
 import glob
 import winreg
+import logging
 from typing import Dict, Optional
+from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession, CDBError
 from .prompts import load_prompt
@@ -11,6 +13,7 @@ from .prompts import load_prompt
 from mcp.shared.exceptions import McpError
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import (
     ErrorData,
     TextContent,
@@ -23,6 +26,8 @@ from mcp.types import (
     INTERNAL_ERROR,
 )
 from pydantic import BaseModel, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 # Dictionary to store CDB sessions keyed by dump file path
 active_sessions: Dict[str, CDBSession] = {}
@@ -193,13 +198,95 @@ async def serve(
     timeout: int = 30,
     verbose: bool = False,
 ) -> None:
-    """Run the WinDbg MCP server.
+    """Run the WinDbg MCP server with stdio transport.
 
     Args:
         cdb_path: Optional custom path to cdb.exe
         symbols_path: Optional custom symbols path
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
+    """
+    server = _create_server(cdb_path, symbols_path, timeout, verbose)
+
+    options = server.create_initialization_options()
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, options, raise_exceptions=True)
+
+
+async def serve_http(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    cdb_path: Optional[str] = None,
+    symbols_path: Optional[str] = None,
+    timeout: int = 30,
+    verbose: bool = False,
+) -> None:
+    """Run the WinDbg MCP server with Streamable HTTP transport.
+
+    Args:
+        host: Host to bind the HTTP server to
+        port: Port to bind the HTTP server to
+        cdb_path: Optional custom path to cdb.exe
+        symbols_path: Optional custom symbols path
+        timeout: Command timeout in seconds
+        verbose: Whether to enable verbose output
+    """
+    from contextlib import asynccontextmanager
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    from starlette.types import Receive, Scope, Send
+    import uvicorn
+
+    server = _create_server(cdb_path, symbols_path, timeout, verbose)
+
+    # Create the session manager
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        json_response=True,
+    )
+
+    # ASGI handler for streamable HTTP connections
+    async def handle_streamable_http(scope: Scope, receive: Receive, send: Send) -> None:
+        await session_manager.handle_request(scope, receive, send)
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette):
+        async with session_manager.run():
+            yield
+
+    app = Starlette(
+        debug=verbose,
+        routes=[
+            Mount("/mcp", app=handle_streamable_http),
+        ],
+        lifespan=lifespan,
+    )
+
+    logger.info(f"Starting MCP WinDbg server with streamable-http transport on {host}:{port}")
+    print(f"MCP WinDbg server running on http://{host}:{port}")
+    print(f"  MCP endpoint: http://{host}:{port}/mcp")
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="info" if verbose else "warning")
+    server_instance = uvicorn.Server(config)
+    await server_instance.serve()
+
+
+def _create_server(
+    cdb_path: Optional[str] = None,
+    symbols_path: Optional[str] = None,
+    timeout: int = 30,
+    verbose: bool = False,
+) -> Server:
+    """Create and configure the MCP server with all tools and prompts.
+
+    Args:
+        cdb_path: Optional custom path to cdb.exe
+        symbols_path: Optional custom symbols path
+        timeout: Command timeout in seconds
+        verbose: Whether to enable verbose output
+
+    Returns:
+        Configured Server instance
     """
     server = Server("mcp-windbg")
 
@@ -514,9 +601,8 @@ async def serve(
                 message=f"Unknown prompt: {name}"
             ))
 
-    options = server.create_initialization_options()
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, options, raise_exceptions=True)
+    return server
+
 
 # Clean up function to ensure all sessions are closed when the server exits
 def cleanup_sessions():
@@ -528,6 +614,7 @@ def cleanup_sessions():
         except Exception:
             pass
     active_sessions.clear()
+
 
 # Register cleanup on module exit
 import atexit
