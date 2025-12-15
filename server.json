@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.svnscha/mcp-windbg",
   "title": "MCP Server for WinDbg Crash Analysis",
   "description": "A Model Context Protocol server for Windows crash dump analysis using WinDbg/CDB",
@@ -7,13 +7,13 @@
     "url": "https://github.com/svnscha/mcp-windbg",
     "source": "github"
   },
-  "version": "0.12.1",
+  "version": "0.12.2",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "mcp-windbg",
-      "version": "0.12.1",
+      "version": "0.12.2",
       "transport": {
         "type": "stdio"
       },
@@ -39,7 +39,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "mcp-windbg",
-      "version": "0.12.1",
+      "version": "0.12.2",
       "transport": {
         "type": "streamable-http",
         "url": "http://localhost:{port}/mcp"

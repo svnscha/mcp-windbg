@@ -5,6 +5,12 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2025-12-15
+
+### Fixed
+
+- **Registry Schema Migration**: Updated MCP server schema from deprecated `2025-10-17` to current `2025-12-11` version for mcp-publisher compatibility
+
 ## [0.12.1] - 2025-12-15
 
 ### Added
