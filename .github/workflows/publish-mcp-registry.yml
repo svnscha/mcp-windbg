@@ -14,9 +14,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Validate server.json schema
+        run: uv run scripts/validate-server-schema.py
+
+      - name: Get latest MCP Publisher version
+        id: publisher-version
+        run: |
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/modelcontextprotocol/registry/releases/latest | jq -r '.tag_name')
+          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Using MCP Publisher version: $LATEST_VERSION"
+
       - name: Install MCP Publisher
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/v1.3.10/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64.tar.gz" | tar xz mcp-publisher
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/${{ steps.publisher-version.outputs.version }}/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64.tar.gz" | tar xz mcp-publisher
 
       - name: Login to MCP Registry
         run: ./mcp-publisher login github-oidc
