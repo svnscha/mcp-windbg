@@ -45,7 +45,6 @@ The MCP server supports multiple transport protocols:
 | Transport | Description | Use Case |
 |-----------|-------------|----------|
 | `stdio` (default) | Standard input/output | Local MCP clients like VS Code, Claude Desktop |
-| `sse` | Server-Sent Events over HTTP | Web-based clients, remote access |
 | `streamable-http` | Streamable HTTP | Modern HTTP clients with bidirectional streaming |
 
 ### Starting with Different Transports
@@ -57,14 +56,6 @@ mcp-windbg
 mcp-windbg --transport stdio
 ```
 
-**SSE (Server-Sent Events):**
-```bash
-mcp-windbg --transport sse --host 127.0.0.1 --port 8000
-```
-Endpoints:
-- SSE connection: `http://127.0.0.1:8000/sse`
-- Messages: `http://127.0.0.1:8000/messages/`
-
 **Streamable HTTP:**
 ```bash
 mcp-windbg --transport streamable-http --host 127.0.0.1 --port 8000
@@ -74,7 +65,7 @@ Endpoint: `http://127.0.0.1:8000/mcp`
 ### Command Line Options
 
 ```
---transport {stdio,sse,streamable-http}  Transport protocol (default: stdio)
+--transport {stdio,streamable-http}  Transport protocol (default: stdio)
 --host HOST                              HTTP server host (default: 127.0.0.1)
 --port PORT                              HTTP server port (default: 8000)
 --cdb-path PATH                          Custom path to cdb.exe
