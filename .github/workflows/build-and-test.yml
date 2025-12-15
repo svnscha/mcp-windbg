@@ -84,7 +84,7 @@ jobs:
         echo "artifact-name=$artifactName" >> $env:GITHUB_OUTPUT
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ steps.set-artifact-name.outputs.artifact-name }}
         path: dist/
