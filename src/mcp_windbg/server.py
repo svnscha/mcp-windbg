@@ -1,5 +1,4 @@
 import os
-import re
 import traceback
 import glob
 import winreg
@@ -231,7 +230,6 @@ async def serve_http(
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
     """
-    from contextlib import asynccontextmanager
     from starlette.applications import Starlette
     from starlette.routing import Mount
     from starlette.types import Receive, Scope, Send
@@ -574,7 +572,13 @@ def _create_server(
 
         if name == DUMP_TRIAGE_PROMPT_NAME:
             dump_path = arguments.get("dump_path", "")
-            prompt_content = load_prompt("dump-triage")
+            try:
+                prompt_content = load_prompt("dump-triage")
+            except FileNotFoundError as e:
+                raise McpError(ErrorData(
+                    code=INTERNAL_ERROR,
+                    message=f"Prompt file not found: {e}"
+                ))
 
             # If dump_path is provided, prepend it to the prompt
             if dump_path:
