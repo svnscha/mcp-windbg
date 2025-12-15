@@ -1,7 +1,6 @@
 ---
-mode: 'agent'
-model: Claude Sonnet 4
-tools: ['mcp_windbg/list_windbg_dumps', 'mcp_windbg/open_windbg_dump', 'mcp_windbg/run_windbg_cmd', 'mcp_windbg/close_windbg_dump']
+agent: agent
+tools: ['mcp_windbg/*']
 description: 'Comprehensive single crash dump analysis with detailed metadata extraction and structured reporting'
 ---
 
