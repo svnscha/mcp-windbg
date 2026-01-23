@@ -106,6 +106,20 @@ class ListWindbgDumpsParams(BaseModel):
     )
 
 
+class SendCtrlBreakParams(BaseModel):
+    """Parameters for sending CTRL+BREAK to a CDB/WinDbg session."""
+    dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
+    connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
+
+    @model_validator(mode='after')
+    def validate_connection_params(self):
+        if not self.dump_path and not self.connection_string:
+            raise ValueError("Either dump_path or connection_string must be provided")
+        if self.dump_path and self.connection_string:
+            raise ValueError("dump_path and connection_string are mutually exclusive")
+        return self
+
+
 def get_or_create_session(
     dump_path: Optional[str] = None,
     connection_string: Optional[str] = None,
@@ -316,6 +330,14 @@ def _create_server(
                 inputSchema=RunWindbgCmdParams.model_json_schema(),
             ),
             Tool(
+                name="send_ctrl_break",
+                description="""
+                Send a CTRL+BREAK event to the active CDB/WinDbg session, causing it to break in.
+                Useful for interrupting a running target or breaking into a remote session.
+                """,
+                inputSchema=SendCtrlBreakParams.model_json_schema(),
+            ),
+            Tool(
                 name="close_windbg_dump",
                 description="""
                 Unload a crash dump and release resources.
@@ -450,6 +472,19 @@ def _create_server(
                 return [TextContent(
                     type="text",
                     text=f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
+                )]
+
+            elif name == "send_ctrl_break":
+                args = SendCtrlBreakParams(**arguments)
+                session = get_or_create_session(
+                    dump_path=args.dump_path, connection_string=args.connection_string,
+                    cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
+                )
+                session.send_ctrl_break()
+                target = args.dump_path if args.dump_path else f"remote: {args.connection_string}"
+                return [TextContent(
+                    type="text",
+                    text=f"Sent CTRL+BREAK to CDB session ({target})."
                 )]
 
             elif name == "close_windbg_dump":
