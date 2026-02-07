@@ -55,6 +55,7 @@ def get_local_dumps_path() -> Optional[str]:
 class OpenWindbgDump(BaseModel):
     """Parameters for analyzing a crash dump."""
     dump_path: str = Field(description="Path to the Windows crash dump file")
+    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution. Only applied when creating a new session.")
     include_stack_trace: bool = Field(description="Whether to include stack traces in the analysis")
     include_modules: bool = Field(description="Whether to include loaded module information")
     include_threads: bool = Field(description="Whether to include thread information")
@@ -73,6 +74,7 @@ class RunWindbgCmdParams(BaseModel):
     dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
     connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
     command: str = Field(description="WinDbg command to execute")
+    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution. Only applied when creating a new session.")
 
     @model_validator(mode='after')
     def validate_connection_params(self):
@@ -106,15 +108,27 @@ class ListWindbgDumpsParams(BaseModel):
     )
 
 
+def _combine_symbols(per_call: Optional[str], server_default: Optional[str]) -> Optional[str]:
+    """Combine per-call and server-default symbol paths."""
+    if per_call and server_default:
+        return f"{per_call};{server_default}"
+    return per_call or server_default
+
+
 def get_or_create_session(
     dump_path: Optional[str] = None,
     connection_string: Optional[str] = None,
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     timeout: int = 30,
-    verbose: bool = False
-) -> CDBSession:
-    """Get an existing CDB session or create a new one."""
+    verbose: bool = False,
+    auto_dump_dir_symbols: bool = True
+) -> tuple[CDBSession, bool]:
+    """Get an existing CDB session or create a new one.
+
+    Returns:
+        Tuple of (session, is_new) where is_new indicates if the session was just created.
+    """
     if not dump_path and not connection_string:
         raise ValueError("Either dump_path or connection_string must be provided")
     if dump_path and connection_string:
@@ -134,17 +148,18 @@ def get_or_create_session(
                 cdb_path=cdb_path,
                 symbols_path=symbols_path,
                 timeout=timeout,
-                verbose=verbose
+                verbose=verbose,
+                auto_dump_dir_symbols=auto_dump_dir_symbols
             )
             active_sessions[session_id] = session
-            return session
+            return session, True
         except Exception as e:
             raise McpError(ErrorData(
                 code=INTERNAL_ERROR,
                 message=f"Failed to create CDB session: {str(e)}"
             ))
 
-    return active_sessions[session_id]
+    return active_sessions[session_id], False
 
 
 def unload_session(dump_path: Optional[str] = None, connection_string: Optional[str] = None) -> bool:
@@ -196,6 +211,7 @@ async def serve(
     symbols_path: Optional[str] = None,
     timeout: int = 30,
     verbose: bool = False,
+    auto_dump_dir_symbols: bool = True,
 ) -> None:
     """Run the WinDbg MCP server with stdio transport.
 
@@ -204,8 +220,9 @@ async def serve(
         symbols_path: Optional custom symbols path
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
+        auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
     """
-    server = _create_server(cdb_path, symbols_path, timeout, verbose)
+    server = _create_server(cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols)
 
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
@@ -219,6 +236,7 @@ async def serve_http(
     symbols_path: Optional[str] = None,
     timeout: int = 30,
     verbose: bool = False,
+    auto_dump_dir_symbols: bool = True,
 ) -> None:
     """Run the WinDbg MCP server with Streamable HTTP transport.
 
@@ -229,13 +247,14 @@ async def serve_http(
         symbols_path: Optional custom symbols path
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
+        auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
     """
     from starlette.applications import Starlette
     from starlette.routing import Mount
     from starlette.types import Receive, Scope, Send
     import uvicorn
 
-    server = _create_server(cdb_path, symbols_path, timeout, verbose)
+    server = _create_server(cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols)
 
     # Create the session manager
     session_manager = StreamableHTTPSessionManager(
@@ -274,6 +293,7 @@ def _create_server(
     symbols_path: Optional[str] = None,
     timeout: int = 30,
     verbose: bool = False,
+    auto_dump_dir_symbols: bool = True,
 ) -> Server:
     """Create and configure the MCP server with all tools and prompts.
 
@@ -282,6 +302,7 @@ def _create_server(
         symbols_path: Optional custom symbols path
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
+        auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
 
     Returns:
         Configured Server instance
@@ -296,6 +317,7 @@ def _create_server(
                 description="""
                 Analyze a Windows crash dump file using WinDbg/CDB.
                 This tool executes common WinDbg commands to analyze the crash dump and returns the results.
+                This creates a persistent debugging session — close it with close_windbg_dump when analysis is complete.
                 """,
                 inputSchema=OpenWindbgDump.model_json_schema(),
             ),
@@ -304,6 +326,7 @@ def _create_server(
                 description="""
                 Connect to a remote debugging session using WinDbg/CDB.
                 This tool establishes a remote debugging connection and allows you to analyze the target process.
+                This creates a persistent debugging session — close it with close_windbg_remote when analysis is complete.
                 """,
                 inputSchema=OpenWindbgRemote.model_json_schema(),
             ),
@@ -312,6 +335,7 @@ def _create_server(
                 description="""
                 Execute a specific WinDbg command on a loaded crash dump or remote session.
                 This tool allows you to run any WinDbg command and get the output.
+                If no session exists for the specified dump or connection, one will be created automatically.
                 """,
                 inputSchema=RunWindbgCmdParams.model_json_schema(),
             ),
@@ -377,11 +401,18 @@ def _create_server(
                     )]
 
                 args = OpenWindbgDump(**arguments)
-                session = get_or_create_session(
-                    dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
+
+                effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+                session, is_new = get_or_create_session(
+                    dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=effective_symbols,
+                    timeout=timeout, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols
                 )
 
                 results = []
+
+                if not is_new and args.symbols_path:
+                    results.append("**Note:** symbols_path was provided but a session for this dump is already active. "
+                                   "Close and reopen the dump to apply new symbol paths.\n\n")
 
                 crash_info = session.send_command(".lastevent")
                 results.append("### Crash Information\n```\n" + "\n".join(crash_info) + "\n```\n\n")
@@ -407,8 +438,9 @@ def _create_server(
 
             elif name == "open_windbg_remote":
                 args = OpenWindbgRemote(**arguments)
-                session = get_or_create_session(
-                    connection_string=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
+                session, is_new = get_or_create_session(
+                    connection_string=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path,
+                    timeout=timeout, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols
                 )
 
                 results = []
@@ -441,16 +473,21 @@ def _create_server(
 
             elif name == "run_windbg_cmd":
                 args = RunWindbgCmdParams(**arguments)
-                session = get_or_create_session(
+
+                effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+                session, is_new = get_or_create_session(
                     dump_path=args.dump_path, connection_string=args.connection_string,
-                    cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose
+                    cdb_path=cdb_path, symbols_path=effective_symbols, timeout=timeout, verbose=verbose,
+                    auto_dump_dir_symbols=auto_dump_dir_symbols
                 )
                 output = session.send_command(args.command)
 
-                return [TextContent(
-                    type="text",
-                    text=f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
-                )]
+                result_text = f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
+                if not is_new and args.symbols_path:
+                    result_text += ("\n\n**Note:** symbols_path was provided but a session for this dump is already active. "
+                                    "Close and reopen the dump to apply new symbol paths.")
+
+                return [TextContent(type="text", text=result_text)]
 
             elif name == "close_windbg_dump":
                 args = CloseWindbgDumpParams(**arguments)

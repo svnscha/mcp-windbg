@@ -12,6 +12,8 @@ def main():
     parser.add_argument("--symbols-path", type=str, help="Custom symbols path")
     parser.add_argument("--timeout", type=int, default=30, help="Command timeout in seconds")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument("--no-dump-dir-symbols", action="store_true",
+                        help="Disable automatic inclusion of the dump file's directory in the symbol search path")
 
     # Transport options
     parser.add_argument(
@@ -26,12 +28,15 @@ def main():
 
     args = parser.parse_args()
 
+    auto_dump_dir_symbols = not args.no_dump_dir_symbols
+
     if args.transport == "stdio":
         asyncio.run(serve(
             cdb_path=args.cdb_path,
             symbols_path=args.symbols_path,
             timeout=args.timeout,
-            verbose=args.verbose
+            verbose=args.verbose,
+            auto_dump_dir_symbols=auto_dump_dir_symbols
         ))
     else:
         asyncio.run(serve_http(
@@ -40,7 +45,8 @@ def main():
             cdb_path=args.cdb_path,
             symbols_path=args.symbols_path,
             timeout=args.timeout,
-            verbose=args.verbose
+            verbose=args.verbose,
+            auto_dump_dir_symbols=auto_dump_dir_symbols
         ))
 
 
