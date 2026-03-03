@@ -40,7 +40,8 @@ class CDBSession:
         initial_commands: Optional[List[str]] = None,
         timeout: int = 10,
         verbose: bool = False,
-        additional_args: Optional[List[str]] = None
+        additional_args: Optional[List[str]] = None,
+        auto_dump_dir_symbols: bool = True
     ):
         """
         Initialize a new CDB debugging session.
@@ -87,6 +88,14 @@ class CDBSession:
             cmd_args.extend(["-z", self.dump_path])
         elif self.remote_connection:
             cmd_args.extend(["-remote", self.remote_connection])
+
+        # Auto-include dump file's directory in symbol search path
+        if auto_dump_dir_symbols and self.dump_path:
+            dump_dir = os.path.dirname(os.path.abspath(self.dump_path))
+            if symbols_path:
+                symbols_path = f"{dump_dir};{symbols_path}"
+            else:
+                symbols_path = dump_dir
 
         # Add symbols path if provided
         if symbols_path:
