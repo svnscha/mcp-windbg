@@ -23,22 +23,33 @@ class CDBServerProcess:
         self.reader_thread: Optional[threading.Thread] = None
         self.running = False
 
-    def start(self, timeout: int = 10) -> bool:
-        """Start the CDB server process."""
+    def start(self, target_args: list, timeout: int = 10) -> bool:
+        """Start the CDB server process.
+
+        Args:
+            target_args: Arguments appended after cdb.exe, e.g.
+                ``["-o", "cdb.exe"]`` or ``["waitfor.exe", "Signal"]``.
+                The process is started with *cwd* set to the directory
+                containing cdb.exe so bare executable names resolve.
+            timeout: Seconds to wait for CDB to initialize.
+        """
         try:
             # Find cdb.exe
             cdb_path = self._find_cdb_executable()
             if not cdb_path:
                 raise Exception("Could not find cdb.exe")
 
-            # Use CDB to launch and debug a new instance of CDB
+            cdb_dir = os.path.dirname(cdb_path)
+            cmd = [cdb_path] + target_args
+
             self.process = subprocess.Popen(
-                [cdb_path, "-o", cdb_path],
+                cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                cwd=cdb_dir,
             )
 
             # Start output reader thread
@@ -140,7 +151,7 @@ class TestRemoteDebugging:
 
         try:
             # Start the CDB server process
-            assert server.start(timeout=15), "Failed to start CDB server process"
+            assert server.start(["-o", "cdb.exe"], timeout=15), "Failed to start CDB server process"
 
             # Test opening remote connection
             session = get_or_create_session(connection_string=connection_string, timeout=10, verbose=True)
@@ -180,6 +191,59 @@ class TestRemoteDebugging:
         with pytest.raises(ValueError, match="dump_path and remote_connection are mutually exclusive"):
             CDBSession(dump_path="test.dmp", remote_connection="tcp:Port=5005,Server=127.0.0.1")
 
+    def test_send_ctrl_break(self):
+        """Test that send_ctrl_break breaks into a running target."""
+        server = CDBServerProcess(port=5006)
+        connection_string = "tcp:Port=5006,Server=127.0.0.1"
+
+        try:
+            # Start CDB server debugging waitfor.exe (blocks forever)
+            assert server.start(
+                ["waitfor.exe", "SomeSignalThatNeverComes"], timeout=15
+            ), "Failed to start CDB server with waitfor.exe"
+
+            # Connect remotely while the target is stopped at initial breakpoint
+            session = get_or_create_session(
+                connection_string=connection_string, timeout=10, verbose=True
+            )
+            assert session is not None, "Failed to create remote session"
+
+            # Verify the session works (target is stopped at initial breakpoint)
+            output = session.send_command("r")
+            assert len(output) > 0, "No output from initial register command"
+
+            # Resume the target from the server side so waitfor.exe starts
+            # running.  Writing directly to the server's stdin avoids leaving
+            # a stale command marker in the remote client's CDB input buffer.
+            lines_before_g = len(server.output_lines)
+            server.process.stdin.write("g\n")
+            server.process.stdin.flush()
+            time.sleep(1)
+
+            # Verify the target is running: new output since "g" should NOT
+            # contain "Break instruction exception" (that only appears after
+            # we explicitly send ctrl+break).
+            new_lines = server.output_lines[lines_before_g:]
+            new_output = "\n".join(new_lines)
+            assert "Break instruction exception" not in new_output, \
+                f"Break exception appeared before send_ctrl_break:\n{new_output}"
+
+            # Break into the running target via the remote session
+            session.send_ctrl_break()
+
+            # After the break, commands should work again and the output
+            # must contain the break-in exception message.
+            output = session.send_command("r", timeout=10)
+            full_output = "\n".join(output)
+            assert "Break instruction exception" in full_output, \
+                f"Expected 'Break instruction exception' in output:\n{full_output}"
+            assert len(output) > 0
+
+            unload_session(connection_string=connection_string)
+
+        finally:
+            server.cleanup()
+
     def test_invalid_remote_connection(self):
         """Test handling of invalid remote connections."""
         invalid_connection = "tcp:Port=99999,Server=192.168.255.255"  # Invalid server
@@ -199,7 +263,7 @@ if __name__ == "__main__":
 
     try:
         print("Starting CDB server...")
-        if server.start(timeout=15):
+        if server.start(["-o", "cdb.exe"], timeout=15):
             print("CDB server started successfully")
 
             print("Creating remote session...")
