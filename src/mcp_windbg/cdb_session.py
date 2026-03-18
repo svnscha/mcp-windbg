@@ -3,6 +3,7 @@ import threading
 import re
 import os
 import platform
+import signal
 from typing import List, Optional
 
 # Regular expression to detect CDB prompts
@@ -97,13 +98,19 @@ class CDBSession:
             cmd_args.extend(additional_args)
 
         try:
+            # Only create a new process group for remote sessions where CTRL+BREAK is needed
+            creationflags = 0
+            if os.name == 'nt' and self.remote_connection:
+                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+
             self.process = subprocess.Popen(
                 cmd_args,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                creationflags=creationflags,
             )
         except Exception as e:
             raise CDBError(f"Failed to start CDB process: {str(e)}")
@@ -238,6 +245,21 @@ class CDBSession:
                 print(f"Error during shutdown: {e}")
         finally:
             self.process = None
+
+    def send_ctrl_break(self) -> None:
+        """Send a CTRL+BREAK event to the CDB process to break in.
+
+        Raises:
+            CDBError: If the signal cannot be delivered or the process is not running.
+        """
+        if not self.process or self.process.poll() is not None:
+            raise CDBError("CDB process is not running")
+
+        try:
+            # On Windows, deliver CTRL+BREAK to the new process group we created
+            self.process.send_signal(signal.CTRL_BREAK_EVENT)
+        except Exception as e:
+            raise CDBError(f"Failed to send CTRL+BREAK: {str(e)}")
 
     def get_session_id(self) -> str:
         """Get a unique identifier for this CDB session."""

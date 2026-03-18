@@ -144,6 +144,7 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 | [`open_windbg_remote`](https://github.com/svnscha/mcp-windbg/wiki/Tools#open_windbg_remote) | Connect to remote debugging | Live debugging sessions |
 | [`close_windbg_remote`](https://github.com/svnscha/mcp-windbg/wiki/Tools#close_windbg_remote) | Cleanup remote sessions | Resource management |
 | [`run_windbg_cmd`](https://github.com/svnscha/mcp-windbg/wiki/Tools#run_windbg_cmd) | Execute WinDbg commands | Custom analysis and investigation |
+| [`send_ctrl_break`](https://github.com/svnscha/mcp-windbg/wiki/Tools#send_ctrl_break) | Break into a running target | Interrupt execution during live debugging |
 
 ## Documentation
 
