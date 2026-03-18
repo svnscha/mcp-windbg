@@ -172,6 +172,8 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 
 > "Connect to tcp:Port=5005,Server=192.168.0.100 and show me the current thread state"
 
+> "Send CTRL+BREAK to the live session, then dump all thread stacks with ~*k"
+
 > "Check for timing issues in the thread pool with !runaway and !threads"
 
 > "Show me all threads with ~*k and identify which one is causing the hang"

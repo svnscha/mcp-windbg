@@ -5,6 +5,22 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-03-18
+
+### Added
+
+- **Live Debugger Break-In**: Added the `send_ctrl_break` tool to interrupt an active CDB/WinDbg session with CTRL+BREAK for dump and remote debugging workflows (#40)
+
+### Changed
+
+- **Dependency Refresh**: Updated runtime dependency floors for `mcp`, `pydantic`, `starlette`, and `uvicorn`, and refreshed test and validation tooling versions in `pyproject.toml`
+- **CI Dependency Maintenance**: Updated GitHub Actions dependencies for Python setup and artifact handling in release workflows (#39, #42)
+
+### Fixed
+
+- **Registry Compatibility**: Restored MCP registry compatibility by reverting `server.json` to the supported `2025-10-17` schema version
+- **Publishing Workflow**: Adjusted MCP publishing workflows to match current registry publisher behavior
+
 ## [0.12.2] - 2025-12-15
 
 ### Fixed

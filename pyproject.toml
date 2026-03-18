@@ -1,6 +1,6 @@
 [project]
 name = "mcp-windbg"
-version = "0.12.2"
+version = "0.13.0"
 description = "A Model Context Protocol server providing tools to analyze Windows crash dumps using WinDbg/CDB"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,10 +18,10 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "mcp>=1.17.0",
-    "pydantic>=2.12.0",
-    "starlette>=0.40.0",
-    "uvicorn>=0.30.0",
+    "mcp>=1.26.0",
+    "pydantic>=2.12.5",
+    "starlette>=0.52.1",
+    "uvicorn>=0.42.0",
 ]
 
 [project.scripts]
@@ -36,13 +36,13 @@ mcp_windbg = ["prompts/*.prompt.md"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.0",
+    "pytest>=9.0.2",
     "twine>=6.2.0",
-    "jsonschema>=4.23.0",
+    "jsonschema>=4.26.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["src/mcp_windbg/tests"]
 
 [project.optional-dependencies]
-test = ["pytest>=8.4.0"]
+test = ["pytest>=9.0.2"]
