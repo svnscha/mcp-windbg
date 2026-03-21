@@ -70,9 +70,55 @@ Endpoint: `http://127.0.0.1:8000/mcp`
 --port PORT                              HTTP server port (default: 8000)
 --cdb-path PATH                          Custom path to cdb.exe
 --symbols-path PATH                      Custom symbols path
+--filter-script PATH                     Python script with process_input/process_output tool text hooks
 --timeout SECONDS                        Command timeout (default: 30)
 --verbose                                Enable verbose output
 ```
+
+### Filter Script Hooks
+
+Use `--filter-script` to load a small Python helper that can rewrite tool text only. The script never sees the full MCP JSON-RPC envelope, which keeps the hook surface smaller and avoids protocol interference.
+
+The script may define either or both of these functions:
+
+```python
+def process_input(text, context):
+    return text
+
+
+def process_output(text, context):
+    return text
+```
+
+- `process_input` is applied to string-valued tool arguments before the tool handler runs.
+- `process_output` is applied to `TextContent.text` values returned by tools before they go back to the client.
+- `text` is always a plain `str`.
+- `context` includes `hook`, `tool_name`, `transport`, and `call_id`.
+- Input callbacks also receive `argument_path` such as `$.command` or `$.payload.notes[0]`.
+- Output callbacks also receive `content_index` for the returned text item.
+- `call_id` is stable for the full lifetime of one tool invocation, so script writers can correlate input and output for the same call.
+- A hook may return `None` to leave the text unchanged, or return a replacement string.
+
+Example redaction filter:
+
+```python
+def process_input(text, context):
+    if context["tool_name"] == "run_windbg_cmd" and context["argument_path"] == "$.command":
+        return text.replace("user@example.com", "[redacted-email]")
+    return text
+
+
+def process_output(text, context):
+    return text.replace("user@example.com", "[redacted-email]")
+```
+
+Start the server with the filter enabled:
+
+```bash
+mcp-windbg --filter-script C:\filters\pii_redaction.py
+```
+
+The script runs in-process with the server. Treat it as trusted code.
 
 
 ## Configuration for Visual Studio Code
@@ -98,6 +144,12 @@ To make MCP servers available in all your workspaces, use the global user config
 ```
 
 This enables MCP Windbg in any workspace, without needing a local `.vscode/mcp.json` file.
+
+To enable a filter script, add it to the args:
+
+```json
+"args": ["-m", "mcp_windbg", "--filter-script", "C:\\filters\\pii_redaction.py"]
+```
 
 ### HTTP Transport Configuration
 

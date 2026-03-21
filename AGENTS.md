@@ -11,10 +11,13 @@ mcp-windbg/
 │   ├── __main__.py           # Module entry point
 │   ├── server.py             # MCP server implementation
 │   ├── cdb_session.py        # CDB/WinDbg session management
+│   ├── filter_script.py      # --filter-script loader and tool content hooks
 │   ├── prompts/              # Prompt templates for AI assistants
 │   │   └── dump-triage.prompt.md
 │   └── tests/                # Test suite
 │       ├── test_cdb.py       # Core CDB functionality tests
+│       ├── test_cli.py       # CLI argument wiring tests
+│       ├── test_filter_script.py  # Filter script hook tests
 │       ├── test_remote_debugging.py  # Remote debugging tests
 │       └── dumps/            # Test crash dump files (Git LFS)
 ├── scripts/                  # Utility scripts
