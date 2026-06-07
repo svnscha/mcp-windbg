@@ -10,6 +10,7 @@ def main():
     )
     parser.add_argument("--cdb-path", type=str, help="Custom path to cdb.exe")
     parser.add_argument("--symbols-path", type=str, help="Custom symbols path")
+    parser.add_argument("--filter-script", type=str, help="Path to a Python script with process_input/process_output tool text hooks")
     parser.add_argument("--timeout", type=int, default=30, help="Command timeout in seconds")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--no-dump-dir-symbols", action="store_true",
@@ -34,6 +35,7 @@ def main():
         asyncio.run(serve(
             cdb_path=args.cdb_path,
             symbols_path=args.symbols_path,
+            filter_script=args.filter_script,
             timeout=args.timeout,
             verbose=args.verbose,
             auto_dump_dir_symbols=auto_dump_dir_symbols
@@ -44,6 +46,7 @@ def main():
             port=args.port,
             cdb_path=args.cdb_path,
             symbols_path=args.symbols_path,
+            filter_script=args.filter_script,
             timeout=args.timeout,
             verbose=args.verbose,
             auto_dump_dir_symbols=auto_dump_dir_symbols

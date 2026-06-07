@@ -3,10 +3,12 @@ import traceback
 import glob
 import winreg
 import logging
+import uuid
 from typing import Dict, Optional
 from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession, CDBError
+from .filter_script import FilterScript, load_filter_script
 from .prompts import load_prompt
 
 from mcp.shared.exceptions import McpError
@@ -115,6 +117,20 @@ def _combine_symbols(per_call: Optional[str], server_default: Optional[str]) -> 
     return per_call or server_default
 
 
+class SendCtrlBreakParams(BaseModel):
+    """Parameters for sending CTRL+BREAK to a CDB/WinDbg session."""
+    dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
+    connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
+
+    @model_validator(mode='after')
+    def validate_connection_params(self):
+        if not self.dump_path and not self.connection_string:
+            raise ValueError("Either dump_path or connection_string must be provided")
+        if self.dump_path and self.connection_string:
+            raise ValueError("dump_path and connection_string are mutually exclusive")
+        return self
+
+
 def get_or_create_session(
     dump_path: Optional[str] = None,
     connection_string: Optional[str] = None,
@@ -209,6 +225,7 @@ def execute_common_analysis_commands(session: CDBSession) -> dict:
 async def serve(
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
+    filter_script: Optional[str] = None,
     timeout: int = 30,
     verbose: bool = False,
     auto_dump_dir_symbols: bool = True,
@@ -218,11 +235,13 @@ async def serve(
     Args:
         cdb_path: Optional custom path to cdb.exe
         symbols_path: Optional custom symbols path
+        filter_script: Optional Python script to filter tool content
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
         auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
     """
-    server = _create_server(cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols)
+    content_filter = load_filter_script(filter_script) if filter_script else None
+    server = _create_server(cdb_path, symbols_path, timeout, verbose, content_filter, "stdio", auto_dump_dir_symbols)
 
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
@@ -234,6 +253,7 @@ async def serve_http(
     port: int = 8000,
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
+    filter_script: Optional[str] = None,
     timeout: int = 30,
     verbose: bool = False,
     auto_dump_dir_symbols: bool = True,
@@ -245,6 +265,7 @@ async def serve_http(
         port: Port to bind the HTTP server to
         cdb_path: Optional custom path to cdb.exe
         symbols_path: Optional custom symbols path
+        filter_script: Optional Python script to filter tool content
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
         auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
@@ -254,7 +275,8 @@ async def serve_http(
     from starlette.types import Receive, Scope, Send
     import uvicorn
 
-    server = _create_server(cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols)
+    content_filter = load_filter_script(filter_script) if filter_script else None
+    server = _create_server(cdb_path, symbols_path, timeout, verbose, content_filter, "streamable-http", auto_dump_dir_symbols)
 
     # Create the session manager
     session_manager = StreamableHTTPSessionManager(
@@ -293,6 +315,8 @@ def _create_server(
     symbols_path: Optional[str] = None,
     timeout: int = 30,
     verbose: bool = False,
+    content_filter: Optional[FilterScript] = None,
+    transport: str = "stdio",
     auto_dump_dir_symbols: bool = True,
 ) -> Server:
     """Create and configure the MCP server with all tools and prompts.
@@ -302,12 +326,26 @@ def _create_server(
         symbols_path: Optional custom symbols path
         timeout: Command timeout in seconds
         verbose: Whether to enable verbose output
+        content_filter: Optional filter for tool arguments and text output
+        transport: Transport label passed to the filter script context
         auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
 
     Returns:
         Configured Server instance
     """
     server = Server("mcp-windbg")
+
+    def filter_tool_arguments(tool_name: str, arguments: dict | None, call_id: str) -> dict:
+        if arguments is None:
+            arguments = {}
+        if content_filter is None:
+            return arguments
+        return content_filter.process_input(tool_name, arguments, transport, call_id) or {}
+
+    def filter_tool_content(tool_name: str, content: list[TextContent], call_id: str) -> list[TextContent]:
+        if content_filter is None:
+            return content
+        return content_filter.process_output(tool_name, content, transport, call_id)
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -340,6 +378,14 @@ def _create_server(
                 inputSchema=RunWindbgCmdParams.model_json_schema(),
             ),
             Tool(
+                name="send_ctrl_break",
+                description="""
+                Send a CTRL+BREAK event to the active CDB/WinDbg session, causing it to break in.
+                Useful for interrupting a running target or breaking into a remote session.
+                """,
+                inputSchema=SendCtrlBreakParams.model_json_schema(),
+            ),
+            Tool(
                 name="close_windbg_dump",
                 description="""
                 Unload a crash dump and release resources.
@@ -368,6 +414,9 @@ def _create_server(
     @server.call_tool()
     async def call_tool(name, arguments: dict) -> list[TextContent]:
         try:
+            call_id = uuid.uuid4().hex
+            arguments = filter_tool_arguments(name, arguments, call_id)
+
             if name == "open_windbg_dump":
                 # Check if dump_path is missing or empty
                 if "dump_path" not in arguments or not arguments.get("dump_path"):
@@ -394,11 +443,11 @@ def _create_server(
 
                             dumps_found_text += "\nYou can analyze one of these dumps by specifying its path."
 
-                    return [TextContent(
+                    return filter_tool_content(name, [TextContent(
                         type="text",
                         text=f"Please provide a path to a crash dump file to analyze.{dumps_found_text}\n\n"
                               f"You can use the 'list_windbg_dumps' tool to discover available crash dumps."
-                    )]
+                    )], call_id)
 
                 args = OpenWindbgDump(**arguments)
 
@@ -434,7 +483,7 @@ def _create_server(
                     threads = session.send_command("~")
                     results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
 
-                return [TextContent(type="text", text="".join(results))]
+                return filter_tool_content(name, [TextContent(type="text", text="".join(results))], call_id)
 
             elif name == "open_windbg_remote":
                 args = OpenWindbgRemote(**arguments)
@@ -466,10 +515,10 @@ def _create_server(
                     threads = session.send_command("~")
                     results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
 
-                return [TextContent(
+                return filter_tool_content(name, [TextContent(
                     type="text",
                     text="".join(results)
-                )]
+                )], call_id)
 
             elif name == "run_windbg_cmd":
                 args = RunWindbgCmdParams(**arguments)
@@ -487,35 +536,49 @@ def _create_server(
                     result_text += ("\n\n**Note:** symbols_path was provided but a session for this dump is already active. "
                                     "Close and reopen the dump to apply new symbol paths.")
 
-                return [TextContent(type="text", text=result_text)]
+                return filter_tool_content(name, [TextContent(type="text", text=result_text)], call_id)
+
+            elif name == "send_ctrl_break":
+                args = SendCtrlBreakParams(**arguments)
+                session, _ = get_or_create_session(
+                    dump_path=args.dump_path, connection_string=args.connection_string,
+                    cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose,
+                    auto_dump_dir_symbols=auto_dump_dir_symbols
+                )
+                session.send_ctrl_break()
+                target = args.dump_path if args.dump_path else f"remote: {args.connection_string}"
+                return filter_tool_content(name, [TextContent(
+                    type="text",
+                    text=f"Sent CTRL+BREAK to CDB session ({target})."
+                )], call_id)
 
             elif name == "close_windbg_dump":
                 args = CloseWindbgDumpParams(**arguments)
                 success = unload_session(dump_path=args.dump_path)
                 if success:
-                    return [TextContent(
+                    return filter_tool_content(name, [TextContent(
                         type="text",
                         text=f"Successfully unloaded crash dump: {args.dump_path}"
-                    )]
+                    )], call_id)
                 else:
-                    return [TextContent(
+                    return filter_tool_content(name, [TextContent(
                         type="text",
                         text=f"No active session found for crash dump: {args.dump_path}"
-                    )]
+                    )], call_id)
 
             elif name == "close_windbg_remote":
                 args = CloseWindbgRemoteParams(**arguments)
                 success = unload_session(connection_string=args.connection_string)
                 if success:
-                    return [TextContent(
+                    return filter_tool_content(name, [TextContent(
                         type="text",
                         text=f"Successfully closed remote connection: {args.connection_string}"
-                    )]
+                    )], call_id)
                 else:
-                    return [TextContent(
+                    return filter_tool_content(name, [TextContent(
                         type="text",
                         text=f"No active session found for remote connection: {args.connection_string}"
-                    )]
+                    )], call_id)
 
             elif name == "list_windbg_dumps":
                 args = ListWindbgDumpsParams(**arguments)
@@ -544,10 +607,10 @@ def _create_server(
                 dump_files.sort()
 
                 if not dump_files:
-                    return [TextContent(
+                    return filter_tool_content(name, [TextContent(
                         type="text",
                         text=f"No crash dump files (*.*dmp) found in {args.directory_path}"
-                    )]
+                    )], call_id)
 
                 # Format the results
                 result_text = f"Found {len(dump_files)} crash dump file(s) in {args.directory_path}:\n\n"
@@ -560,10 +623,10 @@ def _create_server(
 
                     result_text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
 
-                return [TextContent(
+                return filter_tool_content(name, [TextContent(
                     type="text",
                     text=result_text
-                )]
+                )], call_id)
 
             raise McpError(ErrorData(
                 code=INVALID_PARAMS,
