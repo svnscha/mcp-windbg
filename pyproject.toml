@@ -4,12 +4,17 @@ version = "0.14.0"
 description = "A Model Context Protocol server providing tools to analyze Windows crash dumps using WinDbg/CDB"
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "svnscha" }]
+authors = [{ name = "svnscha", email = "sven.scharmentke@gmail.com" }]
+maintainers = [{ name = "svnscha", email = "sven.scharmentke@gmail.com" }]
 keywords = ["windbg", "cdb", "mcp", "llm", "crash-analysis"]
 license = "MIT"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Environment :: Console",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Quality Assurance",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -23,6 +28,12 @@ dependencies = [
     "starlette>=0.52.1",
     "uvicorn>=0.42.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/svnscha/mcp-windbg"
+Repository = "https://github.com/svnscha/mcp-windbg"
+Issues = "https://github.com/svnscha/mcp-windbg/issues"
+Changelog = "https://github.com/svnscha/mcp-windbg/blob/main/CHANGELOG.md"
 
 [project.scripts]
 mcp-windbg = "mcp_windbg:main"

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Package metadata**: Filled in distribution metadata so `pip show` / PyPI are complete — added the author/maintainer email, project URLs (Homepage, Repository, Issues, Changelog), and classifiers for Windows, console environment, and the Debuggers/QA topics (#36)
+
 ### Fixed
 
 - **Stdio server resilience**: The stdio transport no longer crashes on a malformed input line. `serve()` now uses the SDK default `raise_exceptions=False`, so an unparseable line (e.g. when the server is run directly in a terminal) is logged instead of tearing down the whole process (#45)
