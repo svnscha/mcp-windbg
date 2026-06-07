@@ -5,6 +5,12 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Stdio server resilience**: The stdio transport no longer crashes on a malformed input line. `serve()` now uses the SDK default `raise_exceptions=False`, so an unparseable line (e.g. when the server is run directly in a terminal) is logged instead of tearing down the whole process (#45)
+
 ## [0.14.0] - 2026-03-21
 
 ### Added

@@ -228,7 +228,12 @@ async def serve(
 
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, options, raise_exceptions=True)
+        # raise_exceptions=False (the SDK default) keeps the server alive on a
+        # malformed stdin line: the transport forwards the parse error and the
+        # message loop logs it instead of crashing the process. With
+        # raise_exceptions=True a single non-JSON line (e.g. running the server
+        # directly in a terminal) tears down the whole server. See issue #45.
+        await server.run(read_stream, write_stream, options)
 
 
 async def serve_http(
