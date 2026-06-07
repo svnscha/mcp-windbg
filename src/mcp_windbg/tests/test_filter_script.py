@@ -120,7 +120,7 @@ def test_filter_script_rewrites_tool_content(tmp_path: Path, monkeypatch):
             captured["command"] = command
             return [f"processed {command}"]
 
-    monkeypatch.setattr(windbg_server, "get_or_create_session", lambda **kwargs: FakeSession())
+    monkeypatch.setattr(windbg_server, "get_or_create_session", lambda **kwargs: (FakeSession(), True))
 
     content_filter = load_filter_script(str(script_path))
     server = windbg_server._create_server(

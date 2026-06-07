@@ -154,7 +154,7 @@ class TestRemoteDebugging:
             assert server.start(["-o", "cdb.exe"], timeout=15), "Failed to start CDB server process"
 
             # Test opening remote connection
-            session = get_or_create_session(connection_string=connection_string, timeout=10, verbose=True)
+            session, _ = get_or_create_session(connection_string=connection_string, timeout=10, verbose=True)
             assert session is not None, "Failed to create remote session"
 
             # Test sending a command
@@ -203,7 +203,7 @@ class TestRemoteDebugging:
             ), "Failed to start CDB server with waitfor.exe"
 
             # Connect remotely while the target is stopped at initial breakpoint
-            session = get_or_create_session(
+            session, _ = get_or_create_session(
                 connection_string=connection_string, timeout=10, verbose=True
             )
             assert session is not None, "Failed to create remote session"
@@ -267,7 +267,7 @@ if __name__ == "__main__":
             print("CDB server started successfully")
 
             print("Creating remote session...")
-            session = get_or_create_session(connection_string=connection_string, timeout=10, verbose=True)
+            session, _ = get_or_create_session(connection_string=connection_string, timeout=10, verbose=True)
 
             print("Sending test command...")
             try:
