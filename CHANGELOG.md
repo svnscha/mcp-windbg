@@ -5,6 +5,12 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-03-21
+
+### Added
+
+- **Tool Content Filter Script Hooks**: Added `--filter-script` so trusted Python helpers can rewrite string-valued tool arguments and tool text output for use cases like PII redaction without exposing full MCP protocol messages
+
 ## [0.13.0] - 2026-03-18
 
 ### Added
