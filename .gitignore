@@ -175,3 +175,6 @@ cython_debug/
 
 # MCP Registry
 mcp-publisher.exe
+
+# MkDocs build output
+/site/

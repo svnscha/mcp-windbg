@@ -172,7 +172,7 @@ python -m mcp_windbg --transport streamable-http --host 127.0.0.1 --port 8000
 }
 ```
 
-> **Workspace-specific and alternative configuration**: See [Installation documentation](https://github.com/svnscha/mcp-windbg/wiki/Installation) for details on configuring Claude Desktop, Cline, and other clients, or for workspace-only setup.
+> **Workspace-specific and alternative configuration**: See the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for details on configuring Claude Desktop, Copilot CLI, and other clients, or for workspace-only setup.
 
 Once configured, restart your MCP client and start debugging:
 
@@ -190,25 +190,26 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 
 | Tool | Purpose | Use Case |
 |------|---------|----------|
-| [`list_windbg_dumps`](https://github.com/svnscha/mcp-windbg/wiki/Tools#list_windbg_dumps) | List crash dump files | Discovery and batch analysis |
-| [`open_windbg_dump`](https://github.com/svnscha/mcp-windbg/wiki/Tools#open_windbg_dump) | Analyze crash dumps | Initial crash dump analysis |
-| [`close_windbg_dump`](https://github.com/svnscha/mcp-windbg/wiki/Tools#close_windbg_dump) | Cleanup dump sessions | Resource management |
-| [`open_windbg_remote`](https://github.com/svnscha/mcp-windbg/wiki/Tools#open_windbg_remote) | Connect to remote debugging | Live debugging sessions |
-| [`close_windbg_remote`](https://github.com/svnscha/mcp-windbg/wiki/Tools#close_windbg_remote) | Cleanup remote sessions | Resource management |
-| [`run_windbg_cmd`](https://github.com/svnscha/mcp-windbg/wiki/Tools#run_windbg_cmd) | Execute WinDbg commands | Custom analysis and investigation |
-| [`send_ctrl_break`](https://github.com/svnscha/mcp-windbg/wiki/Tools#send_ctrl_break) | Break into a running target | Interrupt execution during live debugging |
+| [`list_windbg_dumps`](https://svnscha.github.io/mcp-windbg/reference/tools/#list_windbg_dumps) | List crash dump files | Discovery and batch analysis |
+| [`open_windbg_dump`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_dump) | Analyze crash dumps | Initial crash dump analysis |
+| [`close_windbg_dump`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_dump) | Cleanup dump sessions | Resource management |
+| [`open_windbg_remote`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_remote) | Connect to remote debugging | Live debugging sessions |
+| [`close_windbg_remote`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_remote) | Cleanup remote sessions | Resource management |
+| [`run_windbg_cmd`](https://svnscha.github.io/mcp-windbg/reference/tools/#run_windbg_cmd) | Execute WinDbg commands | Custom analysis and investigation |
+| [`send_ctrl_break`](https://svnscha.github.io/mcp-windbg/reference/tools/#send_ctrl_break) | Break into a running target | Interrupt execution during live debugging |
 
 ## Documentation
 
-**[Documentation](https://github.com/svnscha/mcp-windbg/wiki)**
+**[Documentation](https://svnscha.github.io/mcp-windbg/)**
 
 | Topic | Description |
 |-------|-------------|
-| **[Getting Started](https://github.com/svnscha/mcp-windbg/wiki/Getting-Started)** | Quick setup and first steps |
-| **[Installation](https://github.com/svnscha/mcp-windbg/wiki/Installation)** | Detailed installation for pip, MCP registry, and from source |
-| **[Usage](https://github.com/svnscha/mcp-windbg/wiki/Usage)** | MCP client integration, command-line usage, and workflows |
-| **[Tools Reference](https://github.com/svnscha/mcp-windbg/wiki/Tools)** | Complete API reference and examples |
-| **[Troubleshooting](https://github.com/svnscha/mcp-windbg/wiki/Troubleshooting)** | Common issues and solutions |
+| **[Getting Started](https://svnscha.github.io/mcp-windbg/getting-started/)** | Quick setup and first crash dump analysis |
+| **[Use cases](https://svnscha.github.io/mcp-windbg/scenarios/)** | Analyze a dump, debug a remote target, triage many dumps |
+| **[Command-line options](https://svnscha.github.io/mcp-windbg/reference/cli/)** | Every CLI flag, transports, and filter hooks |
+| **[Tools Reference](https://svnscha.github.io/mcp-windbg/reference/tools/)** | The MCP tools and their parameters |
+| **[Client configuration](https://svnscha.github.io/mcp-windbg/reference/clients/)** | VS Code, Claude Desktop, Copilot CLI, pip, and source |
+| **[Troubleshooting](https://svnscha.github.io/mcp-windbg/troubleshooting/)** | Common issues and solutions |
 
 ## Examples
 

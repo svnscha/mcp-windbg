@@ -1,0 +1,92 @@
+site_name: MCP Server for WinDbg
+site_description: >-
+  User guide for mcp-windbg - a Model Context Protocol server that lets AI models
+  analyze Windows crash dumps and drive live or remote debugging through WinDbg/CDB.
+  Configure your MCP client, analyze dumps, and debug remote targets in natural language.
+site_author: Sven Scharmentke
+site_url: https://svnscha.github.io/mcp-windbg/
+repo_url: https://github.com/svnscha/mcp-windbg
+repo_name: svnscha/mcp-windbg
+copyright: Copyright &copy; svnscha - MIT License
+
+docs_dir: docs
+
+extra_css:
+  - assets/extra.css
+
+extra_javascript:
+  - assets/mermaid.js
+
+validation:
+  links:
+    anchors: warn
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    # Light is the default (listed first, no media query). The toggle is remembered.
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.keys
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid-diagram
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Use cases:
+      - Overview: scenarios/index.md
+      - Analyze a crash dump: scenarios/crash-dump.md
+      - Debug a remote target: scenarios/remote-debugging.md
+      - Triage multiple dumps: scenarios/triage.md
+  - Reference:
+      - Overview: reference/index.md
+      - Command-line options: reference/cli.md
+      - Tools: reference/tools.md
+      - Client configuration: reference/clients.md
+  - Troubleshooting: troubleshooting.md
+
+plugins:
+  - search
