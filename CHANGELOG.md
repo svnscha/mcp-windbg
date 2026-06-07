@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Documentation site**: New MkDocs (Material) user guide under `docs/`, deployed to GitHub Pages via `pages.yml`. Covers getting started, the use cases, and a reference for the command-line options, tools, and client configuration. Content migrated and trimmed from the project wiki.
+
 ### Changed
 
-- **Package metadata**: Filled in distribution metadata so `pip show` / PyPI are complete — added the author/maintainer email, project URLs (Homepage, Repository, Issues, Changelog), and classifiers for Windows, console environment, and the Debuggers/QA topics (#36)
+- **Package metadata**: Filled in distribution metadata so `pip show` / PyPI are complete - added the author/maintainer email, project URLs (Homepage, Repository, Issues, Changelog), and classifiers for Windows, console environment, and the Debuggers/QA topics (#36)
+- **Contributor guide**: Migrated `AGENTS.md` to `CLAUDE.md` and added `.claude/rules/` (Markdown typography and documentation authoring), plus `scripts/Format-Docs.ps1` to enforce the typography rules
 
 ### Fixed
 
@@ -107,7 +112,7 @@ This release focuses on making mcp-windbg more reliable, faster, and easier to u
 **Performance Boost**: Build times are significantly faster thanks to the new tooling
 **Enhanced Security**: Automatic scanning and updates keep dependencies secure
 
-### 🤝 Community Contributions
+### Community Contributions
 
 Special thanks to [@sooknarine](https://github.com/sooknarine) for these valuable contributions:
 - [Find local dumps with other common extensions #6](https://github.com/svnscha/mcp-windbg/pull/6) - Now finds more crash dump files automatically

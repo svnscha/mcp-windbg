@@ -1,0 +1,42 @@
+/* ---- Brand color: VS Code blue ---------------------------------------- */
+/* Override on the scheme element (where Material sets these vars) with
+   !important so the palette's own "blue" preset does not win. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #007acc !important;
+  --md-primary-fg-color--light: #3393d6 !important;
+  --md-primary-fg-color--dark: #005a9e !important;
+  --md-accent-fg-color: #0098ff !important;
+  --md-typeset-a-color: #007acc !important;
+}
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0a84d8 !important;
+  --md-primary-fg-color--light: #3393d6 !important;
+  --md-primary-fg-color--dark: #005a9e !important;
+  --md-accent-fg-color: #3794ff !important;
+  --md-typeset-a-color: #3794ff !important;
+}
+
+/* ---- Mermaid diagrams -------------------------------------------------- */
+/* Stop node/edge label text from being clipped inside boxes and backgrounds. */
+.mermaid-rendered {
+  margin: 1em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.mermaid-rendered svg {
+  max-width: 100%;
+  height: auto;
+}
+/* foreignObject clips by default; let label text render in full. */
+.mermaid-rendered foreignObject {
+  overflow: visible;
+}
+.mermaid-rendered .nodeLabel,
+.mermaid-rendered .edgeLabel,
+.mermaid-rendered .label {
+  line-height: 1.4;
+}
+.mermaid-rendered .nodeLabel p,
+.mermaid-rendered .edgeLabel p {
+  margin: 0;
+}
