@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
+      check-version:
+        description: 'Run the version-consistency check (release builds only)'
+        required: false
+        type: boolean
+        default: false
     outputs:
       artifact-name:
         description: 'Name of the build artifact'
@@ -49,6 +54,7 @@ jobs:
         uv run python -m mcp_windbg --help || echo "CLI help command completed"
 
     - name: Check version consistency
+      if: ${{ inputs.check-version }}
       run: .\scripts\check-version-consistency.ps1
 
     - name: Validate server.json schema
