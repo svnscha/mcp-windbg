@@ -47,6 +47,13 @@ That maps to the per-call `symbols_path` parameter, which only applies when the 
 first created. See [`open_windbg_dump`](../reference/tools.md#open_windbg_dump) and
 [`--symbols-path`](../reference/cli.md#symbols-and-cdb) for the details.
 
+## Get a structured report with the dump-triage prompt
+
+For a thorough, consistent write-up, use the built-in `dump-triage` prompt instead of asking
+free-form. Most clients surface it as a slash command or a prompt picker; in VS Code it appears
+as `/mcp.mcp-windbg.dump-triage`. It walks the model through opening the dump, extracting
+metadata, and producing a structured crash report. See [Prompts](../reference/prompts.md).
+
 ## Close the session when done
 
 Each open dump holds a `cdb.exe` process. Free it when you finish:
