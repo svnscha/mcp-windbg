@@ -4,5 +4,5 @@
 #   python -m mkdocs build      # render static site into ./site
 # Mermaid diagrams use a small self-contained loader (docs/assets/mermaid.js).
 mkdocs>=1.6
-mkdocs-material>=9.7
+mkdocs-material>=9.7.6
 pymdown-extensions>=10.21
