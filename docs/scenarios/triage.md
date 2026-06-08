@@ -16,7 +16,29 @@ files and reports their sizes. To include subfolders:
 Find all crash dumps under C:\dumps including subdirectories
 ```
 
-With no directory given, the server falls back to the configured local crash dump location.
+With no directory given, the server falls back to the local crash dump location configured in
+Windows (see below).
+
+## Capture crashes automatically
+
+To collect dumps without a debugger attached, turn on Windows Error Reporting (WER) local dumps.
+Create this registry key and point `DumpFolder` at a directory:
+
+```text
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps
+    DumpFolder  (REG_EXPAND_SZ)  e.g. C:\dumps
+    DumpType    (REG_DWORD)      2 = full dump, 1 = mini dump
+```
+
+Crashing user-mode processes then drop a `.dmp` into that folder. The server reads `DumpFolder`
+when you call `list_windbg_dumps` without a directory, falling back to `%LOCALAPPDATA%\CrashDumps`
+if the key is not set. For the per-application form and all options, see Microsoft's
+[Collecting user-mode dumps](https://learn.microsoft.com/windows/win32/wer/collecting-user-mode-dumps)
+guide.
+
+```text
+List the latest crash dumps
+```
 
 ## Analyze and compare
 

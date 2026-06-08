@@ -14,7 +14,9 @@ one from your request, but this is the precise contract for each.
 | [`send_ctrl_break`](#send_ctrl_break) | Break into a running target. |
 
 Sessions are persistent: opening a dump or remote target keeps a `cdb.exe` process alive so
-follow-up commands reuse it. Close sessions when you finish to free resources.
+follow-up commands reuse it. Several can be open at once, each addressed by its dump path or
+connection string, so you can compare dumps side by side. Close sessions when you finish to free
+resources.
 
 ---
 

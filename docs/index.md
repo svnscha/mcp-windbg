@@ -19,6 +19,10 @@ back. You get the knowledge of an LLM applied to the real, battle-tested Windows
   session, break in, and inspect threads, memory, and state.
 - **[Triage multiple dumps](scenarios/triage.md)** - scan a folder of dumps and compare
   them to spot a common pattern.
+- **[Debug from another machine](scenarios/http-service.md)** - run the server over HTTP on a
+  Windows host and connect from your own laptop.
+- **[Redact sensitive data](scenarios/redaction.md)** - scrub secrets or PII out of tool output
+  before it reaches a cloud model.
 
 ---
 
@@ -57,7 +61,9 @@ chatting. The rest of this guide is about that setup and the things you can ask 
 | **Symbols for your target** | So the debugger can map addresses back to functions and source. A symbol server works out of the box. |
 
 !!! note "What this is, and is not"
-    This is a **usage** guide for analyzing dumps and debugging with an MCP client. It is
-    not a magic auto-fix: the server is a wrapper around `cdb.exe` that lets an LLM run real
-    debugger commands. For building the server from source, see the project
-    [`README.md`](https://github.com/svnscha/mcp-windbg).
+    This is a **usage** guide for analyzing dumps and debugging with an MCP client. The server
+    is a wrapper around `cdb.exe` that lets an LLM run real debugger commands; it is not a magic
+    auto-fix. It works on **dump files** and on **connecting to a debugging server**
+    (`cdb`/WinDbg started with `-server`). Kernel-mode (`-k`) debugging and attaching to a
+    running process by PID are not supported. For building the server from source, see the
+    project [`README.md`](https://github.com/svnscha/mcp-windbg).

@@ -81,6 +81,8 @@ nav:
       - Analyze a crash dump: scenarios/crash-dump.md
       - Debug a remote target: scenarios/remote-debugging.md
       - Triage multiple dumps: scenarios/triage.md
+      - Debug from another machine: scenarios/http-service.md
+      - Redact sensitive data: scenarios/redaction.md
   - Reference:
       - Overview: reference/index.md
       - Command-line options: reference/cli.md

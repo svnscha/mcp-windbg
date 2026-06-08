@@ -108,6 +108,8 @@ Close the crash dump session for C:\dumps\app.dmp
 - **[Analyze a crash dump](scenarios/crash-dump.md)** - the dump workflow in depth.
 - **[Debug a remote target](scenarios/remote-debugging.md)** - connect to a live session and break in.
 - **[Triage multiple dumps](scenarios/triage.md)** - scan a folder and compare.
+- **[Debug from another machine](scenarios/http-service.md)** - run the server over HTTP and connect remotely.
+- **[Redact sensitive data](scenarios/redaction.md)** - filter secrets out of tool output.
 - **[Command-line options](reference/cli.md)** - every CLI flag and transport.
 - **[Tools](reference/tools.md)** - the MCP tools and their parameters.
 - **[Client configuration](reference/clients.md)** - Claude Desktop, Copilot CLI, pip, and source installs.
