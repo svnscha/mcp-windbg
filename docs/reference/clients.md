@@ -68,6 +68,44 @@ Add to `claude_desktop_config.json` (at `%APPDATA%\Claude\claude_desktop_config.
 Restart Claude Desktop completely after saving. For background, see
 [Connect local MCP servers](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
+## Claude Code
+
+Register the server with `claude mcp add`. The `-s user` scope makes it available in every
+project; drop it to scope the server to the current project only. Everything after `--` is
+the command Claude Code runs:
+
+```bash
+claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg
+```
+
+If you installed the package with pip or from source, run the module directly instead of
+`uvx`:
+
+```bash
+claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
+```
+
+Either way Claude Code records the server in `.claude.json`:
+
+```json title=".claude.json"
+{
+    "mcpServers": {
+        "mcp-windbg": {
+            "type": "stdio",
+            "command": "python",
+            "args": ["-m", "mcp_windbg"],
+            "env": {
+                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
+            }
+        }
+    }
+}
+```
+
+Add server options such as a [filter script](../scenarios/redaction.md) after the command,
+for example `-- python -m mcp_windbg --filter-script C:\filters\pii_redaction.py`. Run
+`claude mcp list` to confirm it connected.
+
 ## GitHub Copilot CLI
 
 Edit `C:\Users\{username}\.copilot\mcp-config.json`:

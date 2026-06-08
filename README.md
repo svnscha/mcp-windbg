@@ -84,56 +84,19 @@ Endpoint: `http://127.0.0.1:8000/mcp`
 
 ### Filter Script Hooks
 
-Use `--filter-script` to load a small Python helper that can rewrite tool text only. The script never sees the full MCP JSON-RPC envelope, which keeps the hook surface smaller and avoids protocol interference.
-
-The script may define either or both of these functions:
-
-```python
-def process_input(text, context):
-    return text
-
-
-def process_output(text, context):
-    return text
-```
-
-- `process_input` is applied to string-valued tool arguments before the tool handler runs.
-- `process_output` is applied to `TextContent.text` values returned by tools before they go back to the client.
-- `text` is always a plain `str`.
-- `context` includes `hook`, `tool_name`, `transport`, and `call_id`.
-- Input callbacks also receive `argument_path` such as `$.command` or `$.payload.notes[0]`.
-- Output callbacks also receive `content_index` for the returned text item.
-- `call_id` is stable for the full lifetime of one tool invocation, so script writers can correlate input and output for the same call.
-- A hook may return `None` to leave the text unchanged, or return a replacement string.
-
-Example redaction filter:
-
-```python
-def process_input(text, context):
-    if context["tool_name"] == "run_windbg_cmd" and context["argument_path"] == "$.command":
-        return text.replace("user@example.com", "[redacted-email]")
-    return text
-
-
-def process_output(text, context):
-    return text.replace("user@example.com", "[redacted-email]")
-```
-
-Start the server with the filter enabled:
+Use `--filter-script` to load a small Python helper that rewrites tool text only (for example, to redact PII) without seeing the full MCP JSON-RPC envelope:
 
 ```bash
 mcp-windbg --filter-script C:\filters\pii_redaction.py
 ```
 
-The script runs in-process with the server. Treat it as trusted code.
+The script defines `process_input` and/or `process_output` callbacks and runs in-process, so treat it as trusted code. See [Redact sensitive data](https://svnscha.github.io/mcp-windbg/scenarios/redaction/) for the callback contract and a worked example.
 
+## Configuration
 
-## Configuration for Visual Studio Code
+`mcp-windbg` works with any MCP client. Two common setups are below; see the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for Claude Desktop, Copilot CLI, HTTP, and from-source.
 
-To make MCP servers available in all your workspaces, use the global user configuration:
-
-1. Press `F1`, type `>` and select **MCP: Open User Configuration**.
-2. Paste the following JSON snippet into your user configuration:
+**VS Code (GitHub Copilot)** - press `F1` and select **MCP: Open User Configuration** to enable it in every workspace:
 
 ```json
 {
@@ -150,36 +113,13 @@ To make MCP servers available in all your workspaces, use the global user config
 }
 ```
 
-This enables MCP Windbg in any workspace, without needing a local `.vscode/mcp.json` file.
+**Claude Code** - register the server from the command line:
 
-To enable a filter script, add it to the args:
-
-```json
-"args": ["-m", "mcp_windbg", "--filter-script", "C:\\filters\\pii_redaction.py"]
-```
-
-### HTTP Transport Configuration
-
-For scenarios where you need to run the MCP server separately (e.g., remote access, shared server, or debugging the server itself), you can use the HTTP transport:
-
-**1. Start the server manually:**
 ```bash
-python -m mcp_windbg --transport streamable-http --host 127.0.0.1 --port 8000
+claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
 ```
 
-**2. Configure VS Code to connect via HTTP:**
-```json
-{
-    "servers": {
-        "mcp_windbg_http": {
-            "type": "http",
-            "url": "http://localhost:8000/mcp"
-        }
-    }
-}
-```
-
-> **Workspace-specific and alternative configuration**: See the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for details on configuring Claude Desktop, Copilot CLI, and other clients, or for workspace-only setup.
+Prefer not to install the package? Replace `python -m mcp_windbg` with `uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg` in either setup to fetch and run the server on demand.
 
 Once configured, restart your MCP client and start debugging:
 
