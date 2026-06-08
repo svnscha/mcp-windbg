@@ -48,12 +48,42 @@ mcp_windbg = ["prompts/*.prompt.md"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pyyaml>=6.0.2",
+    "coverage[toml]>=7.6",
     "twine>=6.2.0",
     "jsonschema>=4.26.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["src/mcp_windbg/tests"]
+markers = [
+    "live: scenario needs a live cdb.exe (skips cleanly when absent)",
+    "remote: scenario starts a local cdb remote server (implies live)",
+]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0.2"]
+test = ["pytest>=9.0.2", "pyyaml>=6.0.2", "coverage[toml]>=7.6"]
+
+# Coverage measures the hosted server subprocess (see harness.server_command).
+# Run with MCP_WINDBG_COVERAGE=1, then `coverage combine` + `coverage report`.
+[tool.coverage.run]
+parallel = true
+branch = true
+concurrency = ["thread"]
+source = ["mcp_windbg"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+    # Defensive guards the MCP layer already enforces before these run.
+    "raise ValueError\\(\"Either dump_path",
+    "raise ValueError\\(\".* mutually exclusive",
+    # cdb.exe is always present for live tests; the not-found path cannot run.
+    "raise CDBError\\(\"Could not find cdb",
+    # Debug-only output and low-level IO error handlers (no fault injection in e2e).
+    "if self.verbose:",
+    "except IOError",
+    "except \\(IOError, ValueError\\)",
+]

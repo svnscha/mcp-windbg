@@ -1,0 +1,22 @@
+name: HTTP transport
+description: The same tools and prompts work over the streamable-http transport.
+transport: streamable-http
+steps:
+  - list_tools: true
+    expect:
+      contains:
+        - open_windbg_dump
+        - run_windbg_cmd
+
+  - get_prompt: dump-triage
+    expect:
+      contains:
+        - "Crash Dump Analysis Report"
+
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+    expect:
+      isError: false
+      contains:
+        - "crash dump file"

@@ -103,7 +103,7 @@ class CDBSession:
             cmd_args.extend(["-y", symbols_path])
 
         # Add any additional arguments
-        if additional_args:
+        if additional_args:  # pragma: no cover - not used by the server
             cmd_args.extend(additional_args)
 
         try:
@@ -121,7 +121,7 @@ class CDBSession:
                 bufsize=1,
                 creationflags=creationflags,
             )
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - Popen rarely fails once cdb is located
             raise CDBError(f"Failed to start CDB process: {str(e)}")
 
         self.output_lines = []
@@ -139,7 +139,7 @@ class CDBSession:
             raise CDBError("CDB initialization timed out")
 
         # Run initial commands if provided
-        if initial_commands:
+        if initial_commands:  # pragma: no cover - not used by the server
             for cmd in initial_commands:
                 self.send_command(cmd)
 
@@ -270,19 +270,10 @@ class CDBSession:
         except Exception as e:
             raise CDBError(f"Failed to send CTRL+BREAK: {str(e)}")
 
-    def get_session_id(self) -> str:
-        """Get a unique identifier for this CDB session."""
-        if self.dump_path:
-            return os.path.abspath(self.dump_path)
-        elif self.remote_connection:
-            return f"remote:{self.remote_connection}"
-        else:
-            raise CDBError("Session has no valid identifier")
-
-    def __enter__(self):
+    def __enter__(self):  # pragma: no cover - convenience API, not used by the server
         """Support for context manager protocol"""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb):  # pragma: no cover - convenience API, not used by the server
         """Clean up when exiting context manager"""
         self.shutdown()

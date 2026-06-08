@@ -1,0 +1,29 @@
+name: Break into a running target
+description: send_ctrl_break interrupts a running remote target so commands work again.
+requires:
+  remote:
+    target: ["waitfor.exe", "SomeSignalThatNeverComes"]   # blocks forever once resumed
+steps:
+  - call: open_windbg_remote
+    arguments:
+      connection_string: "{remote}"
+    expect:
+      isError: false
+
+  - server_input: "g"        # resume the target from the server side; it now runs
+    wait: 1.0
+
+  - call: send_ctrl_break
+    arguments:
+      connection_string: "{remote}"
+    expect:
+      contains:
+        - "Sent CTRL+BREAK"
+
+  - call: run_windbg_cmd
+    arguments:
+      connection_string: "{remote}"
+      command: "r"
+    expect:
+      contains:
+        - "Break instruction exception"

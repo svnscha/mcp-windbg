@@ -23,18 +23,7 @@ def load_prompt(name: str) -> str:
     prompts_dir = get_prompts_directory()
     prompt_path = prompts_dir / f"{name}.prompt.md"
 
-    if not prompt_path.exists():
+    if not prompt_path.exists():  # pragma: no cover - the packaged prompt file is always present
         raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
 
     return prompt_path.read_text(encoding="utf-8")
-
-
-def get_available_prompts() -> list[str]:
-    """Get a list of available prompt names.
-
-    Returns:
-        List of prompt names (without .prompt.md extension)
-    """
-    prompts_dir = get_prompts_directory()
-    prompt_files = prompts_dir.glob("*.prompt.md")
-    return [f.stem.replace(".prompt", "") for f in prompt_files]

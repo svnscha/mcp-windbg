@@ -1,0 +1,44 @@
+name: Symbol path on a reused session
+description: A symbols_path passed to an already-open session is reported, not silently dropped.
+requires:
+  cdb: true
+  dump: DemoCrash1.exe.7088.dmp
+server:
+  args: ["--timeout", "120"]
+steps:
+  - call: open_windbg_dump          # creates the session
+    arguments:
+      dump_path: "{dump}"
+      include_stack_trace: false
+      include_modules: false
+      include_threads: false
+    expect:
+      contains:
+        - "Crash Analysis"
+
+  - call: open_windbg_dump          # session already exists -> note about symbols_path
+    arguments:
+      dump_path: "{dump}"
+      symbols_path: "C:/extra/symbols"
+      include_stack_trace: false
+      include_modules: false
+      include_threads: false
+    expect:
+      contains:
+        - "already active"
+
+  - call: run_windbg_cmd            # same note via run_windbg_cmd
+    arguments:
+      dump_path: "{dump}"
+      command: "version"
+      symbols_path: "C:/extra/symbols"
+    expect:
+      contains:
+        - "already active"
+
+  - call: close_windbg_dump
+    arguments:
+      dump_path: "{dump}"
+    expect:
+      contains:
+        - "Successfully unloaded"

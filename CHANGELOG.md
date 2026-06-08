@@ -10,12 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Documentation site**: New MkDocs (Material) user guide under `docs/`, deployed to GitHub Pages via `pages.yml`. Covers getting started, the use cases, and a reference for the command-line options, tools, and client configuration. Content migrated and trimmed from the project wiki.
+- **Prompts reference**: Documented the built-in `dump-triage` MCP prompt and its `dump_path` argument (`docs/reference/prompts.md`).
 
 ### Changed
 
 - **Package metadata**: Filled in distribution metadata so `pip show` / PyPI are complete - added the author/maintainer email, project URLs (Homepage, Repository, Issues, Changelog), and classifiers for Windows, console environment, and the Debuggers/QA topics (#36)
 - **Contributor guide**: Migrated `AGENTS.md` to `CLAUDE.md` and added `.claude/rules/` (Markdown typography and documentation authoring), plus `scripts/Format-Docs.ps1` to enforce the typography rules
 - **Docs tooling**: Bumped the docs build dependencies in `requirements-docs.txt` to their latest patch floors - `mkdocs>=1.6.1`, `mkdocs-material>=9.7.6`, `pymdown-extensions>=10.21.3` (consolidates #51, #52, #53)
+- **Test suite**: Replaced the ad-hoc tests with a declarative end-to-end harness. Each `tests/scenarios/*.yaml` runs against a really-hosted `python -m mcp_windbg` server driven by a real MCP client (only the LLM is faked). Live scenarios carry `live`/`remote` markers and skip cleanly without CDB, so `-m "not live"` runs anywhere. Adds `pyyaml` as a dev dependency.
+- **Coverage**: The harness hosts the server under `coverage run --parallel-mode` (set `MCP_WINDBG_COVERAGE`), so coverage reflects the subprocess where tool dispatch runs rather than the test process. The suite reaches 90%+; CI enforces a floor with `coverage report --fail-under=88` (margin below the ~91% actual for cross-version and cdb-output jitter). Code that cannot be line-measured end-to-end (the streamable-http transport on Windows, atexit cleanup, debug-only and defensive branches) is excluded with documented `# pragma: no cover` and `exclude_also` rules. Adds `coverage` as a dev dependency.
+- **LFS dumps are mandatory**: a scenario whose `requires.dump` file is missing now hard-fails (run `git lfs pull`) instead of skipping, so a half-set-up checkout is a loud error rather than silent green.
+
+### Removed
+
+- **Dead code**: Removed three unused functions surfaced while raising test coverage - `server.execute_common_analysis_commands`, `CDBSession.get_session_id`, and `prompts.get_available_prompts`. None had callers.
 
 ### Fixed
 

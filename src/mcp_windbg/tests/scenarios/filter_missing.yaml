@@ -1,0 +1,5 @@
+name: Missing filter script fails fast
+description: A --filter-script path that does not exist stops the server from starting.
+negative_launch: true
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/does-not-exist.py"]

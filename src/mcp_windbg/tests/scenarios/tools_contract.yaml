@@ -1,0 +1,13 @@
+name: Tools contract
+description: The server advertises exactly the seven documented tools.
+steps:
+  - list_tools: true
+    expect:
+      contains:
+        - list_windbg_dumps
+        - open_windbg_dump
+        - close_windbg_dump
+        - open_windbg_remote
+        - close_windbg_remote
+        - run_windbg_cmd
+        - send_ctrl_break

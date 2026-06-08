@@ -1,0 +1,33 @@
+name: Tool argument validation
+description: The mutually-exclusive target rules are enforced for tool arguments.
+steps:
+  - call: run_windbg_cmd      # neither dump_path nor connection_string
+    arguments:
+      command: "k"
+    expect:
+      isError: true
+
+  - call: run_windbg_cmd      # both targets at once
+    arguments:
+      command: "k"
+      dump_path: "C:/nope.dmp"
+      connection_string: "tcp:Port=5005,Server=127.0.0.1"
+    expect:
+      isError: true
+
+  - call: send_ctrl_break     # neither target
+    arguments: {}
+    expect:
+      isError: true
+
+  - call: send_ctrl_break     # both targets at once
+    arguments:
+      dump_path: "C:/nope.dmp"
+      connection_string: "tcp:Port=5005,Server=127.0.0.1"
+    expect:
+      isError: true
+
+  - call: definitely_not_a_tool   # unknown tool name
+    arguments: {}
+    expect:
+      isError: true

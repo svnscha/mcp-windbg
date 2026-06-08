@@ -1,0 +1,5 @@
+name: Invalid filter script fails fast
+description: A filter script with no hooks is rejected, so the server fails to start.
+negative_launch: true
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/broken.py"]

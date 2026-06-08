@@ -1,0 +1,11 @@
+name: Open a dump that does not exist
+description: A non-existent dump path is reported as a tool error, not a crash.
+steps:
+  - call: open_windbg_dump
+    arguments:
+      dump_path: "C:/does/not/exist/nope.dmp"
+      include_stack_trace: false
+      include_modules: false
+      include_threads: false
+    expect:
+      isError: true

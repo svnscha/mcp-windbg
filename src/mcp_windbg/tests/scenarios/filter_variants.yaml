@@ -1,0 +1,13 @@
+name: Filter variant - input only
+description: A filter with only process_input leaves output untouched; non-string args pass through.
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/input_only.py"]
+steps:
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+      recursive: true           # a non-string argument exercises the leaf passthrough
+    expect:
+      isError: false
+      contains:
+        - "crash dump file"     # unchanged, since there is no process_output

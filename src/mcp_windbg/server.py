@@ -7,7 +7,7 @@ import uuid
 from typing import Dict, Optional
 from contextlib import asynccontextmanager
 
-from .cdb_session import CDBSession, CDBError
+from .cdb_session import CDBSession
 from .filter_script import FilterScript, load_filter_script
 from .prompts import load_prompt
 
@@ -203,25 +203,6 @@ def unload_session(dump_path: Optional[str] = None, connection_string: Optional[
     return False
 
 
-def execute_common_analysis_commands(session: CDBSession) -> dict:
-    """
-    Execute common analysis commands and return the results.
-
-    Returns a dictionary with the results of various analysis commands.
-    """
-    results = {}
-
-    try:
-        results["info"] = session.send_command(".lastevent")
-        results["exception"] = session.send_command("!analyze -v")
-        results["modules"] = session.send_command("lm")
-        results["threads"] = session.send_command("~")
-    except CDBError as e:
-        results["error"] = str(e)
-
-    return results
-
-
 async def serve(
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
@@ -253,7 +234,7 @@ async def serve(
         await server.run(read_stream, write_stream, options)
 
 
-async def serve_http(
+async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage on Windows teardown (verified e2e in http_transport.yaml)
     host: str = "127.0.0.1",
     port: int = 8000,
     cdb_path: Optional[str] = None,
@@ -714,7 +695,7 @@ def _create_server(
 
 
 # Clean up function to ensure all sessions are closed when the server exits
-def cleanup_sessions():
+def cleanup_sessions():  # pragma: no cover - atexit handler, runs after coverage stops
     """Close all active CDB sessions."""
     for dump_path, session in active_sessions.items():
         try:
