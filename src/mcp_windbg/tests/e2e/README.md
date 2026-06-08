@@ -16,8 +16,10 @@ uv run pytest src/mcp_windbg/tests/ -v                 # everything (needs CDB f
 uv run pytest src/mcp_windbg/tests/ -v -m "not live"   # hermetic subset, no debugger needed
 ```
 
-A scenario that needs a debugger is skipped (never failed) when `cdb.exe` or its
-Git LFS dump is missing.
+A scenario that needs a debugger is skipped (never failed) when `cdb.exe` is
+missing. The Git LFS dumps are mandatory: a scenario whose `requires.dump` file
+is absent hard-fails (run `git lfs pull`), so a half-set-up checkout is a loud
+error rather than silent green.
 
 ## Coverage
 
@@ -36,10 +38,17 @@ uv run coverage report
 Run the full suite (with CDB) for meaningful numbers; the live scenarios are what
 exercise `cdb_session.py` and the dump/remote code paths.
 
-`streamable-http` scenarios are hard-terminated on teardown (there is no graceful
-stdin EOF as with stdio), so on Windows the HTTP server process cannot flush its
-coverage data. Those scenarios still verify the transport behaviorally; the
-`serve_http` lines just are not counted.
+The suite holds at 90%+ and CI enforces it (`coverage report --fail-under=90`).
+Code that genuinely cannot be line-measured end-to-end is excluded in
+`pyproject.toml` (`exclude_also`) or with a commented `# pragma: no cover`:
+
+- the `streamable-http` transport, which is hard-terminated on Windows teardown
+  (no graceful stdin EOF), so the process cannot flush its coverage. The HTTP
+  scenario still verifies the transport behaviorally; the `serve_http` lines just
+  are not counted;
+- the atexit session cleanup (runs after coverage stops);
+- debug-only output and low-level IO error handlers, and defensive guards the
+  MCP layer already enforces before they could run.
 
 ## Scenario format
 
@@ -49,9 +58,9 @@ description: One line of intent.
 
 transport: stdio                    # optional: stdio (default) or streamable-http
 
-requires:                           # all optional; control clean skipping
+requires:                           # all optional
   cdb: true                         # skip if no cdb.exe is installed
-  dump: DemoCrash1.exe.7088.dmp     # skip if this dump is not present (LFS)
+  dump: DemoCrash1.exe.7088.dmp     # mandatory LFS dump; missing it hard-fails
   remote: true                      # start a local cdb .server; bind {remote}
   # remote can also be a mapping to pick the debugged target:
   # remote: { target: ["waitfor.exe", "NoSuchSignal"] }

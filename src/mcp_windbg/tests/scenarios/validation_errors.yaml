@@ -20,6 +20,13 @@ steps:
     expect:
       isError: true
 
+  - call: send_ctrl_break     # both targets at once
+    arguments:
+      dump_path: "C:/nope.dmp"
+      connection_string: "tcp:Port=5005,Server=127.0.0.1"
+    expect:
+      isError: true
+
   - call: definitely_not_a_tool   # unknown tool name
     arguments: {}
     expect:

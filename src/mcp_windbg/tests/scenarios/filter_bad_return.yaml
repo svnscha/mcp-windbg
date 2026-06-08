@@ -1,0 +1,10 @@
+name: Filter variant - non-string return is a tool error
+description: A hook that returns a non-string surfaces as a tool error.
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/bad_return.py"]
+steps:
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+    expect:
+      isError: true

@@ -75,3 +75,15 @@ omit = ["*/tests/*"]
 
 [tool.coverage.report]
 show_missing = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+    # Defensive guards the MCP layer already enforces before these run.
+    "raise ValueError\\(\"Either dump_path",
+    "raise ValueError\\(\".* mutually exclusive",
+    # cdb.exe is always present for live tests; the not-found path cannot run.
+    "raise CDBError\\(\"Could not find cdb",
+    # Debug-only output and low-level IO error handlers (no fault injection in e2e).
+    "if self.verbose:",
+    "except IOError",
+    "except \\(IOError, ValueError\\)",
+]

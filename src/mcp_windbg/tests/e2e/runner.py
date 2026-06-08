@@ -67,16 +67,16 @@ def scenario_markers(scenario: dict[str, Any]) -> set[str]:
 
 
 def skip_reason(scenario: dict[str, Any]) -> Optional[str]:
-    """Why this scenario should be skipped on this machine, or None to run."""
+    """Why this scenario should be skipped on this machine, or None to run.
+
+    Only a missing cdb.exe causes a skip. The Git LFS dumps are mandatory - a
+    scenario that needs one hard-fails (see run_scenario) rather than skipping,
+    so a repo without `git lfs pull` is a loud error, not silent green.
+    """
     requires = _requires(scenario)
     needs_cdb = bool(requires.get("cdb")) or _remote_spec(scenario) is not None
     if needs_cdb and not harness.cdb_available():
         return "cdb.exe not found"
-
-    dump = requires.get("dump")
-    if dump and not harness.dump_file(dump).exists():
-        return f"dump '{dump}' not present (run `git lfs pull`)"
-
     return None
 
 
@@ -97,7 +97,12 @@ async def run_scenario(scenario: dict[str, Any]) -> None:
     }
     dump = _requires(scenario).get("dump")
     if dump:
-        mapping["dump"] = str(harness.dump_file(dump))
+        dump_path = harness.dump_file(dump)
+        assert dump_path.exists(), (
+            f"required dump '{dump}' is missing at {dump_path}; the LFS dumps are "
+            f"mandatory - run `git lfs pull`"
+        )
+        mapping["dump"] = str(dump_path)
     cdb = harness.find_cdb()
     if cdb:
         mapping["cdb"] = cdb
@@ -144,7 +149,13 @@ async def _run_stdio(scenario, server_args, remote_server, mapping, timeout) -> 
 
 
 async def _run_http(scenario, server_args, remote_server, mapping, timeout) -> None:
-    """Host the server over the streamable-http transport and drive it over HTTP."""
+    """Host the server over the streamable-http transport and drive it over HTTP.
+
+    This is a behavioral test of the transport. The HTTP server cannot flush
+    coverage on Windows teardown (asyncio's Proactor loop does not deliver the
+    shutdown signal, so the process is hard-killed), which is why serve_http is
+    excluded from coverage in pyproject.toml.
+    """
     port = harness.free_port()
     command, args = harness.server_command(
         ["--transport", "streamable-http", "--host", "127.0.0.1", "--port", str(port), *server_args]

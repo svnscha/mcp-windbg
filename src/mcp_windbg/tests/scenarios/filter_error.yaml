@@ -1,0 +1,10 @@
+name: Filter error surfaces as a tool error
+description: A hook that raises is reported as a tool error, not a server crash.
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/raising.py"]
+steps:
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+    expect:
+      isError: true

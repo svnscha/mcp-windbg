@@ -1,0 +1,5 @@
+name: Filter variant - zero-arg hook fails fast
+description: A hook that accepts no arguments is rejected, so the server fails to start.
+negative_launch: true
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/zero_arg.py"]

@@ -1,0 +1,26 @@
+name: Combine server and per-call symbol paths
+description: A server --symbols-path and a per-call symbols_path are merged for a new session.
+requires:
+  cdb: true
+  dump: DemoCrash1.exe.7088.dmp
+server:
+  args: ["--symbols-path", "C:/server-symbols", "--timeout", "120"]
+steps:
+  - call: open_windbg_dump
+    arguments:
+      dump_path: "{dump}"
+      symbols_path: "C:/call-symbols"
+      include_stack_trace: false
+      include_modules: false
+      include_threads: false
+    expect:
+      isError: false
+      contains:
+        - "Crash Analysis"
+
+  - call: close_windbg_dump
+    arguments:
+      dump_path: "{dump}"
+    expect:
+      contains:
+        - "Successfully unloaded"

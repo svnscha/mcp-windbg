@@ -1,7 +1,7 @@
 name: List crash dumps
 description: list_windbg_dumps finds dumps in a directory and errors on a bad path.
 requires:
-  dump: DemoCrash1.exe.7088.dmp   # skip if the LFS dump is not pulled
+  dump: DemoCrash1.exe.7088.dmp   # mandatory LFS dump; missing it hard-fails
 steps:
   - call: list_windbg_dumps
     arguments:

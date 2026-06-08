@@ -40,7 +40,7 @@ def main():
             verbose=args.verbose,
             auto_dump_dir_symbols=auto_dump_dir_symbols
         ))
-    else:
+    else:  # pragma: no cover - HTTP transport is verified behaviorally (http_transport.yaml), not line-counted
         asyncio.run(serve_http(
             host=args.host,
             port=args.port,

@@ -52,7 +52,7 @@ jobs:
         uv run coverage erase
         uv run pytest src/mcp_windbg/tests/ -v --tb=short
         uv run coverage combine
-        uv run coverage report --fail-under=60
+        uv run coverage report --fail-under=90
 
     - name: Test CLI entry point
       run: |

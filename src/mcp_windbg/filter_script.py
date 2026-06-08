@@ -20,7 +20,7 @@ def load_filter_script(script_path: str) -> "FilterScript":
 
     module_name = f"mcp_windbg_filter_{path.stem}_{abs(hash(str(path)))}"
     spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
+    if spec is None or spec.loader is None:  # pragma: no cover - importlib returns a spec for any real file
         raise RuntimeError(f"Unable to load filter script: {path}")
 
     module = importlib.util.module_from_spec(spec)
@@ -65,7 +65,7 @@ class FilterScript:
         if self._process_input_callback is None:
             return arguments
 
-        if arguments is None:
+        if arguments is None:  # pragma: no cover - the server passes {} for missing arguments, never None
             return None
 
         return self._transform_value(
@@ -112,7 +112,7 @@ class FilterScript:
                 )
                 continue
 
-            transformed_content.append(item)
+            transformed_content.append(item)  # pragma: no cover - tool output is always TextContent
 
         return transformed_content
 
@@ -151,7 +151,7 @@ class FilterScript:
             next_context["argument_path"] = path
             return self._apply_callback(value, callback, next_context)
 
-        if isinstance(value, list):
+        if isinstance(value, list):  # pragma: no cover - no tool takes list-valued arguments
             return [
                 self._transform_value(
                     value=item,

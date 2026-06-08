@@ -1,0 +1,27 @@
+name: Filter redacts input and output
+description: process_input rewrites tool arguments and process_output rewrites results.
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/redact.py"]
+steps:
+  # process_input: 'secret' in the path argument is redacted before the tool runs,
+  # so the not-found error echoes the redacted path.
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}/secret-folder"
+    expect:
+      isError: true
+      contains:
+        - "[redacted]"
+      not_contains:
+        - "secret"
+
+  # process_output: a successful result is rewritten on the way back.
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+    expect:
+      isError: false
+      contains:
+        - "CRASH_DUMP_FILE"
+      not_contains:
+        - "crash dump file"
