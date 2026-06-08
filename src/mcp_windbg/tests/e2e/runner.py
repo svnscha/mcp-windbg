@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -18,6 +19,7 @@ from typing import Any, Optional
 import anyio
 import pytest
 import yaml
+from anyio import BrokenResourceError, ClosedResourceError
 
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -26,8 +28,22 @@ from mcp.shared.exceptions import McpError
 
 from . import harness
 
+if sys.version_info < (3, 11):  # BaseExceptionGroup is a builtin from 3.11 on
+    from exceptiongroup import BaseExceptionGroup
+
 # Generous default; opening a dump and running !analyze -v can take a while.
 DEFAULT_TIMEOUT = 180
+
+# Stream-cleanup errors the MCP client can raise during teardown when the server
+# exits at the same moment the client closes. Harmless once all steps have run.
+_TEARDOWN_NOISE = (BrokenResourceError, ClosedResourceError)
+
+
+def _is_teardown_noise(exc: BaseException) -> bool:
+    """True if exc is only transport-teardown noise, not a real test failure."""
+    if isinstance(exc, BaseExceptionGroup):
+        return bool(exc.exceptions) and all(_is_teardown_noise(e) for e in exc.exceptions)
+    return isinstance(exc, _TEARDOWN_NOISE)
 
 
 def load_scenario(path: Path) -> dict[str, Any]:
@@ -141,11 +157,19 @@ async def _run_stdio(scenario, server_args, remote_server, mapping, timeout) -> 
         args=args,
         env=dict(os.environ),  # keep LOCALAPPDATA etc. so cdb discovery works
     )
-    with anyio.fail_after(timeout):
-        async with stdio_client(params) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                await _run_steps(scenario, session, remote_server, mapping)
+    completed = False
+    try:
+        with anyio.fail_after(timeout):
+            async with stdio_client(params) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    await _run_steps(scenario, session, remote_server, mapping)
+                    completed = True
+    except BaseException as exc:
+        # Ignore stream-cleanup noise that surfaces only after every step ran.
+        if completed and _is_teardown_noise(exc):
+            return
+        raise
 
 
 async def _run_http(scenario, server_args, remote_server, mapping, timeout) -> None:
@@ -161,15 +185,21 @@ async def _run_http(scenario, server_args, remote_server, mapping, timeout) -> N
         ["--transport", "streamable-http", "--host", "127.0.0.1", "--port", str(port), *server_args]
     )
     process = subprocess.Popen([command, *args], env=dict(os.environ))
+    completed = False
     try:
         if not harness.wait_for_port(port, timeout=min(timeout, 30)):
             raise AssertionError(f"[{scenario['name']}]: HTTP server never bound to port {port}")
         url = f"http://127.0.0.1:{port}/mcp"
-        with anyio.fail_after(timeout):
-            async with streamable_http_client(url) as (read_stream, write_stream, _):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    await _run_steps(scenario, session, remote_server, mapping)
+        try:
+            with anyio.fail_after(timeout):
+                async with streamable_http_client(url) as (read_stream, write_stream, _):
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        await _run_steps(scenario, session, remote_server, mapping)
+                        completed = True
+        except BaseException as exc:
+            if not (completed and _is_teardown_noise(exc)):
+                raise
     finally:
         process.terminate()
         try:

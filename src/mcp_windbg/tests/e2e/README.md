@@ -38,8 +38,9 @@ uv run coverage report
 Run the full suite (with CDB) for meaningful numbers; the live scenarios are what
 exercise `cdb_session.py` and the dump/remote code paths.
 
-The suite holds at 90%+ and CI enforces it (`coverage report --fail-under=90`).
-Code that genuinely cannot be line-measured end-to-end is excluded in
+The suite holds at ~91%. CI enforces a floor with `coverage report --fail-under=88`;
+the margin absorbs small cross-version and cdb-output differences across the
+Windows matrix. Code that genuinely cannot be line-measured end-to-end is excluded in
 `pyproject.toml` (`exclude_also`) or with a commented `# pragma: no cover`:
 
 - the `streamable-http` transport, which is hard-terminated on Windows teardown
