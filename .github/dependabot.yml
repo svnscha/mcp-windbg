@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Python dependencies from pyproject.toml
+  # Python dependencies (pyproject.toml and requirements-docs.txt)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -17,13 +17,12 @@ updates:
     commit-message:
       prefix: "deps(python)"
     groups:
-      # Group minor/patch updates together to reduce noise
-      python-minor:
+      # One PR for every pip update across all manifests in this directory
+      # (pyproject.toml and requirements-docs.txt). Omitting update-types means
+      # major bumps join the group too, instead of each opening its own PR.
+      python:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
 
   # GitHub Actions workflow dependencies
   - package-ecosystem: "github-actions"
