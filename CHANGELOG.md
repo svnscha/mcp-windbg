@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Package metadata**: Filled in distribution metadata so `pip show` / PyPI are complete - added the author/maintainer email, project URLs (Homepage, Repository, Issues, Changelog), and classifiers for Windows, console environment, and the Debuggers/QA topics (#36)
 - **Contributor guide**: Migrated `AGENTS.md` to `CLAUDE.md` and added `.claude/rules/` (Markdown typography and documentation authoring), plus `scripts/Format-Docs.ps1` to enforce the typography rules
+- **Docs tooling**: Bumped the docs build dependencies in `requirements-docs.txt` to their latest patch floors - `mkdocs>=1.6.1`, `mkdocs-material>=9.7.6`, `pymdown-extensions>=10.21.3` (consolidates #51, #52, #53)
 
 ### Fixed
 
