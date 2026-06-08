@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Documentation site**: New MkDocs (Material) user guide under `docs/`, deployed to GitHub Pages via `pages.yml`. Covers getting started, the use cases, and a reference for the command-line options, tools, and client configuration. Content migrated and trimmed from the project wiki.
 - **Prompts reference**: Documented the built-in `dump-triage` MCP prompt and its `dump_path` argument (`docs/reference/prompts.md`).
+- **Usage guide coverage**: New use-case pages for running the server over HTTP (`Debug from another machine`) and scrubbing tool output (`Redact sensitive data`), plus WER auto-capture setup in the triage guide and the `dump-triage` prompt in the crash-dump guide. Documented the HTTP transport's lack of authentication, that attach-by-PID is unsupported, and that sessions are concurrent.
 
 ### Changed
 

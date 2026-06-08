@@ -70,6 +70,27 @@ Cannot connect to a remote target:
 - Note that kernel-mode (`-k`) debugging is not supported, see
   [Debug a remote target](scenarios/remote-debugging.md).
 
+## HTTP transport will not connect
+
+Using the [streamable-http transport](reference/cli.md#transports) and the client cannot reach
+the server:
+
+- The endpoint includes the `/mcp` path, for example `http://host:8000/mcp`.
+- The server binds `127.0.0.1` by default. To reach it from another machine, start it with
+  `--host 0.0.0.0` and open the port in the host firewall.
+- There is no authentication, so keep it on localhost or a trusted network, see
+  [Debug from another machine](scenarios/http-service.md).
+
+## Filter script stops the server from starting
+
+A [`--filter-script`](reference/cli.md#filter-script-hooks) that fails to load:
+
+- The script must define `process_input` and/or `process_output`; a file with neither is
+  rejected. Check the path and that the file is valid Python.
+- Startup errors appear in the client's MCP output (in VS Code, **Output -> Model Context
+  Protocol**).
+- A hook that raises at runtime is reported as a tool error, not a crash; check its logic.
+
 ## Server crashes when run directly in a terminal
 
 `mcp-windbg` speaks MCP over stdin/stdout; it is meant to be launched by a client, not typed

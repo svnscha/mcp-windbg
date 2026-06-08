@@ -35,7 +35,7 @@ Create `.vscode/mcp.json` in your workspace, or use **MCP: Open User Configurati
 Then enable MCP: settings (++ctrl+comma++) -> search **MCP** -> enable **Model Context
 Protocol** in Copilot Chat, and restart VS Code.
 
-To pass server options such as a [filter script](cli.md#filter-script-hooks) or a custom CDB
+To pass server options such as a [filter script](../scenarios/redaction.md) or a custom CDB
 path, add them to `args`:
 
 ```json
@@ -118,6 +118,9 @@ Then point the client at the endpoint:
     }
 }
 ```
+
+This transport has no authentication, so keep it on localhost or a trusted network. See
+[Debug from another machine](../scenarios/http-service.md) for the full workflow.
 
 ## Other install methods
 

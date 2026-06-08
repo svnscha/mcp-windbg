@@ -51,7 +51,12 @@ mcp-windbg --transport streamable-http --host 127.0.0.1 --port 8000
 ```
 
 The endpoint is then `http://127.0.0.1:8000/mcp`. See
-[Client configuration](clients.md#http-transport) for the matching client snippet.
+[Client configuration](clients.md#http-transport) for the matching client snippet and
+[Debug from another machine](../scenarios/http-service.md) for the full workflow.
+
+!!! warning "The HTTP transport has no authentication"
+    Anyone who can reach the port can drive `cdb.exe` on the host. Keep `--host 127.0.0.1`, or
+    expose it only on a trusted network or behind an SSH tunnel or authenticating proxy.
 
 ## Symbols and CDB
 
@@ -71,8 +76,9 @@ Per-call symbol paths are also available on some tools, see
 ## Filter script hooks
 
 Use `--filter-script` to load a small Python helper that rewrites **tool text only**, for
-example to redact PII before it leaves the machine. The script never sees the full MCP
-JSON-RPC envelope, which keeps the hook surface small and avoids protocol interference. It
+example to [redact PII](../scenarios/redaction.md) before it leaves the machine. The script
+never sees the full MCP JSON-RPC envelope, which keeps the hook surface small and avoids
+protocol interference. It
 runs in-process with the server, so treat it as trusted code.
 
 The script may define either or both of these functions:
