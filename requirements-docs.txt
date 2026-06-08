@@ -5,4 +5,4 @@
 # Mermaid diagrams use a small self-contained loader (docs/assets/mermaid.js).
 mkdocs>=1.6
 mkdocs-material>=9.7
-pymdown-extensions>=10.21
+pymdown-extensions>=10.21.3
