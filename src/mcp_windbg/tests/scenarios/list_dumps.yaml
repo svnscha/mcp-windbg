@@ -1,0 +1,28 @@
+name: List crash dumps
+description: list_windbg_dumps finds dumps in a directory and errors on a bad path.
+requires:
+  dump: DemoCrash1.exe.7088.dmp   # skip if the LFS dump is not pulled
+steps:
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+    expect:
+      contains:
+        - "crash dump file"
+        - DemoCrash1.exe.7088.dmp
+
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+      recursive: true
+    expect:
+      contains:
+        - DemoCrash1.exe.7088.dmp
+
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}/does-not-exist"
+    expect:
+      isError: true
+      contains:
+        - "Directory not found"

@@ -1,0 +1,33 @@
+name: Run commands on a dump
+description: run_windbg_cmd auto-creates a session and returns raw command output.
+requires:
+  cdb: true
+  dump: DemoCrash1.exe.7088.dmp
+server:
+  args: ["--timeout", "120"]
+steps:
+  - call: run_windbg_cmd
+    arguments:
+      dump_path: "{dump}"
+      command: "version"
+    expect:
+      isError: false
+      contains:
+        - "Command: version"
+        - "Microsoft (R) Windows Debugger"
+
+  - call: run_windbg_cmd
+    arguments:
+      dump_path: "{dump}"
+      command: "lm"
+    expect:
+      contains:
+        - "Command: lm"
+        - start
+
+  - call: close_windbg_dump
+    arguments:
+      dump_path: "{dump}"
+    expect:
+      contains:
+        - "Successfully unloaded"

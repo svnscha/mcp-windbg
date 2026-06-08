@@ -1,0 +1,23 @@
+name: Explicit cdb path
+description: --cdb-path is honored when locating the debugger.
+requires:
+  cdb: true
+  dump: DemoCrash1.exe.7088.dmp
+server:
+  args: ["--cdb-path", "{cdb}", "--timeout", "120"]
+steps:
+  - call: run_windbg_cmd
+    arguments:
+      dump_path: "{dump}"
+      command: "version"
+    expect:
+      isError: false
+      contains:
+        - "Microsoft (R) Windows Debugger"
+
+  - call: close_windbg_dump
+    arguments:
+      dump_path: "{dump}"
+    expect:
+      contains:
+        - "Successfully unloaded"

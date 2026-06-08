@@ -85,6 +85,7 @@ nav:
       - Overview: reference/index.md
       - Command-line options: reference/cli.md
       - Tools: reference/tools.md
+      - Prompts: reference/prompts.md
       - Client configuration: reference/clients.md
   - Troubleshooting: troubleshooting.md
 

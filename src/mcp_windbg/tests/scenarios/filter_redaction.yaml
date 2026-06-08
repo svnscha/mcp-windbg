@@ -1,0 +1,13 @@
+name: Filter script rewrites output
+description: A --filter-script loaded by the real server rewrites tool output text.
+server:
+  args: ["--filter-script", "{scenarios_dir}/filters/uppercase.py"]
+steps:
+  - call: list_windbg_dumps
+    arguments:
+      directory_path: "{dumps_dir}"
+    expect:
+      contains:
+        - "CRASH DUMP FILE"     # uppercased by the filter
+      not_contains:
+        - "crash dump file"     # original casing must be gone

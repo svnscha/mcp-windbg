@@ -45,8 +45,14 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev
 
-    - name: Run tests
-      run: uv run pytest src/mcp_windbg/tests/ -v --tb=short
+    - name: Run tests with coverage
+      env:
+        MCP_WINDBG_COVERAGE: "1"   # measure the hosted server subprocess
+      run: |
+        uv run coverage erase
+        uv run pytest src/mcp_windbg/tests/ -v --tb=short
+        uv run coverage combine
+        uv run coverage report --fail-under=60
 
     - name: Test CLI entry point
       run: |
