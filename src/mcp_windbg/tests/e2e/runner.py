@@ -35,7 +35,16 @@ if sys.version_info < (3, 11):  # BaseExceptionGroup is a builtin from 3.11 on
 DEFAULT_TIMEOUT = 180
 
 # Stream-cleanup errors the MCP client can raise during teardown when the server
-# exits at the same moment the client closes. Harmless once all steps have run.
+# emits a trailing stdout line while the client is closing its read stream.
+#
+# Root cause is an upstream SDK race: mcp.client.stdio.stdio_client's
+# stdout_reader catches anyio.ClosedResourceError but not BrokenResourceError
+# around its read_stream_writer.send(), so a send into a just-closed receiver
+# escapes as a BrokenResourceError inside the task group's ExceptionGroup.
+# Confirmed still present in mcp 1.27.2 (the latest at the time of writing), so
+# bumping the dependency does not fix it. We suppress it only after every step
+# has completed, so a real failure (which raises before `completed` is set) is
+# never masked.
 _TEARDOWN_NOISE = (BrokenResourceError, ClosedResourceError)
 
 
