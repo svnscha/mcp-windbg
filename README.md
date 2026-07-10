@@ -119,6 +119,14 @@ The script defines `process_input` and/or `process_output` callbacks and runs in
 claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
 ```
 
+**Autohand Code** - register the installed stdio server from the command line:
+
+```bash
+autohand mcp add mcp-windbg python -m mcp_windbg
+```
+
+The server inherits `_NT_SYMBOL_PATH` from the environment that launches [Autohand Code](https://github.com/autohandai/code-cli/). Add `--scope project` after `mcp add` to keep the registration in the current workspace.
+
 Prefer not to install the package? Replace `python -m mcp_windbg` with `uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg` in either setup to fetch and run the server on demand.
 
 Once configured, restart your MCP client and start debugging:
