@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs**: Documented Autohand Code as an MCP client in `docs/reference/clients.md` (`autohand mcp add` with `--scope project`), noting that the server inherits `_NT_SYMBOL_PATH` from the launching environment since Autohand has no per-server env flag (#63).
 - **Dependencies**: Refreshed the runtime dependency floors to their latest releases - `mcp>=1.28.1`, `pydantic>=2.13.4`, `starlette>=1.3.1` (0.x to 1.x), `uvicorn>=0.51.0` - and the test tooling floor `pytest>=9.1.1`, and regenerated `uv.lock`. The streamable-http transport was smoke-tested against the Starlette 1.x major bump.
 - **Docs**: Switched the README Star History chart to the sealed-token star-history.com embed with light and dark variants.
+- **Docs**: Added a Development page (`docs/development.md`) covering the editable user-mode install (`pip install --user -e .`), the `uv` alternative, building a wheel, and pointing Claude Code / Claude Desktop / VS Code at the local dev build.
 
 ## [0.15.0] - 2026-06-08
 
