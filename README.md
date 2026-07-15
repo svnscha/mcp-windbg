@@ -157,6 +157,7 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 | **[Tools Reference](https://svnscha.github.io/mcp-windbg/reference/tools/)** | The MCP tools and their parameters |
 | **[Client configuration](https://svnscha.github.io/mcp-windbg/reference/clients/)** | VS Code, Claude Desktop, Copilot CLI, pip, and source |
 | **[Troubleshooting](https://svnscha.github.io/mcp-windbg/troubleshooting/)** | Common issues and solutions |
+| **[Development](https://svnscha.github.io/mcp-windbg/development/)** | Run from a local checkout and point a client at the dev build |
 
 ## Examples
 

@@ -90,6 +90,7 @@ nav:
       - Prompts: reference/prompts.md
       - Client configuration: reference/clients.md
   - Troubleshooting: troubleshooting.md
+  - Development: development.md
 
 plugins:
   - search
