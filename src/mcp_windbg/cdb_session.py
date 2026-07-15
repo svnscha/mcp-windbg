@@ -31,11 +31,54 @@ class CDBError(Exception):
     """Custom exception for CDB-related errors"""
     pass
 
+
+def build_cdb_args(
+    cdb_path: str,
+    dump_path: Optional[str] = None,
+    remote_connection: Optional[str] = None,
+    kernel_connection: Optional[str] = None,
+    symbols_path: Optional[str] = None,
+    additional_args: Optional[List[str]] = None,
+) -> List[str]:
+    """Assemble the cdb.exe command line for a session.
+
+    Exactly one of ``dump_path``, ``remote_connection``, or ``kernel_connection``
+    selects how the debugger attaches:
+
+    - ``dump_path`` opens a crash dump with ``-z``.
+    - ``remote_connection`` attaches a user-mode debugger *client* to an existing
+      debug *server* with ``-remote`` (e.g. ``tcp:Port=5005,Server=host``).
+    - ``kernel_connection`` attaches to a kernel target with ``-k`` (KDNET
+      ``net:port=,key=``, named pipe ``com:pipe,port=\\\\.\\pipe\\name,...``, or
+      serial ``com:port=COM1,baud=115200``).
+
+    ``-remote`` and ``-k`` are different mechanisms: ``-remote`` cannot drive a
+    kernel cable and ``-k`` cannot drive a user-mode debug server.
+    """
+    cmd_args = [cdb_path]
+
+    if dump_path:
+        cmd_args.extend(["-z", dump_path])
+    elif remote_connection:
+        cmd_args.extend(["-remote", remote_connection])
+    elif kernel_connection:  # pragma: no cover - kernel attach needs a live target; covered by test_build_cdb_args and tests/e2e/manual-verification.md
+        cmd_args.extend(["-k", kernel_connection])
+
+    if symbols_path:
+        cmd_args.extend(["-y", symbols_path])
+
+    if additional_args:  # pragma: no cover - not used by the server; covered by test_build_cdb_args
+        cmd_args.extend(additional_args)
+
+    return cmd_args
+
+
 class CDBSession:
     def __init__(
         self,
         dump_path: Optional[str] = None,
         remote_connection: Optional[str] = None,
+        kernel_connection: Optional[str] = None,
         cdb_path: Optional[str] = None,
         symbols_path: Optional[str] = None,
         initial_commands: Optional[List[str]] = None,
@@ -48,8 +91,9 @@ class CDBSession:
         Initialize a new CDB debugging session.
 
         Args:
-            dump_path: Path to the crash dump file (mutually exclusive with remote_connection)
-            remote_connection: Remote debugging connection string (e.g., "tcp:Port=5005,Server=192.168.0.100")
+            dump_path: Path to the crash dump file (mutually exclusive with the connection args)
+            remote_connection: User-mode remote debug server string (e.g., "tcp:Port=5005,Server=192.168.0.100"), launched with -remote
+            kernel_connection: Kernel debug connection string (e.g., "net:port=50000,key=..."), launched with -k
             cdb_path: Custom path to cdb.exe. If None, will try to find it automatically
             symbols_path: Custom symbols path. If None, uses default Windows symbols
             initial_commands: List of commands to run when CDB starts
@@ -62,17 +106,19 @@ class CDBSession:
             FileNotFoundError: If the dump file cannot be found
             ValueError: If invalid parameters are provided
         """
-        # Validate that exactly one of dump_path or remote_connection is provided
-        if not dump_path and not remote_connection:
-            raise ValueError("Either dump_path or remote_connection must be provided")
-        if dump_path and remote_connection:
-            raise ValueError("dump_path and remote_connection are mutually exclusive")
+        # Validate that exactly one connection source is provided
+        provided = [c for c in (dump_path, remote_connection, kernel_connection) if c]
+        if not provided:
+            raise ValueError("Either dump_path, remote_connection, or kernel_connection must be provided")
+        if len(provided) > 1:
+            raise ValueError("dump_path, remote_connection, and kernel_connection are mutually exclusive")
 
         if dump_path and not os.path.isfile(dump_path):
             raise FileNotFoundError(f"Dump file not found: {dump_path}")
 
         self.dump_path = dump_path
         self.remote_connection = remote_connection
+        self.kernel_connection = kernel_connection
         self.timeout = timeout
         self.verbose = verbose
 
@@ -80,15 +126,6 @@ class CDBSession:
         self.cdb_path = self._find_cdb_executable(cdb_path)
         if not self.cdb_path:
             raise CDBError("Could not find cdb.exe. Please provide a valid path.")
-
-        # Prepare command args
-        cmd_args = [self.cdb_path]
-
-        # Add connection type specific arguments
-        if self.dump_path:
-            cmd_args.extend(["-z", self.dump_path])
-        elif self.remote_connection:
-            cmd_args.extend(["-remote", self.remote_connection])
 
         # Auto-include dump file's directory in symbol search path
         if auto_dump_dir_symbols and self.dump_path:
@@ -98,18 +135,19 @@ class CDBSession:
             else:
                 symbols_path = dump_dir
 
-        # Add symbols path if provided
-        if symbols_path:
-            cmd_args.extend(["-y", symbols_path])
-
-        # Add any additional arguments
-        if additional_args:  # pragma: no cover - not used by the server
-            cmd_args.extend(additional_args)
+        cmd_args = build_cdb_args(
+            self.cdb_path,
+            dump_path=self.dump_path,
+            remote_connection=self.remote_connection,
+            kernel_connection=self.kernel_connection,
+            symbols_path=symbols_path,
+            additional_args=additional_args,
+        )
 
         try:
-            # Only create a new process group for remote sessions where CTRL+BREAK is needed
+            # Only create a new process group for live sessions where CTRL+BREAK is needed
             creationflags = 0
-            if os.name == 'nt' and self.remote_connection:
+            if os.name == 'nt' and self.is_live_session:
                 creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
 
             self.process = subprocess.Popen(
@@ -142,6 +180,15 @@ class CDBSession:
         if initial_commands:  # pragma: no cover - not used by the server
             for cmd in initial_commands:
                 self.send_command(cmd)
+
+    @property
+    def is_live_session(self) -> bool:
+        """True for a live target (user-mode remote or kernel), as opposed to a dump.
+
+        Live sessions get their own process group so CTRL+BREAK can break in, and
+        are detached with CTRL+B on shutdown rather than quit with 'q'.
+        """
+        return bool(self.remote_connection or self.kernel_connection)
 
     def _find_cdb_executable(self, custom_path: Optional[str] = None) -> Optional[str]:
         """Find the cdb.exe executable"""
@@ -234,8 +281,8 @@ class CDBSession:
         try:
             if self.process and self.process.poll() is None:
                 try:
-                    if self.remote_connection:
-                        # For remote connections, send CTRL+B to detach
+                    if self.is_live_session:
+                        # For live targets (remote/kernel), send CTRL+B to detach
                         self.process.stdin.write("\x02")  # CTRL+B
                         self.process.stdin.flush()
                     else:
