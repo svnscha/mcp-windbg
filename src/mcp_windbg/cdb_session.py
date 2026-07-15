@@ -27,6 +27,20 @@ DEFAULT_CDB_PATHS = [
     os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\cdbARM64.exe")
 ]
 
+# Default paths where kd.exe (kernel debugger) might be located
+DEFAULT_KD_PATHS = [
+    # Traditional Windows SDK locations
+    r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\kd.exe",
+    r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x86\kd.exe",
+    r"C:\Program Files\Debugging Tools for Windows (x64)\kd.exe",
+    r"C:\Program Files\Debugging Tools for Windows (x86)\kd.exe",
+
+    # Microsoft Store WinDbg Preview locations
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\kdX64.exe"),
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\kdX86.exe"),
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\kdARM64.exe")
+]
+
 class CDBError(Exception):
     """Custom exception for CDB-related errors"""
     pass
@@ -121,11 +135,19 @@ class CDBSession:
         self.kernel_connection = kernel_connection
         self.timeout = timeout
         self.verbose = verbose
+        self.cdb_path = None  # Will be set by _find_cdb_executable() or _find_kd_executable()
+        self.debugger_path = None
 
-        # Find cdb executable
-        self.cdb_path = self._find_cdb_executable(cdb_path)
-        if not self.cdb_path:
-            raise CDBError("Could not find cdb.exe. Please provide a valid path.")
+        # Find appropriate debugger: kd.exe for kernel, cdb.exe for user-mode
+        if self.kernel_connection:
+            self.debugger_path = self._find_kd_executable()
+            if not self.debugger_path:
+                raise CDBError("Could not find kd.exe for kernel debugging. Please install Debugging Tools for Windows.")
+        else:
+            self.cdb_path = self._find_cdb_executable(cdb_path)
+            self.debugger_path = self.cdb_path
+            if not self.debugger_path:
+                raise CDBError("Could not find cdb.exe. Please provide a valid path.")
 
         # Auto-include dump file's directory in symbol search path
         if auto_dump_dir_symbols and self.dump_path:
@@ -136,7 +158,7 @@ class CDBSession:
                 symbols_path = dump_dir
 
         cmd_args = build_cdb_args(
-            self.cdb_path,
+            self.debugger_path,
             dump_path=self.dump_path,
             remote_connection=self.remote_connection,
             kernel_connection=self.kernel_connection,
@@ -165,13 +187,17 @@ class CDBSession:
         self.output_lines = []
         self.lock = threading.Lock()
         self.ready_event = threading.Event()
+        self._kernel_connected_event = threading.Event() if self.kernel_connection else None
         self.reader_thread = threading.Thread(target=self._read_output)
         self.reader_thread.daemon = True
         self.reader_thread.start()
 
         # Wait for CDB to initialize by sending an echo marker
         try:
-            self._wait_for_prompt(timeout=self.timeout)
+            if self.kernel_connection:
+                self._wait_for_kernel_prompt(timeout=self.timeout)
+            else:
+                self._wait_for_prompt(timeout=self.timeout)
         except CDBError:
             self.shutdown()
             raise CDBError("CDB initialization timed out")
@@ -201,6 +227,14 @@ class CDBSession:
 
         return None
 
+    def _find_kd_executable(self) -> Optional[str]:
+        """Find the kd.exe (kernel debugger) executable"""
+        for path in DEFAULT_KD_PATHS:
+            if os.path.isfile(path):
+                return path
+
+        return None
+
     def _read_output(self):
         """Thread function to continuously read CDB output"""
         if not self.process or not self.process.stdout:
@@ -215,6 +249,8 @@ class CDBSession:
 
                 with self.lock:
                     buffer.append(line)
+                    if self._kernel_connected_event and "Connected to target" in line:
+                        self._kernel_connected_event.set()
                     # Check if the marker is in this line
                     if COMMAND_MARKER_PATTERN.search(line):
                         # Remove the marker line itself
@@ -226,6 +262,15 @@ class CDBSession:
         except (IOError, ValueError) as e:
             if self.verbose:
                 print(f"CDB output reader error: {e}")
+
+    def _wait_for_kernel_prompt(self, timeout=None):
+        """For kernel sessions: wait for target connection, break in, then wait for prompt."""
+        t = timeout or self.timeout
+        if not self._kernel_connected_event.wait(timeout=t):
+            raise CDBError("Timed out waiting for kernel target to connect")
+        # Target is running; send CTRL+BREAK to halt it and get the debugger prompt
+        self.process.send_signal(signal.CTRL_BREAK_EVENT)
+        self._wait_for_prompt(timeout=t)
 
     def _wait_for_prompt(self, timeout=None):
         """Wait for CDB to be ready for commands by sending a marker"""
