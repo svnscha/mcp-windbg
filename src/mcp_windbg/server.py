@@ -4,7 +4,7 @@ import glob
 import winreg
 import logging
 import uuid
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional
 from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession
@@ -71,10 +71,19 @@ class OpenWindbgRemote(BaseModel):
     include_threads: bool = Field(default=False, description="Whether to include thread information")
 
 
+class OpenWindbgKernel(BaseModel):
+    """Parameters for connecting to a kernel debugging target."""
+    connection_string: str = Field(description="Kernel debug connection string (e.g., 'net:port=50000,key=1.2.3.4' for KDNET, or 'com:pipe,port=\\\\.\\pipe\\com_1,baud=115200' for a named pipe)")
+    include_stack_trace: bool = Field(default=False, description="Whether to include stack traces in the analysis")
+    include_modules: bool = Field(default=False, description="Whether to include loaded module information")
+    include_threads: bool = Field(default=False, description="Whether to include thread information")
+
+
 class RunWindbgCmdParams(BaseModel):
     """Parameters for executing a WinDbg command."""
     dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
-    connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
+    connection_string: Optional[str] = Field(default=None, description="Remote or kernel connection string. For user-mode remote (default): 'tcp:Port=5005,Server=192.168.0.100'. For kernel, set connection_type to 'kernel': 'net:port=50000,key=...'.")
+    connection_type: Literal["user", "kernel"] = Field(default="user", description="How connection_string attaches: 'user' for a user-mode remote debug server (-remote), 'kernel' for a kernel target (-k). Ignored for dump_path.")
     command: str = Field(description="WinDbg command to execute")
     symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution. Only applied when creating a new session.")
 
@@ -98,6 +107,11 @@ class CloseWindbgRemoteParams(BaseModel):
     connection_string: str = Field(description="Remote connection string to close")
 
 
+class CloseWindbgKernelParams(BaseModel):
+    """Parameters for closing a kernel debugging connection."""
+    connection_string: str = Field(description="Kernel connection string to close")
+
+
 class ListWindbgDumpsParams(BaseModel):
     """Parameters for listing crash dumps in a directory."""
     directory_path: Optional[str] = Field(
@@ -117,10 +131,24 @@ def _combine_symbols(per_call: Optional[str], server_default: Optional[str]) -> 
     return per_call or server_default
 
 
+def _split_connection(
+    connection_string: Optional[str], connection_type: str
+) -> tuple[Optional[str], Optional[str]]:
+    """Route a connection string to the (kernel, user-mode remote) slot.
+
+    Returns a (kernel_connection, remote_connection) pair so a caller can hand
+    exactly one of them to get_or_create_session based on connection_type.
+    """
+    if connection_string and connection_type == "kernel":  # pragma: no cover - kernel routing needs a live kernel session (tests/e2e/manual-verification.md)
+        return connection_string, None
+    return None, connection_string
+
+
 class SendCtrlBreakParams(BaseModel):
     """Parameters for sending CTRL+BREAK to a CDB/WinDbg session."""
     dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
-    connection_string: Optional[str] = Field(default=None, description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
+    connection_string: Optional[str] = Field(default=None, description="Remote or kernel connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
+    connection_type: Literal["user", "kernel"] = Field(default="user", description="How connection_string attaches: 'user' for a user-mode remote debug server (-remote), 'kernel' for a kernel target (-k). Ignored for dump_path.")
 
     @model_validator(mode='after')
     def validate_connection_params(self):
@@ -131,9 +159,27 @@ class SendCtrlBreakParams(BaseModel):
         return self
 
 
+def _session_id(
+    dump_path: Optional[str] = None,
+    connection_string: Optional[str] = None,
+    kernel_connection: Optional[str] = None,
+) -> str:
+    """Build the active_sessions key for a connection source.
+
+    Kernel and user-mode remote connections are namespaced separately so the same
+    string used for both never collides on one session.
+    """
+    if dump_path:
+        return os.path.abspath(dump_path)
+    if kernel_connection:
+        return f"kernel:{kernel_connection}"
+    return f"remote:{connection_string}"
+
+
 def get_or_create_session(
     dump_path: Optional[str] = None,
     connection_string: Optional[str] = None,
+    kernel_connection: Optional[str] = None,
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     timeout: int = 30,
@@ -145,22 +191,20 @@ def get_or_create_session(
     Returns:
         Tuple of (session, is_new) where is_new indicates if the session was just created.
     """
-    if not dump_path and not connection_string:
-        raise ValueError("Either dump_path or connection_string must be provided")
-    if dump_path and connection_string:
-        raise ValueError("dump_path and connection_string are mutually exclusive")
+    provided = [c for c in (dump_path, connection_string, kernel_connection) if c]
+    if not provided:
+        raise ValueError("Either dump_path, connection_string, or kernel_connection must be provided")
+    if len(provided) > 1:
+        raise ValueError("dump_path, connection_string, and kernel_connection are mutually exclusive")
 
-    # Create session identifier
-    if dump_path:
-        session_id = os.path.abspath(dump_path)
-    else:
-        session_id = f"remote:{connection_string}"
+    session_id = _session_id(dump_path, connection_string, kernel_connection)
 
     if session_id not in active_sessions or active_sessions[session_id] is None:
         try:
             session = CDBSession(
                 dump_path=dump_path,
                 remote_connection=connection_string,
+                kernel_connection=kernel_connection,
                 cdb_path=cdb_path,
                 symbols_path=symbols_path,
                 timeout=timeout,
@@ -178,18 +222,17 @@ def get_or_create_session(
     return active_sessions[session_id], False
 
 
-def unload_session(dump_path: Optional[str] = None, connection_string: Optional[str] = None) -> bool:
+def unload_session(
+    dump_path: Optional[str] = None,
+    connection_string: Optional[str] = None,
+    kernel_connection: Optional[str] = None,
+) -> bool:
     """Unload and clean up a CDB session."""
-    if not dump_path and not connection_string:
-        return False
-    if dump_path and connection_string:
+    provided = [c for c in (dump_path, connection_string, kernel_connection) if c]
+    if len(provided) != 1:
         return False
 
-    # Create session identifier
-    if dump_path:
-        session_id = os.path.abspath(dump_path)
-    else:
-        session_id = f"remote:{connection_string}"
+    session_id = _session_id(dump_path, connection_string, kernel_connection)
 
     if session_id in active_sessions and active_sessions[session_id] is not None:
         try:
@@ -348,11 +391,27 @@ def _create_server(
             Tool(
                 name="open_windbg_remote",
                 description="""
-                Connect to a remote debugging session using WinDbg/CDB.
-                This tool establishes a remote debugging connection and allows you to analyze the target process.
+                Connect to a user-mode remote debugging session using WinDbg/CDB.
+                This attaches a debugger client to an existing debug server (one started with .server) via -remote,
+                for example 'tcp:Port=5005,Server=192.168.0.100'. For kernel targets, use open_windbg_kernel instead.
                 This creates a persistent debugging session — close it with close_windbg_remote when analysis is complete.
                 """,
                 inputSchema=OpenWindbgRemote.model_json_schema(),
+            ),
+            Tool(
+                name="open_windbg_kernel",
+                description="""
+                Connect to a kernel debugging target using WinDbg/CDB (launches the debugger with -k).
+                Use this for kernel debugging, not open_windbg_remote (which is user-mode -remote and cannot drive a kernel cable).
+                Supported connection strings:
+                  - KDNET (network):   net:port=50000,key=1.2.3.4
+                  - Named pipe (VM):   com:pipe,port=\\\\.\\pipe\\com_1,baud=115200,reconnect,resets=0
+                  - Serial:            com:port=COM1,baud=115200
+                Pass the pipe path with real single backslashes; in JSON each backslash is escaped, so
+                \\\\.\\pipe\\com_1 is written "\\\\\\\\.\\\\pipe\\\\com_1". Do not add extra backslashes.
+                This creates a persistent debugging session — close it with close_windbg_kernel when analysis is complete.
+                """,
+                inputSchema=OpenWindbgKernel.model_json_schema(),
             ),
             Tool(
                 name="run_windbg_cmd",
@@ -382,10 +441,18 @@ def _create_server(
             Tool(
                 name="close_windbg_remote",
                 description="""
-                Close a remote debugging connection and release resources.
+                Close a user-mode remote debugging connection and release resources.
                 Use this tool when you're done with a remote debugging session to free up resources.
                 """,
                 inputSchema=CloseWindbgRemoteParams.model_json_schema(),
+            ),
+            Tool(
+                name="close_windbg_kernel",
+                description="""
+                Close a kernel debugging connection and release resources.
+                Use this tool when you're done with a kernel debugging session to free up resources.
+                """,
+                inputSchema=CloseWindbgKernelParams.model_json_schema(),
             ),
             Tool(
                 name="list_windbg_dumps",
@@ -506,12 +573,51 @@ def _create_server(
                     text="".join(results)
                 )], call_id)
 
+            elif name == "open_windbg_kernel":  # pragma: no cover - kernel attach needs a live target; verified via tests/e2e/manual-verification.md
+                args = OpenWindbgKernel(**arguments)
+                session, is_new = get_or_create_session(
+                    kernel_connection=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path,
+                    timeout=timeout, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols
+                )
+
+                results = []
+
+                # Target machine/OS info for the kernel target
+                target_info = session.send_command("vertarget")
+                results.append("### Kernel Target Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
+
+                # Get current state
+                current_state = session.send_command("r")
+                results.append("### Current Registers\n```\n" + "\n".join(current_state) + "\n```\n\n")
+
+                # Optional
+                if args.include_stack_trace:
+                    stack = session.send_command("kb")
+                    results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
+
+                if args.include_modules:
+                    modules = session.send_command("lm")
+                    results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
+
+                if args.include_threads:
+                    threads = session.send_command("~")
+                    results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
+
+                return filter_tool_content(name, [TextContent(
+                    type="text",
+                    text="".join(results)
+                )], call_id)
+
             elif name == "run_windbg_cmd":
                 args = RunWindbgCmdParams(**arguments)
 
+                kernel_connection, connection_string = _split_connection(
+                    args.connection_string, args.connection_type
+                )
                 effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
                 session, is_new = get_or_create_session(
-                    dump_path=args.dump_path, connection_string=args.connection_string,
+                    dump_path=args.dump_path, connection_string=connection_string,
+                    kernel_connection=kernel_connection,
                     cdb_path=cdb_path, symbols_path=effective_symbols, timeout=timeout, verbose=verbose,
                     auto_dump_dir_symbols=auto_dump_dir_symbols
                 )
@@ -526,13 +632,22 @@ def _create_server(
 
             elif name == "send_ctrl_break":
                 args = SendCtrlBreakParams(**arguments)
+                kernel_connection, connection_string = _split_connection(
+                    args.connection_string, args.connection_type
+                )
                 session, _ = get_or_create_session(
-                    dump_path=args.dump_path, connection_string=args.connection_string,
+                    dump_path=args.dump_path, connection_string=connection_string,
+                    kernel_connection=kernel_connection,
                     cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose,
                     auto_dump_dir_symbols=auto_dump_dir_symbols
                 )
                 session.send_ctrl_break()
-                target = args.dump_path if args.dump_path else f"remote: {args.connection_string}"
+                if args.dump_path:
+                    target = args.dump_path
+                elif kernel_connection:  # pragma: no cover - kernel target label needs a live kernel session (tests/e2e/manual-verification.md)
+                    target = f"kernel: {kernel_connection}"
+                else:
+                    target = f"remote: {connection_string}"
                 return filter_tool_content(name, [TextContent(
                     type="text",
                     text=f"Sent CTRL+BREAK to CDB session ({target})."
@@ -564,6 +679,20 @@ def _create_server(
                     return filter_tool_content(name, [TextContent(
                         type="text",
                         text=f"No active session found for remote connection: {args.connection_string}"
+                    )], call_id)
+
+            elif name == "close_windbg_kernel":
+                args = CloseWindbgKernelParams(**arguments)
+                success = unload_session(kernel_connection=args.connection_string)
+                if success:  # pragma: no cover - closing a live kernel session (tests/e2e/manual-verification.md)
+                    return filter_tool_content(name, [TextContent(
+                        type="text",
+                        text=f"Successfully closed kernel connection: {args.connection_string}"
+                    )], call_id)
+                else:
+                    return filter_tool_content(name, [TextContent(
+                        type="text",
+                        text=f"No active session found for kernel connection: {args.connection_string}"
                     )], call_id)
 
             elif name == "list_windbg_dumps":
