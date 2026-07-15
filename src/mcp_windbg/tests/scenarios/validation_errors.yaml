@@ -27,6 +27,19 @@ steps:
     expect:
       isError: true
 
+  - call: open_windbg_kernel  # empty kernel connection string is rejected before any cdb launch
+    arguments:
+      connection_string: ""
+    expect:
+      isError: true
+
+  - call: close_windbg_kernel # no session for this kernel connection (reports, does not error)
+    arguments:
+      connection_string: "net:port=50000,key=1.2.3.4"
+    expect:
+      isError: false
+      contains: ["No active session found for kernel connection"]
+
   - call: definitely_not_a_tool   # unknown tool name
     arguments: {}
     expect:

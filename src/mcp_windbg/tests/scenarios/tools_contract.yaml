@@ -1,5 +1,5 @@
 name: Tools contract
-description: The server advertises exactly the seven documented tools.
+description: The server advertises exactly the nine documented tools.
 steps:
   - list_tools: true
     expect:
@@ -9,5 +9,7 @@ steps:
         - close_windbg_dump
         - open_windbg_remote
         - close_windbg_remote
+        - open_windbg_kernel
+        - close_windbg_kernel
         - run_windbg_cmd
         - send_ctrl_break
