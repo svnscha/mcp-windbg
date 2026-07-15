@@ -189,7 +189,13 @@ Read about the development journey: [The Future of Crash Analysis: AI Meets WinD
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=svnscha/mcp-windbg&type=Date)](https://www.star-history.com/#svnscha/mcp-windbg&Date)
+<a href="https://www.star-history.com/?type=date&repos=svnscha%2Fmcp-windbg">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=svnscha/mcp-windbg&type=date&theme=dark&legend=top-left&sealed_token=lsqF7R-C6fvFwsFqhZrlCZCPWspD7aYxHye-VjtTYGbAqLpc1PAHHZbRdRJXf1dKHEz6JOjWEKcf-pMf46XIb7YsnXpwx5LxeRjUEWB8wDHl4Z5uUJN78DpbVL4BjxyfhSF1P3qiq4f4-eHdE7nTjK-Yp_kw1fi3S2WaP-siJv_kCIV_VE67SwRMrmRa" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=svnscha/mcp-windbg&type=date&legend=top-left&sealed_token=lsqF7R-C6fvFwsFqhZrlCZCPWspD7aYxHye-VjtTYGbAqLpc1PAHHZbRdRJXf1dKHEz6JOjWEKcf-pMf46XIb7YsnXpwx5LxeRjUEWB8wDHl4Z5uUJN78DpbVL4BjxyfhSF1P3qiq4f4-eHdE7nTjK-Yp_kw1fi3S2WaP-siJv_kCIV_VE67SwRMrmRa" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=svnscha/mcp-windbg&type=date&legend=top-left&sealed_token=lsqF7R-C6fvFwsFqhZrlCZCPWspD7aYxHye-VjtTYGbAqLpc1PAHHZbRdRJXf1dKHEz6JOjWEKcf-pMf46XIb7YsnXpwx5LxeRjUEWB8wDHl4Z5uUJN78DpbVL4BjxyfhSF1P3qiq4f4-eHdE7nTjK-Yp_kw1fi3S2WaP-siJv_kCIV_VE67SwRMrmRa" />
+ </picture>
+</a>
 
 ## License
 
