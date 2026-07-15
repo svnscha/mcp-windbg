@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Docs**: Added a Claude Code client guide (`claude mcp add` with both `uvx` and `python -m mcp_windbg`) to `docs/reference/clients.md`, and simplified the README configuration section to lead with the VS Code and Claude Code setups and link the docs for the rest.
+- **Docs**: Documented Autohand Code as an MCP client in `docs/reference/clients.md` (`autohand mcp add` with `--scope project`), noting that the server inherits `_NT_SYMBOL_PATH` from the launching environment since Autohand has no per-server env flag (#63).
 
 ## [0.15.0] - 2026-06-08
 
