@@ -94,7 +94,7 @@ The script defines `process_input` and/or `process_output` callbacks and runs in
 
 ## Configuration
 
-`mcp-windbg` works with any MCP client. Two common setups are below; see the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for Claude Desktop, Copilot CLI, HTTP, and from-source.
+`mcp-windbg` works with any MCP client. Two common setups are below; see the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for Claude Desktop, Copilot CLI, Autohand Code, HTTP, and from-source.
 
 **VS Code (GitHub Copilot)** - press `F1` and select **MCP: Open User Configuration** to enable it in every workspace:
 

@@ -106,6 +106,21 @@ Add server options such as a [filter script](../scenarios/redaction.md) after th
 for example `-- python -m mcp_windbg --filter-script C:\filters\pii_redaction.py`. Run
 `claude mcp list` to confirm it connected.
 
+## Autohand Code
+
+[Autohand Code](https://github.com/autohandai/code-cli) registers stdio servers with
+`autohand mcp add <name> <command>`. Add `--scope project` to keep the registration in the
+current workspace instead of the user profile:
+
+```bash
+autohand mcp add mcp-windbg uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg
+```
+
+Autohand has no flag for a per-server `_NT_SYMBOL_PATH`; the server inherits the environment
+that launched Autohand. Set `_NT_SYMBOL_PATH` in that shell (or system-wide) before starting
+Autohand so stack traces resolve. If you installed the package with pip or from source,
+replace the `uvx ...` command with `python -m mcp_windbg`.
+
 ## GitHub Copilot CLI
 
 Edit `C:\Users\{username}\.copilot\mcp-config.json`:
