@@ -80,6 +80,7 @@ nav:
       - Overview: scenarios/index.md
       - Analyze a crash dump: scenarios/crash-dump.md
       - Debug a remote target: scenarios/remote-debugging.md
+      - Debug a kernel target: scenarios/kernel-debugging.md
       - Triage multiple dumps: scenarios/triage.md
       - Debug from another machine: scenarios/http-service.md
       - Redact sensitive data: scenarios/redaction.md

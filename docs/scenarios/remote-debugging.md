@@ -23,9 +23,9 @@ connection string formats:
 
 !!! note "Connecting to a debugging server, not attaching directly"
     `open_windbg_remote` attaches to an existing debugging *server* (`cdb`/WinDbg started with
-    `-server`). It does not attach to a running process by PID, and kernel-mode debugging over a
-    `-k` cable is a different mode that is not supported. To debug a local process, start a `cdb
-    -server` on it first, then connect.
+    `-server`). It does not attach to a running process by PID. Kernel-mode debugging over a
+    `-k` cable is a different mode, handled by [Debug a kernel target](kernel-debugging.md). To
+    debug a local process, start a `cdb -server` on it first, then connect.
 
 ## Break in, then inspect
 

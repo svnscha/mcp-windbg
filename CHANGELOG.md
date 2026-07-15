@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Kernel-mode debugging**: New `open_windbg_kernel` / `close_windbg_kernel` tools launch the debugger with `-k` for kernel targets (KDNET `net:port=,key=`, named pipe `com:pipe,port=\\.\pipe\...`, or serial), and `run_windbg_cmd` / `send_ctrl_break` take a `connection_type: "user" | "kernel"` discriminator to address a kernel session. Previously every remote connection was launched with `-remote` (user-mode only), so kernel targets could never connect (#62, #47). Kernel and user-mode remote sessions are namespaced separately so the same connection string never collides. Adds a "Debug a kernel target" guide and a developer feature-verification checklist.
+
 ### Changed
 
 - **Docs**: Added a Claude Code client guide (`claude mcp add` with both `uvx` and `python -m mcp_windbg`) to `docs/reference/clients.md`, and simplified the README configuration section to lead with the VS Code and Claude Code setups and link the docs for the rest.

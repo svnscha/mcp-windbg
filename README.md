@@ -23,11 +23,12 @@ An AI-powered tool that bridges LLMs with WinDbg for crash dump analysis and liv
 
 Not a magical auto-fix solution. It's a Python wrapper around CDB that leverages LLM knowledge to assist with debugging.
 
-## Usage Modes
+## Features
 
-- **Crash Dump Analysis**: Examine Windows crash dumps
-- **Live Debugging**: Connect to remote debugging targets
-- **Directory Analysis**: Process multiple dumps for patterns
+- **Crash dump analysis**: open a `.dmp`/`.mdmp`/`.hdmp` and get automated triage (`!analyze -v`, stacks, modules, threads).
+- **User-mode remote debugging**: attach to a live `cdb`/WinDbg debug server (`-remote`) over TCP, a named pipe, or COM.
+- **Kernel debugging**: attach to a kernel target (`-k`) over KDNET, a named pipe, or serial.
+- **Multi-dump triage**: discover and compare many dumps across a directory.
 
 ## Quick Start
 
@@ -140,8 +141,10 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 | [`list_windbg_dumps`](https://svnscha.github.io/mcp-windbg/reference/tools/#list_windbg_dumps) | List crash dump files | Discovery and batch analysis |
 | [`open_windbg_dump`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_dump) | Analyze crash dumps | Initial crash dump analysis |
 | [`close_windbg_dump`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_dump) | Cleanup dump sessions | Resource management |
-| [`open_windbg_remote`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_remote) | Connect to remote debugging | Live debugging sessions |
+| [`open_windbg_remote`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_remote) | Connect to user-mode remote debugging | Live user-mode sessions (`-remote`) |
 | [`close_windbg_remote`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_remote) | Cleanup remote sessions | Resource management |
+| [`open_windbg_kernel`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_kernel) | Connect to a kernel target | KDNET, named pipe, or serial (`-k`) |
+| [`close_windbg_kernel`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_kernel) | Cleanup kernel sessions | Resource management |
 | [`run_windbg_cmd`](https://svnscha.github.io/mcp-windbg/reference/tools/#run_windbg_cmd) | Execute WinDbg commands | Custom analysis and investigation |
 | [`send_ctrl_break`](https://svnscha.github.io/mcp-windbg/reference/tools/#send_ctrl_break) | Break into a running target | Interrupt execution during live debugging |
 
@@ -152,7 +155,7 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 | Topic | Description |
 |-------|-------------|
 | **[Getting Started](https://svnscha.github.io/mcp-windbg/getting-started/)** | Quick setup and first crash dump analysis |
-| **[Use cases](https://svnscha.github.io/mcp-windbg/scenarios/)** | Analyze a dump, debug a remote target, triage many dumps |
+| **[Use cases](https://svnscha.github.io/mcp-windbg/scenarios/)** | Analyze a dump, debug a remote or kernel target, triage many dumps |
 | **[Command-line options](https://svnscha.github.io/mcp-windbg/reference/cli/)** | Every CLI flag, transports, and filter hooks |
 | **[Tools Reference](https://svnscha.github.io/mcp-windbg/reference/tools/)** | The MCP tools and their parameters |
 | **[Client configuration](https://svnscha.github.io/mcp-windbg/reference/clients/)** | VS Code, Claude Desktop, Copilot CLI, pip, and source |
@@ -177,6 +180,12 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 > "Check for timing issues in the thread pool with !runaway and !threads"
 
 > "Show me all threads with ~*k and identify which one is causing the hang"
+
+### Kernel Debugging
+
+> "Open a kernel debugging session on net:port=50000,key=1.2.3.4 and show the target version"
+
+> "Break in, run !analyze -v, and tell me which driver caused the bugcheck"
 
 ## Blog
 
