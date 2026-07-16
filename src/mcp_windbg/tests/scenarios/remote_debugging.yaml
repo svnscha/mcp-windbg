@@ -1,33 +1,36 @@
 name: Remote debugging workflow
-description: Connect to a local cdb .server, run a command, and close the session.
+description: Connect to a local cdb .server, run a command by session_id, and close it.
 requires:
   remote: true     # harness starts a cdb remote server; {remote} is its connection string
 steps:
-  - call: open_windbg_remote
+  - call: open_cdb_remote
     arguments:
       connection_string: "{remote}"
       include_stack_trace: true
       include_modules: true
       include_threads: true
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
     expect:
       isError: false
       contains:
+        - "session_id: cdb-"
         - "Current Registers"
         - "Stack Trace"
         - "Loaded Modules"
         - "Threads"
 
-  - call: run_windbg_cmd
+  - call: run_cdb_command
     arguments:
-      connection_string: "{remote}"
+      session_id: "{sid}"
       command: "r"
     expect:
       contains:
         - "Command: r"
 
-  - call: close_windbg_remote
+  - call: close_cdb_session
     arguments:
-      connection_string: "{remote}"
+      session_id: "{sid}"
     expect:
       contains:
-        - "Successfully closed"
+        - "Successfully closed cdb session"

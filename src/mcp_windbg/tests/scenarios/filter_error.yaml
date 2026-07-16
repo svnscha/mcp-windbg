@@ -3,7 +3,7 @@ description: A hook that raises is reported as a tool error, not a server crash.
 server:
   args: ["--filter-script", "{scenarios_dir}/filters/raising.py"]
 steps:
-  - call: list_windbg_dumps
+  - call: list_dumps
     arguments:
       directory_path: "{dumps_dir}"
     expect:

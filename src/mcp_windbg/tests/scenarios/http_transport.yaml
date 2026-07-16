@@ -5,15 +5,15 @@ steps:
   - list_tools: true
     expect:
       contains:
-        - open_windbg_dump
-        - run_windbg_cmd
+        - open_cdb_dump
+        - run_cdb_command
 
   - get_prompt: dump-triage
     expect:
       contains:
         - "Crash Dump Analysis Report"
 
-  - call: list_windbg_dumps
+  - call: list_dumps
     arguments:
       directory_path: "{dumps_dir}"
     expect:

@@ -20,13 +20,15 @@ Installed with pip, the entry point is `mcp-windbg` (or `python -m mcp_windbg`).
 | `--symbols-path PATH` | `_NT_SYMBOL_PATH` | Symbol search path used when opening a session. |
 | `--no-dump-dir-symbols` | off | Do not auto-add a dump's own directory to the symbol path. |
 | `--filter-script PATH` | none | Python script with tool-text hooks. See [Filter script hooks](#filter-script-hooks). |
-| `--timeout SECONDS` | `30` | Per-command timeout. |
+| `--timeout SECONDS` | `60` | Baseline command/connect timeout; a floor for the per-tool defaults. |
 | `--verbose` | off | Verbose logging to stderr. |
 
 ## General
 
-- **`--timeout`** bounds how long any single debugger command may run. Raise it for heavy
-  analysis on large dumps, for example `--timeout 120`.
+- **`--timeout`** sets the baseline command/connect timeout and acts as a floor for the
+  per-tool defaults (`open_cdb_dump` 180s, `run_cdb_command` 60s, `run_kd_command` 120s). Any
+  `open_*`/`run_*` call can also override it per call with `timeout_seconds`. Raise the floor
+  for heavy analysis on large dumps, for example `--timeout 120`.
 - **`--verbose`** logs to stderr, which is safe under stdio (stdout is the MCP transport).
 
 ## Transports
@@ -69,9 +71,8 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
   dump's own directory to the symbol path so co-located `.pdb` files are found. Disable this
   with **`--no-dump-dir-symbols`**.
 
-Per-call symbol paths are also available on some tools, see
-[`open_windbg_dump`](tools.md#open_windbg_dump) and
-[`run_windbg_cmd`](tools.md#run_windbg_cmd).
+Per-call symbol paths are also available on the `open_*` tools, see
+[`open_cdb_dump`](tools.md#open_cdb_dump) and [`open_cdb_remote`](tools.md#open_cdb_remote).
 
 ## Filter script hooks
 
@@ -107,7 +108,7 @@ Example redaction filter:
 
 ```python
 def process_input(text, context):
-    if context["tool_name"] == "run_windbg_cmd" and context["argument_path"] == "$.command":
+    if context["tool_name"] == "run_cdb_command" and context["argument_path"] == "$.command":
         return text.replace("user@example.com", "[redacted-email]")
     return text
 

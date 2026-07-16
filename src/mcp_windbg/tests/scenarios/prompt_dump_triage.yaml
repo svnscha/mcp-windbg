@@ -5,7 +5,7 @@ steps:
     expect:
       contains:
         - "Crash Dump Analysis Report"
-        - open_windbg_dump
+        - open_cdb_dump
 
   - get_prompt: dump-triage
     arguments:

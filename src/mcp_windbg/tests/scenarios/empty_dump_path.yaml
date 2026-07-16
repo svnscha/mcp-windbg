@@ -1,9 +1,9 @@
 name: Open dump without a path
-description: open_windbg_dump with an empty path returns guidance instead of erroring.
+description: open_cdb_dump with an empty path returns guidance instead of erroring.
 steps:
   # dump_path is required by the schema, so a compliant client must send it;
   # an empty value reaches the server's "no path" guidance branch.
-  - call: open_windbg_dump
+  - call: open_cdb_dump
     arguments:
       dump_path: ""
       include_stack_trace: false
@@ -12,5 +12,5 @@ steps:
     expect:
       isError: false
       contains:
-        - "Please provide a path to a crash dump file"
-        - list_windbg_dumps
+        - "Please provide a dump_path"
+        - list_dumps

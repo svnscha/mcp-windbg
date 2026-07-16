@@ -3,7 +3,7 @@ description: Hooks that return None leave both arguments and output untouched.
 server:
   args: ["--filter-script", "{scenarios_dir}/filters/passthrough.py"]
 steps:
-  - call: list_windbg_dumps
+  - call: list_dumps
     arguments:
       directory_path: "{dumps_dir}"
     expect:

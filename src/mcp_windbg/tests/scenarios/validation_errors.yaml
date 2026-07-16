@@ -1,44 +1,55 @@
 name: Tool argument validation
-description: The mutually-exclusive target rules are enforced for tool arguments.
+description: session-id addressing and kind-checking are enforced for tool arguments.
 steps:
-  - call: run_windbg_cmd      # neither dump_path nor connection_string
+  - call: run_cdb_command      # missing session_id -> schema validation error
     arguments:
       command: "k"
     expect:
       isError: true
 
-  - call: run_windbg_cmd      # both targets at once
+  - call: run_cdb_command      # unknown session_id
     arguments:
+      session_id: "cdb-deadbeef"
       command: "k"
-      dump_path: "C:/nope.dmp"
-      connection_string: "tcp:Port=5005,Server=127.0.0.1"
     expect:
       isError: true
+      contains:
+        - "Unknown session_id"
 
-  - call: send_ctrl_break     # neither target
+  - call: run_kd_command       # unknown kernel session_id
+    arguments:
+      session_id: "kd-deadbeef"
+      command: "vertarget"
+    expect:
+      isError: true
+      contains:
+        - "Unknown session_id"
+
+  - call: send_ctrl_break      # missing session_id -> schema validation error
     arguments: {}
     expect:
       isError: true
 
-  - call: send_ctrl_break     # both targets at once
+  - call: send_ctrl_break      # unknown session_id
     arguments:
-      dump_path: "C:/nope.dmp"
-      connection_string: "tcp:Port=5005,Server=127.0.0.1"
+      session_id: "cdb-deadbeef"
     expect:
       isError: true
+      contains:
+        - "Unknown session_id"
 
-  - call: open_windbg_kernel  # empty kernel connection string is rejected before any cdb launch
+  - call: open_kd_session      # empty kernel connection string is rejected before any kd launch
     arguments:
       connection_string: ""
     expect:
       isError: true
 
-  - call: close_windbg_kernel # no session for this kernel connection (reports, does not error)
+  - call: close_kd_session     # no session for this id (reports, does not error)
     arguments:
-      connection_string: "net:port=50000,key=1.2.3.4"
+      session_id: "kd-00000000"
     expect:
       isError: false
-      contains: ["No active session found for kernel connection"]
+      contains: ["No active kd session found"]
 
   - call: definitely_not_a_tool   # unknown tool name
     arguments: {}

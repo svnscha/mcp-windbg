@@ -26,7 +26,7 @@ Give the model the kernel connection string:
 Open a kernel debugging session on net:port=50000,key=1.2.3.4
 ```
 
-This calls [`open_windbg_kernel`](../reference/tools.md#open_windbg_kernel). Supported
+This calls [`open_kd_session`](../reference/tools.md#open_kd_session). Supported
 connection string formats:
 
 | Transport | Example |
@@ -40,9 +40,17 @@ connection string formats:
     you hand-write the tool call as JSON, each backslash is escaped there, so the path becomes
     `"\\\\.\\pipe\\com_1"`. Do not add extra backslashes.
 
-!!! note "cdb or kd"
-    The default `cdb.exe` drives `-k` fine. If you prefer `kd.exe`, point `--cdb-path` at it
-    (see [Command-line options](../reference/cli.md)).
+!!! note "kd.exe drives kernel sessions"
+    Kernel sessions run under `kd.exe` (auto-detected in the same Windows Kits / Microsoft
+    Store locations as `cdb.exe`); `cdb.exe` cannot drive a kernel cable. On connect the server
+    waits for the target and breaks in for you, so `open_kd_session` returns already stopped at
+    a prompt - the break-in step below is only needed to re-halt a target you have let run.
+
+!!! note "no_debuggee timeout"
+    If `open_kd_session` times out mentioning `no_debuggee`, the target is not transmitting -
+    it is not booted with debugging enabled, or another debugger already holds the connection
+    (KDNET is point-to-point, one debugger at a time). That is an environment issue, not a tool
+    failure.
 
 ## Break in, then inspect
 
@@ -53,7 +61,7 @@ calls [`send_ctrl_break`](../reference/tools.md#send_ctrl_break):
 Send CTRL+BREAK to the kernel target, then show the target version with vertarget
 ```
 
-Once stopped, investigate through [`run_windbg_cmd`](../reference/tools.md#run_windbg_cmd)
+Once stopped, investigate through [`run_kd_command`](../reference/tools.md#run_kd_command)
 (which addresses the kernel session when asked about it):
 
 ```text
@@ -78,10 +86,10 @@ A typical bugcheck investigation:
 Close the kernel debugging session on net:port=50000,key=1.2.3.4
 ```
 
-This calls [`close_windbg_kernel`](../reference/tools.md#close_windbg_kernel) and releases the
+This calls [`close_kd_session`](../reference/tools.md#close_kd_session) and releases the
 session.
 
 ## Related
 
-- [Tools reference](../reference/tools.md) - `open_windbg_kernel`, `send_ctrl_break`, `run_windbg_cmd`.
+- [Tools reference](../reference/tools.md) - `open_kd_session`, `send_ctrl_break`, `run_kd_command`.
 - [Debug a remote target](remote-debugging.md) - user-mode remote debugging (`-remote`).

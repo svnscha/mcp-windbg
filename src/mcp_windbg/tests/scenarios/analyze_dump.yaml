@@ -1,29 +1,32 @@
 name: Analyze a crash dump
-description: Open the demo dump and confirm the standard triage report.
+description: Open the demo dump, confirm the triage report and session_id, then close by id.
 requires:
   cdb: true
   dump: DemoCrash1.exe.7088.dmp
 server:
   args: ["--timeout", "120"]
 steps:
-  - call: open_windbg_dump
+  - call: open_cdb_dump
     arguments:
       dump_path: "{dump}"
       include_stack_trace: true
       include_modules: true
       include_threads: true
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
     expect:
       isError: false
       contains:
+        - "session_id: cdb-"
         - "Crash Information"
         - "Crash Analysis"
         - "Stack Trace"
         - "Loaded Modules"
         - "Threads"
 
-  - call: close_windbg_dump
+  - call: close_cdb_session
     arguments:
-      dump_path: "{dump}"
+      session_id: "{sid}"
     expect:
       contains:
-        - "Successfully unloaded"
+        - "Successfully closed cdb session"

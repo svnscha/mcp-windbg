@@ -4,24 +4,25 @@ Perform comprehensive analysis of a single Windows crash dump with detailed meta
 
 ### Step 1: Dump File Identification
 **If no dump file path provided:**
-- Ask user to provide the specific crash dump file path, use `list_windbg_dumps` to help them find available dumps.
+- Ask user to provide the specific crash dump file path, use `list_dumps` to help them find available dumps.
 
 ### Step 2: Comprehensive Dump Analysis
 **Analyze the specified dump file:**
 
-**Tool:** `open_windbg_dump`
+**Tool:** `open_cdb_dump`
 - **Parameters:**
   - `dump_path`: Provided dump file path
   - `include_stack_trace`: true
   - `include_modules`: true
   - `include_threads`: true
 
-The `open_windbg_dump` tool automatically runs `!analyze -v` and provides initial analysis output.
+The `open_cdb_dump` tool automatically runs `!analyze -v` and provides initial analysis output. It returns a
+`session_id` (like `cdb-1a2b3c4d`) on its first line - keep it; every follow-up command needs it.
 
 If the dump is very large (>5GB) or analysis takes too long we eventually timeout. In that case, inform the user about the timeout
 and tell him to wait since the analysis keeps running in the background and will complete. The most obvious reason is downloading symbols for running into a timeout here.
 
-**Then extract additional metadata with:** `run_windbg_cmd`
+**Then extract additional metadata with:** `run_cdb_command` (pass the `session_id` from the open call)
 - **Command 1:** `vertarget` (OS version and platform details)
 - **Command 2:** `lm` (loaded modules list)
 - **Command 3:** `k` (call stack)
@@ -29,7 +30,7 @@ and tell him to wait since the analysis keeps running in the background and will
 - **Command 5:** `!peb` (process environment details)
 - **Command 6:** `r` (registers)
 
-**Then cleanup:** `close_windbg_dump`
+**Then cleanup:** `close_cdb_session` (pass the same `session_id`)
 
 ### Step 3: Generate Structured Analysis Report
 

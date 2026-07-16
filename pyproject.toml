@@ -1,6 +1,6 @@
 [project]
 name = "mcp-windbg"
-version = "0.15.0"
+version = "1.0.0"
 description = "A Model Context Protocol server providing tools to analyze Windows crash dumps using WinDbg/CDB"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -9,7 +9,7 @@ maintainers = [{ name = "svnscha", email = "sven.scharmentke@gmail.com" }]
 keywords = ["windbg", "cdb", "mcp", "llm", "crash-analysis"]
 license = "MIT"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Environment :: Console",
     "Operating System :: Microsoft :: Windows",

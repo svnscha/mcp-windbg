@@ -86,7 +86,7 @@ Open Copilot Chat (agent mode) and ask, in plain language:
 Analyze the crash dump at C:\dumps\app.dmp
 ```
 
-Copilot calls the `open_windbg_dump` tool, which runs the common triage commands and returns
+Copilot calls the `open_cdb_dump` tool, which runs the common triage commands and returns
 the crash information, the `!analyze -v` result, the stack trace, modules, and threads. From
 there you keep asking:
 
@@ -96,7 +96,7 @@ Run .ecxr then u to disassemble around the fault
 Check the heap around 0x1f2a0040 with !heap -p -a 0x1f2a0040
 ```
 
-Each request becomes a `run_windbg_cmd` call against the same open session. When you are
+Each request becomes a `run_cdb_command` call against the same open session. When you are
 done, ask it to close the session to free the `cdb.exe` process:
 
 ```text

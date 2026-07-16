@@ -63,12 +63,14 @@ A command that exceeds the per-command limit reports a timeout.
 
 Cannot connect to a remote target:
 
-- Use a supported [connection string format](reference/tools.md#open_windbg_remote), for
+- Use a supported [connection string format](reference/tools.md#open_cdb_remote), for
   example `tcp:Port=5005,Server=192.168.0.100`.
 - Check network reachability to the target and that the debugging server is listening.
 - Check the target's firewall.
-- Note that kernel-mode (`-k`) debugging is not supported, see
-  [Debug a remote target](scenarios/remote-debugging.md).
+- `open_cdb_remote` is user-mode only (`-remote`). For kernel targets (`-k`) use
+  `open_kd_session`, see [Debug a kernel target](scenarios/kernel-debugging.md). A kernel
+  connect that times out with `no_debuggee` means the target isn't transmitting or another
+  debugger already holds the (point-to-point) connection.
 
 ## HTTP transport will not connect
 

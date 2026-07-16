@@ -3,7 +3,7 @@ description: A --filter-script loaded by the real server rewrites tool output te
 server:
   args: ["--filter-script", "{scenarios_dir}/filters/uppercase.py"]
 steps:
-  - call: list_windbg_dumps
+  - call: list_dumps
     arguments:
       directory_path: "{dumps_dir}"
     expect:

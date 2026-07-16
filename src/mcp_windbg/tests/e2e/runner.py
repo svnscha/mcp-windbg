@@ -250,6 +250,7 @@ async def _run_step(
         tool = step["call"]
         is_error, text = await _call_tool(session, tool, arguments)
         _check(scenario, index, f"call {tool}", expect, text, is_error)
+        _apply_capture(scenario, index, step, text, mapping)
         return
 
     if "get_prompt" in step:
@@ -286,6 +287,32 @@ async def _run_step(
         _label(scenario, index, "?")
         + f": unknown step kind (keys: {sorted(step)})"
     )
+
+
+def _apply_capture(
+    scenario: dict[str, Any],
+    index: int,
+    step: dict[str, Any],
+    text: str,
+    mapping: dict[str, str],
+) -> None:
+    """Store regex captures from a step's output for later placeholders.
+
+    ``capture: {name: pattern}`` searches the step output; group(1) (or the whole
+    match) becomes ``{name}`` in subsequent steps. This is how a scenario threads
+    an opaque session_id returned by an open_* call into later run_/close_ calls -
+    exactly what an LLM does when it reads the id and reuses it.
+    """
+    import re
+
+    for name, pattern in (step.get("capture") or {}).items():
+        match = re.search(pattern, text)
+        if not match:
+            raise AssertionError(
+                _label(scenario, index, "capture")
+                + f": pattern /{pattern}/ for {name!r} not found\n--- output ---\n{text[:1000]}"
+            )
+        mapping[name] = match.group(1) if match.groups() else match.group(0)
 
 
 async def _call_tool(session: ClientSession, tool: str, arguments: dict[str, Any]):

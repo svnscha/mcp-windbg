@@ -5,7 +5,7 @@ requires:
 server:
   args: ["--timeout", "8"]
 steps:
-  - call: open_windbg_remote
+  - call: open_cdb_remote
     arguments:
       connection_string: "tcp:Port=1,Server=127.0.0.1"
     expect:

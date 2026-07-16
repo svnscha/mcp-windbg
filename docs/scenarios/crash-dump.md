@@ -6,7 +6,7 @@ You have a `.dmp` file and want to know what went wrong. Point the model at it:
 Analyze the crash dump at C:\dumps\app.dmp
 ```
 
-This calls [`open_windbg_dump`](../reference/tools.md#open_windbg_dump), which opens the dump
+This calls [`open_cdb_dump`](../reference/tools.md#open_cdb_dump), which opens the dump
 in `cdb.exe` and runs the standard triage commands in one pass:
 
 - the crash information (`.lastevent`)
@@ -18,7 +18,7 @@ The session stays open, so every follow-up question reuses it instead of reloadi
 ## Ask follow-up questions
 
 Once the dump is open, keep going in plain language. Each request becomes a
-[`run_windbg_cmd`](../reference/tools.md#run_windbg_cmd) call against the same session:
+[`run_cdb_command`](../reference/tools.md#run_cdb_command) call against the same session:
 
 ```text
 Show the call stack with kb and explain the access violation
@@ -44,7 +44,7 @@ Analyze C:\dumps\app.dmp using symbols from C:\build\symbols
 ```
 
 That maps to the per-call `symbols_path` parameter, which only applies when the session is
-first created. See [`open_windbg_dump`](../reference/tools.md#open_windbg_dump) and
+first created. See [`open_cdb_dump`](../reference/tools.md#open_cdb_dump) and
 [`--symbols-path`](../reference/cli.md#symbols-and-cdb) for the details.
 
 ## Get a structured report with the dump-triage prompt
@@ -63,8 +63,9 @@ Close the crash dump session for C:\dumps\app.dmp
 ```
 
 !!! tip "Large dumps and timeouts"
-    Heavy commands on big dumps can exceed the default 30-second command timeout. Raise it
-    with [`--timeout`](../reference/cli.md#general), for example `--timeout 120`.
+    Opening a dump allows 180s for `!analyze -v` and follow-up `run_cdb_command` calls default
+    to 60s. For a heavier command, pass `timeout_seconds` on that call, or raise the floor for
+    everything with [`--timeout`](../reference/cli.md#general), for example `--timeout 120`.
 
 ## Related
 

@@ -79,7 +79,7 @@ Endpoint: `http://127.0.0.1:8000/mcp`
 --cdb-path PATH                          Custom path to cdb.exe
 --symbols-path PATH                      Custom symbols path
 --filter-script PATH                     Python script with process_input/process_output tool text hooks
---timeout SECONDS                        Command timeout (default: 30)
+--timeout SECONDS                        Baseline command/connect timeout, a floor for the per-tool defaults (default: 60)
 --verbose                                Enable verbose output
 ```
 
@@ -136,17 +136,21 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 
 ### Tools
 
+Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pass it to the matching `run_*`, `close_*`, and `send_ctrl_break` calls. User-mode targets (dumps and `-remote`) run under `cdb.exe`; kernel targets run under `kd.exe`.
+
 | Tool | Purpose | Use Case |
 |------|---------|----------|
-| [`list_windbg_dumps`](https://svnscha.github.io/mcp-windbg/reference/tools/#list_windbg_dumps) | List crash dump files | Discovery and batch analysis |
-| [`open_windbg_dump`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_dump) | Analyze crash dumps | Initial crash dump analysis |
-| [`close_windbg_dump`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_dump) | Cleanup dump sessions | Resource management |
-| [`open_windbg_remote`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_remote) | Connect to user-mode remote debugging | Live user-mode sessions (`-remote`) |
-| [`close_windbg_remote`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_remote) | Cleanup remote sessions | Resource management |
-| [`open_windbg_kernel`](https://svnscha.github.io/mcp-windbg/reference/tools/#open_windbg_kernel) | Connect to a kernel target | KDNET, named pipe, or serial (`-k`) |
-| [`close_windbg_kernel`](https://svnscha.github.io/mcp-windbg/reference/tools/#close_windbg_kernel) | Cleanup kernel sessions | Resource management |
-| [`run_windbg_cmd`](https://svnscha.github.io/mcp-windbg/reference/tools/#run_windbg_cmd) | Execute WinDbg commands | Custom analysis and investigation |
-| [`send_ctrl_break`](https://svnscha.github.io/mcp-windbg/reference/tools/#send_ctrl_break) | Break into a running target | Interrupt execution during live debugging |
+| `list_dumps` | List crash dump files | Discovery and batch analysis |
+| `open_cdb_dump` | Open and triage a crash dump (`cdb.exe`) | Initial crash dump analysis → `session_id` |
+| `open_cdb_remote` | Attach to a user-mode remote debug server (`-remote`) | Live user-mode sessions → `session_id` |
+| `open_kd_session` | Attach to a kernel target (`-k`, `kd.exe`) | KDNET, named pipe, or serial → `session_id` |
+| `run_cdb_command` | Run a command on a user-mode session | Custom analysis, by `session_id` |
+| `run_kd_command` | Run a command on a kernel session | Kernel investigation, by `session_id` |
+| `close_cdb_session` | Close a user-mode session | Resource management, by `session_id` |
+| `close_kd_session` | Close a kernel session | Resource management, by `session_id` |
+| `send_ctrl_break` | Break into a running live session | Interrupt a running target, by `session_id` |
+
+Each `run_*` / `open_*` call accepts an optional `timeout_seconds` to override the per-tool default (`open_cdb_dump` 180s, `run_cdb_command` 60s, `run_kd_command` 120s, connects 60s). On a live session a command that outruns its timeout is broken into with CTRL+BREAK and the session is resynchronized, so it never wedges.
 
 ## Documentation
 
@@ -184,9 +188,9 @@ The beauty of MCP is that you write the server once, and it works everywhere. Ch
 
 ### Kernel Debugging
 
-> "Open a kernel debugging session on net:port=50000,key=1.2.3.4 and show the target version"
+> "Open a kernel session on net:port=50000,key=1.2.3.4 and show the target version" (returns a `session_id`)
 
-> "Break in, run !analyze -v, and tell me which driver caused the bugcheck"
+> "Using that session, break in, run !analyze -v, and tell me which driver caused the bugcheck"
 
 ## Blog
 

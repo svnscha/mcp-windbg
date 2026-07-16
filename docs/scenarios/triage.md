@@ -9,7 +9,7 @@ by listing them and then analyze them as a batch to find the common thread.
 List all crash dumps in C:\dumps
 ```
 
-This calls [`list_windbg_dumps`](../reference/tools.md#list_windbg_dumps), which finds dump
+This calls [`list_dumps`](../reference/tools.md#list_dumps), which finds dump
 files and reports their sizes. To include subfolders:
 
 ```text
@@ -31,7 +31,7 @@ HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps
 ```
 
 Crashing user-mode processes then drop a `.dmp` into that folder. The server reads `DumpFolder`
-when you call `list_windbg_dumps` without a directory, falling back to `%LOCALAPPDATA%\CrashDumps`
+when you call `list_dumps` without a directory, falling back to `%LOCALAPPDATA%\CrashDumps`
 if the key is not set. For the per-application form and all options, see Microsoft's
 [Collecting user-mode dumps](https://learn.microsoft.com/windows/win32/wer/collecting-user-mode-dumps)
 guide.
@@ -53,7 +53,7 @@ For every dump under C:\dumps\incident-42, show the top stack frame and tell me
 which ones share the same crash signature
 ```
 
-The model opens each dump with [`open_windbg_dump`](../reference/tools.md#open_windbg_dump),
+The model opens each dump with [`open_cdb_dump`](../reference/tools.md#open_cdb_dump),
 collects the signal it needs, and compares across them. Ask it to close sessions as it goes
 so you do not accumulate `cdb.exe` processes:
 
@@ -68,4 +68,4 @@ Close each dump session after you have analyzed it
 ## Related
 
 - [Analyze a crash dump](crash-dump.md) - the per-dump workflow.
-- [Tools reference](../reference/tools.md#list_windbg_dumps) - `list_windbg_dumps` parameters.
+- [Tools reference](../reference/tools.md#list_dumps) - `list_dumps` parameters.

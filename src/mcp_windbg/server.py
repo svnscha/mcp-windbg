@@ -4,10 +4,11 @@ import glob
 import winreg
 import logging
 import uuid
-from typing import Dict, Literal, Optional
+from typing import Dict, Optional
 from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession
+from .kd_session import KDSession
 from .filter_script import FilterScript, load_filter_script
 from .prompts import load_prompt
 
@@ -26,12 +27,87 @@ from mcp.types import (
     INVALID_PARAMS,
     INTERNAL_ERROR,
 )
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-# Dictionary to store CDB sessions keyed by dump file path
-active_sessions: Dict[str, CDBSession] = {}
+# --- Per-tool-call timeout defaults (seconds) --------------------------------
+# A tool's effective timeout is: the call's `timeout_seconds` if given, else the
+# larger of the tool default below and the server-wide `--timeout` floor. These
+# defaults reflect how long each operation realistically takes:
+#   - a dump's !analyze -v can run for a while,
+#   - a KDNET memory read can be slow, especially on a flaky link.
+CDB_DUMP_OPEN_TIMEOUT = 180
+CDB_REMOTE_OPEN_TIMEOUT = 60
+KD_OPEN_TIMEOUT = 60
+CDB_COMMAND_TIMEOUT = 60
+KD_COMMAND_TIMEOUT = 120
+
+
+def _effective_timeout(per_call: Optional[int], tool_default: int, server_timeout: int) -> int:
+    """Resolve a call's timeout: explicit override, else max(default, floor)."""
+    if per_call and per_call > 0:
+        return per_call
+    return max(tool_default, server_timeout)
+
+
+# --- Session registry --------------------------------------------------------
+# Every open_* tool creates a session and returns an opaque session_id; every
+# other tool addresses a session by that id. A record tracks the live session
+# object, its kind ("cdb" or "kd"), and a human label for messages.
+_sessions: Dict[str, dict] = {}
+
+
+def _new_session_id(kind: str) -> str:
+    return f"{kind}-{uuid.uuid4().hex[:8]}"
+
+
+def _register_session(session, kind: str, label: str) -> str:
+    session_id = _new_session_id(kind)
+    _sessions[session_id] = {"session": session, "kind": kind, "label": label}
+    return session_id
+
+
+def _require_session(session_id: str, kind: str):
+    """Return the session for ``session_id``, or raise a helpful McpError.
+
+    Enforces that the session is of the expected kind so ``run_cdb_command`` on a
+    kernel session (or vice versa) fails clearly instead of misbehaving.
+    """
+    record = _sessions.get(session_id)
+    if record is None:
+        raise McpError(ErrorData(
+            code=INVALID_PARAMS,
+            message=(
+                f"Unknown session_id {session_id!r}. Open a session first - the "
+                f"open_* tools return a session_id to use here."
+            ),
+        ))
+    if record["kind"] != kind:
+        actual = record["kind"]
+        raise McpError(ErrorData(
+            code=INVALID_PARAMS,
+            message=(
+                f"session_id {session_id!r} is a {actual} session, not {kind}. "
+                f"Use run_{actual}_command / close_{actual}_session for it."
+            ),
+        ))
+    return record["session"]
+
+
+def _close_session(session_id: str, kind: str) -> bool:
+    """Shut down and forget a session; returns False if id/kind did not match."""
+    record = _sessions.get(session_id)
+    if record is None or record["kind"] != kind:
+        return False
+    try:
+        record["session"].shutdown()
+    except Exception:
+        pass
+    finally:
+        _sessions.pop(session_id, None)
+    return True
+
 
 def get_local_dumps_path() -> Optional[str]:
     """Get the local dumps path from the Windows registry."""
@@ -54,74 +130,75 @@ def get_local_dumps_path() -> Optional[str]:
 
     return None
 
-class OpenWindbgDump(BaseModel):
-    """Parameters for analyzing a crash dump."""
-    dump_path: str = Field(description="Path to the Windows crash dump file")
-    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution. Only applied when creating a new session.")
-    include_stack_trace: bool = Field(description="Whether to include stack traces in the analysis")
-    include_modules: bool = Field(description="Whether to include loaded module information")
-    include_threads: bool = Field(description="Whether to include thread information")
 
+# --- Tool parameter models ---------------------------------------------------
 
-class OpenWindbgRemote(BaseModel):
-    """Parameters for connecting to a remote debug session."""
-    connection_string: str = Field(description="Remote connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
-    include_stack_trace: bool = Field(default=False, description="Whether to include stack traces in the analysis")
-    include_modules: bool = Field(default=False, description="Whether to include loaded module information")
-    include_threads: bool = Field(default=False, description="Whether to include thread information")
-
-
-class OpenWindbgKernel(BaseModel):
-    """Parameters for connecting to a kernel debugging target."""
-    connection_string: str = Field(description="Kernel debug connection string (e.g., 'net:port=50000,key=1.2.3.4' for KDNET, or 'com:pipe,port=\\\\.\\pipe\\com_1,baud=115200' for a named pipe)")
-    include_stack_trace: bool = Field(default=False, description="Whether to include stack traces in the analysis")
-    include_modules: bool = Field(default=False, description="Whether to include loaded module information")
-    include_threads: bool = Field(default=False, description="Whether to include thread information")
-
-
-class RunWindbgCmdParams(BaseModel):
-    """Parameters for executing a WinDbg command."""
-    dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
-    connection_string: Optional[str] = Field(default=None, description="Remote or kernel connection string. For user-mode remote (default): 'tcp:Port=5005,Server=192.168.0.100'. For kernel, set connection_type to 'kernel': 'net:port=50000,key=...'.")
-    connection_type: Literal["user", "kernel"] = Field(default="user", description="How connection_string attaches: 'user' for a user-mode remote debug server (-remote), 'kernel' for a kernel target (-k). Ignored for dump_path.")
-    command: str = Field(description="WinDbg command to execute")
-    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution. Only applied when creating a new session.")
-
-    @model_validator(mode='after')
-    def validate_connection_params(self):
-        """Validate that exactly one of dump_path or connection_string is provided."""
-        if not self.dump_path and not self.connection_string:
-            raise ValueError("Either dump_path or connection_string must be provided")
-        if self.dump_path and self.connection_string:
-            raise ValueError("dump_path and connection_string are mutually exclusive")
-        return self
-
-
-class CloseWindbgDumpParams(BaseModel):
-    """Parameters for unloading a crash dump."""
-    dump_path: str = Field(description="Path to the Windows crash dump file to unload")
-
-
-class CloseWindbgRemoteParams(BaseModel):
-    """Parameters for closing a remote debugging connection."""
-    connection_string: str = Field(description="Remote connection string to close")
-
-
-class CloseWindbgKernelParams(BaseModel):
-    """Parameters for closing a kernel debugging connection."""
-    connection_string: str = Field(description="Kernel connection string to close")
-
-
-class ListWindbgDumpsParams(BaseModel):
+class ListDumps(BaseModel):
     """Parameters for listing crash dumps in a directory."""
     directory_path: Optional[str] = Field(
         default=None,
-        description="Directory path to search for dump files. If not specified, will use the configured dump path from registry."
+        description="Directory to search for dump files. Defaults to the configured dump path from the registry."
     )
-    recursive: bool = Field(
-        default=False,
-        description="Whether to search recursively in subdirectories"
-    )
+    recursive: bool = Field(default=False, description="Search subdirectories recursively.")
+
+
+class OpenCdbDump(BaseModel):
+    """Parameters for opening a crash dump (user mode, cdb.exe)."""
+    dump_path: str = Field(description="Path to the Windows crash dump file")
+    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution.")
+    include_stack_trace: bool = Field(default=False, description="Include a stack trace (kb) in the initial analysis.")
+    include_modules: bool = Field(default=False, description="Include loaded modules (lm) in the initial analysis.")
+    include_threads: bool = Field(default=False, description="Include threads (~) in the initial analysis.")
+    timeout_seconds: Optional[int] = Field(default=None, description="Override the timeout (seconds) for opening/analyzing this dump.")
+
+
+class OpenCdbRemote(BaseModel):
+    """Parameters for attaching to a user-mode remote debug server (-remote)."""
+    connection_string: str = Field(description="Remote debug-server string, e.g. 'tcp:Port=5005,Server=192.168.0.100'")
+    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution.")
+    include_stack_trace: bool = Field(default=False, description="Include a stack trace (kb) in the initial output.")
+    include_modules: bool = Field(default=False, description="Include loaded modules (lm) in the initial output.")
+    include_threads: bool = Field(default=False, description="Include threads (~) in the initial output.")
+    timeout_seconds: Optional[int] = Field(default=None, description="Override the connect timeout (seconds).")
+
+
+class OpenKdSession(BaseModel):
+    """Parameters for attaching to a kernel target (-k, kd.exe)."""
+    connection_string: str = Field(description="Kernel connection string: KDNET 'net:port=50000,key=1.2.3.4', named pipe 'com:pipe,port=\\\\.\\pipe\\com_1,baud=115200', or serial 'com:port=COM1,baud=115200'.")
+    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution.")
+    include_stack_trace: bool = Field(default=False, description="Include a stack trace (kb) in the initial output.")
+    include_modules: bool = Field(default=False, description="Include loaded modules (lm) in the initial output.")
+    include_threads: bool = Field(default=False, description="Include threads (~) in the initial output.")
+    timeout_seconds: Optional[int] = Field(default=None, description="Override the connect/break-in timeout (seconds).")
+
+
+class RunCdbCommand(BaseModel):
+    """Parameters for running a command on a user-mode (cdb) session."""
+    session_id: str = Field(description="A cdb session_id returned by open_cdb_dump or open_cdb_remote.")
+    command: str = Field(description="WinDbg/CDB command to execute (e.g. 'kb', 'lm', '!analyze -v').")
+    timeout_seconds: Optional[int] = Field(default=None, description="Override the command timeout (seconds).")
+
+
+class RunKdCommand(BaseModel):
+    """Parameters for running a command on a kernel (kd) session."""
+    session_id: str = Field(description="A kd session_id returned by open_kd_session.")
+    command: str = Field(description="Kernel debugger command to execute (e.g. '!process 0 0', 'vertarget', '!analyze -v').")
+    timeout_seconds: Optional[int] = Field(default=None, description="Override the command timeout (seconds).")
+
+
+class CloseCdbSession(BaseModel):
+    """Parameters for closing a user-mode (cdb) session."""
+    session_id: str = Field(description="The cdb session_id to close.")
+
+
+class CloseKdSession(BaseModel):
+    """Parameters for closing a kernel (kd) session."""
+    session_id: str = Field(description="The kd session_id to close.")
+
+
+class SendCtrlBreak(BaseModel):
+    """Parameters for breaking into a running session."""
+    session_id: str = Field(description="A live session_id (cdb remote or kd) to break into.")
 
 
 def _combine_symbols(per_call: Optional[str], server_default: Optional[str]) -> Optional[str]:
@@ -131,139 +208,30 @@ def _combine_symbols(per_call: Optional[str], server_default: Optional[str]) -> 
     return per_call or server_default
 
 
-def _split_connection(
-    connection_string: Optional[str], connection_type: str
-) -> tuple[Optional[str], Optional[str]]:
-    """Route a connection string to the (kernel, user-mode remote) slot.
-
-    Returns a (kernel_connection, remote_connection) pair so a caller can hand
-    exactly one of them to get_or_create_session based on connection_type.
-    """
-    if connection_string and connection_type == "kernel":  # pragma: no cover - kernel routing needs a live kernel session (tests/e2e/manual-verification.md)
-        return connection_string, None
-    return None, connection_string
-
-
-class SendCtrlBreakParams(BaseModel):
-    """Parameters for sending CTRL+BREAK to a CDB/WinDbg session."""
-    dump_path: Optional[str] = Field(default=None, description="Path to the Windows crash dump file")
-    connection_string: Optional[str] = Field(default=None, description="Remote or kernel connection string (e.g., 'tcp:Port=5005,Server=192.168.0.100')")
-    connection_type: Literal["user", "kernel"] = Field(default="user", description="How connection_string attaches: 'user' for a user-mode remote debug server (-remote), 'kernel' for a kernel target (-k). Ignored for dump_path.")
-
-    @model_validator(mode='after')
-    def validate_connection_params(self):
-        if not self.dump_path and not self.connection_string:
-            raise ValueError("Either dump_path or connection_string must be provided")
-        if self.dump_path and self.connection_string:
-            raise ValueError("dump_path and connection_string are mutually exclusive")
-        return self
-
-
-def _session_id(
-    dump_path: Optional[str] = None,
-    connection_string: Optional[str] = None,
-    kernel_connection: Optional[str] = None,
-) -> str:
-    """Build the active_sessions key for a connection source.
-
-    Kernel and user-mode remote connections are namespaced separately so the same
-    string used for both never collides on one session.
-    """
-    if dump_path:
-        return os.path.abspath(dump_path)
-    if kernel_connection:
-        return f"kernel:{kernel_connection}"
-    return f"remote:{connection_string}"
-
-
-def get_or_create_session(
-    dump_path: Optional[str] = None,
-    connection_string: Optional[str] = None,
-    kernel_connection: Optional[str] = None,
-    cdb_path: Optional[str] = None,
-    symbols_path: Optional[str] = None,
-    timeout: int = 30,
-    verbose: bool = False,
-    auto_dump_dir_symbols: bool = True
-) -> tuple[CDBSession, bool]:
-    """Get an existing CDB session or create a new one.
-
-    Returns:
-        Tuple of (session, is_new) where is_new indicates if the session was just created.
-    """
-    provided = [c for c in (dump_path, connection_string, kernel_connection) if c]
-    if not provided:
-        raise ValueError("Either dump_path, connection_string, or kernel_connection must be provided")
-    if len(provided) > 1:
-        raise ValueError("dump_path, connection_string, and kernel_connection are mutually exclusive")
-
-    session_id = _session_id(dump_path, connection_string, kernel_connection)
-
-    if session_id not in active_sessions or active_sessions[session_id] is None:
-        try:
-            session = CDBSession(
-                dump_path=dump_path,
-                remote_connection=connection_string,
-                kernel_connection=kernel_connection,
-                cdb_path=cdb_path,
-                symbols_path=symbols_path,
-                timeout=timeout,
-                verbose=verbose,
-                auto_dump_dir_symbols=auto_dump_dir_symbols
-            )
-            active_sessions[session_id] = session
-            return session, True
-        except Exception as e:
-            raise McpError(ErrorData(
-                code=INTERNAL_ERROR,
-                message=f"Failed to create CDB session: {str(e)}"
-            ))
-
-    return active_sessions[session_id], False
-
-
-def unload_session(
-    dump_path: Optional[str] = None,
-    connection_string: Optional[str] = None,
-    kernel_connection: Optional[str] = None,
-) -> bool:
-    """Unload and clean up a CDB session."""
-    provided = [c for c in (dump_path, connection_string, kernel_connection) if c]
-    if len(provided) != 1:
-        return False
-
-    session_id = _session_id(dump_path, connection_string, kernel_connection)
-
-    if session_id in active_sessions and active_sessions[session_id] is not None:
-        try:
-            active_sessions[session_id].shutdown()
-        except Exception:
-            pass
-        finally:
-            del active_sessions[session_id]
-        return True
-
-    return False
+def _optional_sections(session, args, timeout: int) -> list[str]:
+    """Render the include_* sections shared by the open_* tools."""
+    sections = []
+    if args.include_stack_trace:
+        stack = session.send_command("kb", timeout=timeout)
+        sections.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
+    if args.include_modules:
+        modules = session.send_command("lm", timeout=timeout)
+        sections.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
+    if args.include_threads:
+        threads = session.send_command("~", timeout=timeout)
+        sections.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
+    return sections
 
 
 async def serve(
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     filter_script: Optional[str] = None,
-    timeout: int = 30,
+    timeout: int = 60,
     verbose: bool = False,
     auto_dump_dir_symbols: bool = True,
 ) -> None:
-    """Run the WinDbg MCP server with stdio transport.
-
-    Args:
-        cdb_path: Optional custom path to cdb.exe
-        symbols_path: Optional custom symbols path
-        filter_script: Optional Python script to filter tool content
-        timeout: Command timeout in seconds
-        verbose: Whether to enable verbose output
-        auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
-    """
+    """Run the WinDbg MCP server with stdio transport."""
     content_filter = load_filter_script(filter_script) if filter_script else None
     server = _create_server(cdb_path, symbols_path, timeout, verbose, content_filter, "stdio", auto_dump_dir_symbols)
 
@@ -271,9 +239,7 @@ async def serve(
     async with stdio_server() as (read_stream, write_stream):
         # raise_exceptions=False (the SDK default) keeps the server alive on a
         # malformed stdin line: the transport forwards the parse error and the
-        # message loop logs it instead of crashing the process. With
-        # raise_exceptions=True a single non-JSON line (e.g. running the server
-        # directly in a terminal) tears down the whole server. See issue #45.
+        # message loop logs it instead of crashing the process. See issue #45.
         await server.run(read_stream, write_stream, options)
 
 
@@ -283,22 +249,11 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     filter_script: Optional[str] = None,
-    timeout: int = 30,
+    timeout: int = 60,
     verbose: bool = False,
     auto_dump_dir_symbols: bool = True,
 ) -> None:
-    """Run the WinDbg MCP server with Streamable HTTP transport.
-
-    Args:
-        host: Host to bind the HTTP server to
-        port: Port to bind the HTTP server to
-        cdb_path: Optional custom path to cdb.exe
-        symbols_path: Optional custom symbols path
-        filter_script: Optional Python script to filter tool content
-        timeout: Command timeout in seconds
-        verbose: Whether to enable verbose output
-        auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
-    """
+    """Run the WinDbg MCP server with Streamable HTTP transport."""
     from starlette.applications import Starlette
     from starlette.routing import Mount
     from starlette.types import Receive, Scope, Send
@@ -342,26 +297,13 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
 def _create_server(
     cdb_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
-    timeout: int = 30,
+    timeout: int = 60,
     verbose: bool = False,
     content_filter: Optional[FilterScript] = None,
     transport: str = "stdio",
     auto_dump_dir_symbols: bool = True,
 ) -> Server:
-    """Create and configure the MCP server with all tools and prompts.
-
-    Args:
-        cdb_path: Optional custom path to cdb.exe
-        symbols_path: Optional custom symbols path
-        timeout: Command timeout in seconds
-        verbose: Whether to enable verbose output
-        content_filter: Optional filter for tool arguments and text output
-        transport: Transport label passed to the filter script context
-        auto_dump_dir_symbols: Whether to auto-include dump directory in symbol path
-
-    Returns:
-        Configured Server instance
-    """
+    """Create and configure the MCP server with all tools and prompts."""
     server = Server("mcp-windbg")
 
     def filter_tool_arguments(tool_name: str, arguments: dict | None, call_id: str) -> dict:
@@ -380,88 +322,79 @@ def _create_server(
     async def list_tools() -> list[Tool]:
         return [
             Tool(
-                name="open_windbg_dump",
+                name="list_dumps",
                 description="""
-                Analyze a Windows crash dump file using WinDbg/CDB.
-                This tool executes common WinDbg commands to analyze the crash dump and returns the results.
-                This creates a persistent debugging session — close it with close_windbg_dump when analysis is complete.
+                List Windows crash dump files in a directory.
+                Helps discover dumps to analyze with open_cdb_dump.
                 """,
-                inputSchema=OpenWindbgDump.model_json_schema(),
+                inputSchema=ListDumps.model_json_schema(),
             ),
             Tool(
-                name="open_windbg_remote",
+                name="open_cdb_dump",
                 description="""
-                Connect to a user-mode remote debugging session using WinDbg/CDB.
-                This attaches a debugger client to an existing debug server (one started with .server) via -remote,
-                for example 'tcp:Port=5005,Server=192.168.0.100'. For kernel targets, use open_windbg_kernel instead.
-                This creates a persistent debugging session — close it with close_windbg_remote when analysis is complete.
+                Open and triage a Windows crash dump with cdb.exe (user mode).
+                Runs .lastevent and !analyze -v (optionally kb/lm/~) and returns a session_id.
+                Use that session_id with run_cdb_command and close_cdb_session.
                 """,
-                inputSchema=OpenWindbgRemote.model_json_schema(),
+                inputSchema=OpenCdbDump.model_json_schema(),
             ),
             Tool(
-                name="open_windbg_kernel",
+                name="open_cdb_remote",
                 description="""
-                Connect to a kernel debugging target using WinDbg/CDB (launches the debugger with -k).
-                Use this for kernel debugging, not open_windbg_remote (which is user-mode -remote and cannot drive a kernel cable).
-                Supported connection strings:
-                  - KDNET (network):   net:port=50000,key=1.2.3.4
-                  - Named pipe (VM):   com:pipe,port=\\\\.\\pipe\\com_1,baud=115200,reconnect,resets=0
-                  - Serial:            com:port=COM1,baud=115200
-                Pass the pipe path with real single backslashes; in JSON each backslash is escaped, so
-                \\\\.\\pipe\\com_1 is written "\\\\\\\\.\\\\pipe\\\\com_1". Do not add extra backslashes.
-                This creates a persistent debugging session — close it with close_windbg_kernel when analysis is complete.
+                Attach to a user-mode remote debug server (-remote) with cdb.exe, e.g. one started
+                with 'cdb -server tcp:port=5005 <program>'. Returns a session_id for run_cdb_command
+                / send_ctrl_break / close_cdb_session. For kernel targets use open_kd_session instead.
                 """,
-                inputSchema=OpenWindbgKernel.model_json_schema(),
+                inputSchema=OpenCdbRemote.model_json_schema(),
             ),
             Tool(
-                name="run_windbg_cmd",
+                name="open_kd_session",
                 description="""
-                Execute a specific WinDbg command on a loaded crash dump or remote session.
-                This tool allows you to run any WinDbg command and get the output.
-                If no session exists for the specified dump or connection, one will be created automatically.
+                Attach to a kernel target with kd.exe (-k). Waits for the target to connect, breaks in,
+                and returns a session_id for run_kd_command / send_ctrl_break / close_kd_session.
+                Connection strings: KDNET 'net:port=50000,key=1.2.3.4', named pipe
+                'com:pipe,port=\\\\.\\pipe\\com_1,baud=115200,reconnect,resets=0', or serial 'com:port=COM1,baud=115200'.
                 """,
-                inputSchema=RunWindbgCmdParams.model_json_schema(),
+                inputSchema=OpenKdSession.model_json_schema(),
+            ),
+            Tool(
+                name="run_cdb_command",
+                description="""
+                Run a WinDbg/CDB command on a user-mode session (from open_cdb_dump or open_cdb_remote),
+                addressed by session_id. Optional timeout_seconds overrides the default.
+                """,
+                inputSchema=RunCdbCommand.model_json_schema(),
+            ),
+            Tool(
+                name="run_kd_command",
+                description="""
+                Run a command on a kernel session (from open_kd_session), addressed by session_id.
+                Optional timeout_seconds overrides the default (kernel memory reads can be slow).
+                """,
+                inputSchema=RunKdCommand.model_json_schema(),
+            ),
+            Tool(
+                name="close_cdb_session",
+                description="""
+                Close a user-mode (cdb) session and release its resources, addressed by session_id.
+                """,
+                inputSchema=CloseCdbSession.model_json_schema(),
+            ),
+            Tool(
+                name="close_kd_session",
+                description="""
+                Close a kernel (kd) session and release its resources, addressed by session_id.
+                """,
+                inputSchema=CloseKdSession.model_json_schema(),
             ),
             Tool(
                 name="send_ctrl_break",
                 description="""
-                Send a CTRL+BREAK event to the active CDB/WinDbg session, causing it to break in.
-                Useful for interrupting a running target or breaking into a remote session.
+                Break into a running live session (cdb remote or kd), addressed by session_id.
+                Useful to interrupt a running target so commands work again.
                 """,
-                inputSchema=SendCtrlBreakParams.model_json_schema(),
+                inputSchema=SendCtrlBreak.model_json_schema(),
             ),
-            Tool(
-                name="close_windbg_dump",
-                description="""
-                Unload a crash dump and release resources.
-                Use this tool when you're done analyzing a crash dump to free up resources.
-                """,
-                inputSchema=CloseWindbgDumpParams.model_json_schema(),
-            ),
-            Tool(
-                name="close_windbg_remote",
-                description="""
-                Close a user-mode remote debugging connection and release resources.
-                Use this tool when you're done with a remote debugging session to free up resources.
-                """,
-                inputSchema=CloseWindbgRemoteParams.model_json_schema(),
-            ),
-            Tool(
-                name="close_windbg_kernel",
-                description="""
-                Close a kernel debugging connection and release resources.
-                Use this tool when you're done with a kernel debugging session to free up resources.
-                """,
-                inputSchema=CloseWindbgKernelParams.model_json_schema(),
-            ),
-            Tool(
-                name="list_windbg_dumps",
-                description="""
-                List Windows crash dump files in the specified directory.
-                This tool helps you discover available crash dumps that can be analyzed.
-                """,
-                inputSchema=ListWindbgDumpsParams.model_json_schema(),
-            )
         ]
 
     @server.call_tool()
@@ -470,283 +403,44 @@ def _create_server(
             call_id = uuid.uuid4().hex
             arguments = filter_tool_arguments(name, arguments, call_id)
 
-            if name == "open_windbg_dump":
-                # Check if dump_path is missing or empty
-                if "dump_path" not in arguments or not arguments.get("dump_path"):
-                    local_dumps_path = get_local_dumps_path()
-                    dumps_found_text = ""
+            if name == "list_dumps":
+                return filter_tool_content(name, _handle_list_dumps(arguments), call_id)
 
-                    if local_dumps_path:
-                        # Find dump files in the local dumps directory
-                        search_pattern = os.path.join(local_dumps_path, "*.*dmp")
-                        dump_files = glob.glob(search_pattern)
+            if name == "open_cdb_dump":
+                return filter_tool_content(name, _handle_open_cdb_dump(
+                    arguments, cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols
+                ), call_id)
 
-                        if dump_files:
-                            dumps_found_text = f"\n\nI found {len(dump_files)} crash dump(s) in {local_dumps_path}:\n\n"
-                            for i, dump_file in enumerate(dump_files[:10]):  # Limit to 10 dumps to avoid clutter
-                                try:
-                                    size_mb = round(os.path.getsize(dump_file) / (1024 * 1024), 2)
-                                except (OSError, IOError):
-                                    size_mb = "unknown"
+            if name == "open_cdb_remote":
+                return filter_tool_content(name, _handle_open_cdb_remote(
+                    arguments, cdb_path, symbols_path, timeout, verbose
+                ), call_id)
 
-                                dumps_found_text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
+            if name == "open_kd_session":
+                return filter_tool_content(name, _handle_open_kd_session(
+                    arguments, symbols_path, timeout, verbose
+                ), call_id)
 
-                            if len(dump_files) > 10:
-                                dumps_found_text += f"\n... and {len(dump_files) - 10} more dump files.\n"
+            if name == "run_cdb_command":
+                return filter_tool_content(name, _handle_run_command(
+                    RunCdbCommand(**arguments), "cdb", CDB_COMMAND_TIMEOUT, timeout
+                ), call_id)
 
-                            dumps_found_text += "\nYou can analyze one of these dumps by specifying its path."
+            if name == "run_kd_command":
+                return filter_tool_content(name, _handle_run_command(
+                    RunKdCommand(**arguments), "kd", KD_COMMAND_TIMEOUT, timeout
+                ), call_id)
 
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"Please provide a path to a crash dump file to analyze.{dumps_found_text}\n\n"
-                              f"You can use the 'list_windbg_dumps' tool to discover available crash dumps."
-                    )], call_id)
+            if name == "close_cdb_session":
+                return filter_tool_content(name, _handle_close(CloseCdbSession(**arguments).session_id, "cdb"), call_id)
 
-                args = OpenWindbgDump(**arguments)
+            if name == "close_kd_session":
+                return filter_tool_content(name, _handle_close(CloseKdSession(**arguments).session_id, "kd"), call_id)
 
-                effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
-                session, is_new = get_or_create_session(
-                    dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=effective_symbols,
-                    timeout=timeout, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols
-                )
+            if name == "send_ctrl_break":
+                return filter_tool_content(name, _handle_send_ctrl_break(SendCtrlBreak(**arguments).session_id), call_id)
 
-                results = []
-
-                if not is_new and args.symbols_path:
-                    results.append("**Note:** symbols_path was provided but a session for this dump is already active. "
-                                   "Close and reopen the dump to apply new symbol paths.\n\n")
-
-                crash_info = session.send_command(".lastevent")
-                results.append("### Crash Information\n```\n" + "\n".join(crash_info) + "\n```\n\n")
-
-                # Run !analyze -v
-                analysis = session.send_command("!analyze -v")
-                results.append("### Crash Analysis\n```\n" + "\n".join(analysis) + "\n```\n\n")
-
-                # Optional
-                if args.include_stack_trace:
-                    stack = session.send_command("kb")
-                    results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
-
-                if args.include_modules:
-                    modules = session.send_command("lm")
-                    results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
-
-                if args.include_threads:
-                    threads = session.send_command("~")
-                    results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
-
-                return filter_tool_content(name, [TextContent(type="text", text="".join(results))], call_id)
-
-            elif name == "open_windbg_remote":
-                args = OpenWindbgRemote(**arguments)
-                session, is_new = get_or_create_session(
-                    connection_string=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path,
-                    timeout=timeout, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols
-                )
-
-                results = []
-
-                # Get target information for remote debugging
-                target_info = session.send_command("!peb")
-                results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
-
-                # Get current state
-                current_state = session.send_command("r")
-                results.append("### Current Registers\n```\n" + "\n".join(current_state) + "\n```\n\n")
-
-                # Optional
-                if args.include_stack_trace:
-                    stack = session.send_command("kb")
-                    results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
-
-                if args.include_modules:
-                    modules = session.send_command("lm")
-                    results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
-
-                if args.include_threads:
-                    threads = session.send_command("~")
-                    results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
-
-                return filter_tool_content(name, [TextContent(
-                    type="text",
-                    text="".join(results)
-                )], call_id)
-
-            elif name == "open_windbg_kernel":  # pragma: no cover - kernel attach needs a live target; verified via tests/e2e/manual-verification.md
-                args = OpenWindbgKernel(**arguments)
-                session, is_new = get_or_create_session(
-                    kernel_connection=args.connection_string, cdb_path=cdb_path, symbols_path=symbols_path,
-                    timeout=timeout, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols
-                )
-
-                results = []
-
-                # Target machine/OS info for the kernel target
-                target_info = session.send_command("vertarget")
-                results.append("### Kernel Target Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
-
-                # Get current state
-                current_state = session.send_command("r")
-                results.append("### Current Registers\n```\n" + "\n".join(current_state) + "\n```\n\n")
-
-                # Optional
-                if args.include_stack_trace:
-                    stack = session.send_command("kb")
-                    results.append("### Stack Trace\n```\n" + "\n".join(stack) + "\n```\n\n")
-
-                if args.include_modules:
-                    modules = session.send_command("lm")
-                    results.append("### Loaded Modules\n```\n" + "\n".join(modules) + "\n```\n\n")
-
-                if args.include_threads:
-                    threads = session.send_command("~")
-                    results.append("### Threads\n```\n" + "\n".join(threads) + "\n```\n\n")
-
-                return filter_tool_content(name, [TextContent(
-                    type="text",
-                    text="".join(results)
-                )], call_id)
-
-            elif name == "run_windbg_cmd":
-                args = RunWindbgCmdParams(**arguments)
-
-                kernel_connection, connection_string = _split_connection(
-                    args.connection_string, args.connection_type
-                )
-                effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
-                session, is_new = get_or_create_session(
-                    dump_path=args.dump_path, connection_string=connection_string,
-                    kernel_connection=kernel_connection,
-                    cdb_path=cdb_path, symbols_path=effective_symbols, timeout=timeout, verbose=verbose,
-                    auto_dump_dir_symbols=auto_dump_dir_symbols
-                )
-                output = session.send_command(args.command)
-
-                result_text = f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
-                if not is_new and args.symbols_path:
-                    result_text += ("\n\n**Note:** symbols_path was provided but a session for this dump is already active. "
-                                    "Close and reopen the dump to apply new symbol paths.")
-
-                return filter_tool_content(name, [TextContent(type="text", text=result_text)], call_id)
-
-            elif name == "send_ctrl_break":
-                args = SendCtrlBreakParams(**arguments)
-                kernel_connection, connection_string = _split_connection(
-                    args.connection_string, args.connection_type
-                )
-                session, _ = get_or_create_session(
-                    dump_path=args.dump_path, connection_string=connection_string,
-                    kernel_connection=kernel_connection,
-                    cdb_path=cdb_path, symbols_path=symbols_path, timeout=timeout, verbose=verbose,
-                    auto_dump_dir_symbols=auto_dump_dir_symbols
-                )
-                session.send_ctrl_break()
-                if args.dump_path:
-                    target = args.dump_path
-                elif kernel_connection:  # pragma: no cover - kernel target label needs a live kernel session (tests/e2e/manual-verification.md)
-                    target = f"kernel: {kernel_connection}"
-                else:
-                    target = f"remote: {connection_string}"
-                return filter_tool_content(name, [TextContent(
-                    type="text",
-                    text=f"Sent CTRL+BREAK to CDB session ({target})."
-                )], call_id)
-
-            elif name == "close_windbg_dump":
-                args = CloseWindbgDumpParams(**arguments)
-                success = unload_session(dump_path=args.dump_path)
-                if success:
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"Successfully unloaded crash dump: {args.dump_path}"
-                    )], call_id)
-                else:
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"No active session found for crash dump: {args.dump_path}"
-                    )], call_id)
-
-            elif name == "close_windbg_remote":
-                args = CloseWindbgRemoteParams(**arguments)
-                success = unload_session(connection_string=args.connection_string)
-                if success:
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"Successfully closed remote connection: {args.connection_string}"
-                    )], call_id)
-                else:
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"No active session found for remote connection: {args.connection_string}"
-                    )], call_id)
-
-            elif name == "close_windbg_kernel":
-                args = CloseWindbgKernelParams(**arguments)
-                success = unload_session(kernel_connection=args.connection_string)
-                if success:  # pragma: no cover - closing a live kernel session (tests/e2e/manual-verification.md)
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"Successfully closed kernel connection: {args.connection_string}"
-                    )], call_id)
-                else:
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"No active session found for kernel connection: {args.connection_string}"
-                    )], call_id)
-
-            elif name == "list_windbg_dumps":
-                args = ListWindbgDumpsParams(**arguments)
-
-                if args.directory_path is None:
-                    args.directory_path = get_local_dumps_path()
-                    if args.directory_path is None:
-                        raise McpError(ErrorData(
-                            code=INVALID_PARAMS,
-                            message="No directory path specified and no default dump path found in registry."
-                        ))
-
-                if not os.path.exists(args.directory_path) or not os.path.isdir(args.directory_path):
-                    raise McpError(ErrorData(
-                        code=INVALID_PARAMS,
-                        message=f"Directory not found: {args.directory_path}"
-                    ))
-
-                # Determine search pattern based on recursion flag
-                search_pattern = os.path.join(args.directory_path, "**", "*.*dmp") if args.recursive else os.path.join(args.directory_path, "*.*dmp")
-
-                # Find all dump files
-                dump_files = glob.glob(search_pattern, recursive=args.recursive)
-
-                # Sort alphabetically for consistent results
-                dump_files.sort()
-
-                if not dump_files:
-                    return filter_tool_content(name, [TextContent(
-                        type="text",
-                        text=f"No crash dump files (*.*dmp) found in {args.directory_path}"
-                    )], call_id)
-
-                # Format the results
-                result_text = f"Found {len(dump_files)} crash dump file(s) in {args.directory_path}:\n\n"
-                for i, dump_file in enumerate(dump_files):
-                    # Get file size in MB
-                    try:
-                        size_mb = round(os.path.getsize(dump_file) / (1024 * 1024), 2)
-                    except (OSError, IOError):
-                        size_mb = "unknown"
-
-                    result_text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
-
-                return filter_tool_content(name, [TextContent(
-                    type="text",
-                    text=result_text
-                )], call_id)
-
-            raise McpError(ErrorData(
-                code=INVALID_PARAMS,
-                message=f"Unknown tool: {name}"
-            ))
+            raise McpError(ErrorData(code=INVALID_PARAMS, message=f"Unknown tool: {name}"))
 
         except McpError:
             raise
@@ -757,12 +451,168 @@ def _create_server(
                 message=f"Error executing tool {name}: {str(e)}\n{traceback_str}"
             ))
 
+    # -- Tool handlers --------------------------------------------------------
+
+    def _handle_list_dumps(arguments: dict) -> list[TextContent]:
+        args = ListDumps(**arguments)
+        directory = args.directory_path or get_local_dumps_path()
+        if directory is None:
+            raise McpError(ErrorData(
+                code=INVALID_PARAMS,
+                message="No directory path specified and no default dump path found in registry."
+            ))
+        if not os.path.exists(directory) or not os.path.isdir(directory):
+            raise McpError(ErrorData(code=INVALID_PARAMS, message=f"Directory not found: {directory}"))
+
+        pattern = os.path.join(directory, "**", "*.*dmp") if args.recursive else os.path.join(directory, "*.*dmp")
+        dump_files = sorted(glob.glob(pattern, recursive=args.recursive))
+
+        if not dump_files:
+            return [TextContent(type="text", text=f"No crash dump files (*.*dmp) found in {directory}")]
+
+        text = f"Found {len(dump_files)} crash dump file(s) in {directory}:\n\n"
+        for i, dump_file in enumerate(dump_files):
+            try:
+                size_mb = round(os.path.getsize(dump_file) / (1024 * 1024), 2)
+            except (OSError, IOError):
+                size_mb = "unknown"
+            text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
+        return [TextContent(type="text", text=text)]
+
+    def _handle_open_cdb_dump(arguments, cdb_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols):
+        # Missing dump_path: help the caller discover dumps (kept from the old tool).
+        if not arguments.get("dump_path"):
+            return _dump_discovery_help()
+
+        args = OpenCdbDump(**arguments)
+        effective = _effective_timeout(args.timeout_seconds, CDB_DUMP_OPEN_TIMEOUT, server_timeout)
+        effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        try:
+            session = CDBSession(
+                dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=effective_symbols,
+                timeout=effective, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols,
+            )
+        except Exception as e:
+            raise McpError(ErrorData(code=INTERNAL_ERROR, message=f"Failed to open cdb dump session: {e}"))
+
+        session_id = _register_session(session, "cdb", f"dump {args.dump_path}")
+        results = [_session_header(session_id, "cdb", f"crash dump {args.dump_path}")]
+
+        crash_info = session.send_command(".lastevent", timeout=effective)
+        results.append("### Crash Information\n```\n" + "\n".join(crash_info) + "\n```\n\n")
+        analysis = session.send_command("!analyze -v", timeout=effective)
+        results.append("### Crash Analysis\n```\n" + "\n".join(analysis) + "\n```\n\n")
+        results.extend(_optional_sections(session, args, effective))
+        return [TextContent(type="text", text="".join(results))]
+
+    def _handle_open_cdb_remote(arguments, cdb_path, symbols_path, server_timeout, verbose):
+        args = OpenCdbRemote(**arguments)
+        effective = _effective_timeout(args.timeout_seconds, CDB_REMOTE_OPEN_TIMEOUT, server_timeout)
+        effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        try:
+            session = CDBSession(
+                remote_connection=args.connection_string, cdb_path=cdb_path,
+                symbols_path=effective_symbols, timeout=effective, verbose=verbose,
+            )
+        except Exception as e:
+            raise McpError(ErrorData(code=INTERNAL_ERROR, message=f"Failed to open cdb remote session: {e}"))
+
+        session_id = _register_session(session, "cdb", f"remote {args.connection_string}")
+        results = [_session_header(session_id, "cdb", f"remote target {args.connection_string}")]
+
+        target_info = session.send_command("!peb", timeout=effective)
+        results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
+        registers = session.send_command("r", timeout=effective)
+        results.append("### Current Registers\n```\n" + "\n".join(registers) + "\n```\n\n")
+        results.extend(_optional_sections(session, args, effective))
+        return [TextContent(type="text", text="".join(results))]
+
+    def _handle_open_kd_session(arguments, symbols_path, server_timeout, verbose):
+        args = OpenKdSession(**arguments)
+        effective = _effective_timeout(args.timeout_seconds, KD_OPEN_TIMEOUT, server_timeout)
+        effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        try:
+            session = KDSession(
+                kernel_connection=args.connection_string, symbols_path=effective_symbols,
+                timeout=effective, verbose=verbose,
+            )
+        except Exception as e:
+            raise McpError(ErrorData(code=INTERNAL_ERROR, message=f"Failed to open kd session: {e}"))
+
+        session_id = _register_session(session, "kd", f"kernel {args.connection_string}")
+        results = [_session_header(session_id, "kd", f"kernel target {args.connection_string}")]
+
+        target_info = session.send_command("vertarget", timeout=effective)
+        results.append("### Kernel Target Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
+        registers = session.send_command("r", timeout=effective)
+        results.append("### Current Registers\n```\n" + "\n".join(registers) + "\n```\n\n")
+        results.extend(_optional_sections(session, args, effective))
+        return [TextContent(type="text", text="".join(results))]
+
+    def _handle_run_command(args, kind, tool_default, server_timeout) -> list[TextContent]:
+        session = _require_session(args.session_id, kind)
+        effective = _effective_timeout(args.timeout_seconds, tool_default, server_timeout)
+        output = session.send_command(args.command, timeout=effective)
+        text = f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
+        return [TextContent(type="text", text=text)]
+
+    def _handle_close(session_id, kind) -> list[TextContent]:
+        if _close_session(session_id, kind):
+            return [TextContent(type="text", text=f"Successfully closed {kind} session {session_id}")]
+        return [TextContent(type="text", text=f"No active {kind} session found for session_id {session_id}")]
+
+    def _handle_send_ctrl_break(session_id) -> list[TextContent]:
+        record = _sessions.get(session_id)
+        if record is None:
+            raise McpError(ErrorData(
+                code=INVALID_PARAMS,
+                message=f"Unknown session_id {session_id!r}. Open a session first."
+            ))
+        session = record["session"]
+        if not getattr(session, "is_live_session", False):
+            raise McpError(ErrorData(
+                code=INVALID_PARAMS,
+                message=f"session_id {session_id!r} is a dump session; there is no running target to break into."
+            ))
+        session.send_ctrl_break()
+        return [TextContent(type="text", text=f"Sent CTRL+BREAK to session {session_id} ({record['label']}).")]
+
+    def _session_header(session_id: str, kind: str, what: str) -> str:
+        run_tool = f"run_{kind}_command"
+        close_tool = f"close_{kind}_session"
+        return (
+            f"session_id: {session_id}\n\n"
+            f"Opened {kind} session for {what}. Use session_id `{session_id}` with "
+            f"{run_tool} and {close_tool}.\n\n"
+        )
+
+    def _dump_discovery_help() -> list[TextContent]:
+        local_dumps_path = get_local_dumps_path()
+        dumps_found_text = ""
+        if local_dumps_path:
+            dump_files = glob.glob(os.path.join(local_dumps_path, "*.*dmp"))
+            if dump_files:
+                dumps_found_text = f"\n\nI found {len(dump_files)} crash dump(s) in {local_dumps_path}:\n\n"
+                for i, dump_file in enumerate(dump_files[:10]):
+                    try:
+                        size_mb = round(os.path.getsize(dump_file) / (1024 * 1024), 2)
+                    except (OSError, IOError):
+                        size_mb = "unknown"
+                    dumps_found_text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
+                if len(dump_files) > 10:
+                    dumps_found_text += f"\n... and {len(dump_files) - 10} more dump files.\n"
+                dumps_found_text += "\nOpen one by passing its path as dump_path."
+        return [TextContent(
+            type="text",
+            text=(f"Please provide a dump_path to open.{dumps_found_text}\n\n"
+                  f"Use the 'list_dumps' tool to discover available crash dumps."),
+        )]
+
     # Prompt constants
     DUMP_TRIAGE_PROMPT_NAME = "dump-triage"
     DUMP_TRIAGE_PROMPT_TITLE = "Crash Dump Triage Analysis"
     DUMP_TRIAGE_PROMPT_DESCRIPTION = "Comprehensive single crash dump analysis with detailed metadata extraction and structured reporting"
 
-    # Define available prompts for triage analysis
     @server.list_prompts()
     async def list_prompts() -> list[Prompt]:
         return [
@@ -795,7 +645,6 @@ def _create_server(
                     message=f"Prompt file not found: {e}"
                 ))
 
-            # If dump_path is provided, prepend it to the prompt
             if dump_path:
                 prompt_text = f"**Dump file to analyze:** {dump_path}\n\n{prompt_content}"
             else:
@@ -825,14 +674,15 @@ def _create_server(
 
 # Clean up function to ensure all sessions are closed when the server exits
 def cleanup_sessions():  # pragma: no cover - atexit handler, runs after coverage stops
-    """Close all active CDB sessions."""
-    for dump_path, session in active_sessions.items():
+    """Close all active sessions."""
+    for record in _sessions.values():
         try:
+            session = record.get("session")
             if session is not None:
                 session.shutdown()
         except Exception:
             pass
-    active_sessions.clear()
+    _sessions.clear()
 
 
 # Register cleanup on module exit
