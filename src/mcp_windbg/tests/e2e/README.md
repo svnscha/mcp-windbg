@@ -21,22 +21,36 @@ missing. The Git LFS dumps are mandatory: a scenario whose `requires.dump` file
 is absent hard-fails (run `git lfs pull`), so a half-set-up checkout is a loud
 error rather than silent green.
 
+Kernel scenarios (`requires.kernel`) drive a real kernel target, which CI does not
+have, so they skip unless one is configured:
+
+```powershell
+$env:MCP_WINDBG_KERNEL_CONNECTION = "net:port=50005,key=1.2.3.4"   # the -k connection string
+uv run pytest src/mcp_windbg/tests/ -m kernel -v
+```
+
 ## Coverage
 
-The server runs in a subprocess, so the parent pytest process barely touches the
-server code. Set `MCP_WINDBG_COVERAGE` and the harness launches it under
-`coverage run --parallel-mode`, measuring the process where tool dispatch
-actually happens:
+The code runs in two processes and both must be measured. The scenarios drive a
+server subprocess: set `MCP_WINDBG_COVERAGE` and the harness launches it under
+`coverage run --parallel-mode`, measuring where tool dispatch actually happens.
+The hermetic unit tests (`tests/test_*.py`) run in the pytest process itself, so
+pytest must be started under coverage too - plain `pytest` reports those tests'
+code as never executed:
 
 ```powershell
 uv run coverage erase
-$env:MCP_WINDBG_COVERAGE = "1"; uv run pytest src/mcp_windbg/tests/; $env:MCP_WINDBG_COVERAGE = $null
+$env:MCP_WINDBG_COVERAGE = "1"
+uv run coverage run -m pytest src/mcp_windbg/tests/     # measures pytest AND the server
+$env:MCP_WINDBG_COVERAGE = $null
 uv run coverage combine
 uv run coverage report
 ```
 
 Run the full suite (with CDB) for meaningful numbers; the live scenarios are what
-exercise `cdb_session.py` and the dump/remote code paths.
+exercise `cdb_session.py` and the dump/remote code paths. Add a kernel target
+(`MCP_WINDBG_KERNEL_CONNECTION`, above) to cover `kd_session.py` for real rather
+than through its fake-`kd.exe` unit tests.
 
 The suite holds at ~91%. CI enforces a floor with `coverage report --fail-under=88`;
 the margin absorbs small cross-version and cdb-output differences across the
@@ -65,6 +79,7 @@ requires:                           # all optional
   remote: true                      # start a local cdb .server; bind {remote}
   # remote can also be a mapping to pick the debugged target:
   # remote: { target: ["waitfor.exe", "NoSuchSignal"] }
+  kernel: true                      # needs kd.exe + a real kernel target; bind {kernel}
 
 server:                             # optional
   args: ["--timeout", "120"]        # extra CLI flags for the hosted server
@@ -96,6 +111,8 @@ Resolved in every argument string (and in `server.args`):
 | `{scenarios_dir}` | the `tests/scenarios` directory (for fixture filter scripts) |
 | `{remote}` | connection string of the harness-started remote server |
 | `{cdb}` | path to the discovered `cdb.exe` (for `--cdb-path`) |
+| `{kd}` | path to the discovered `kd.exe` (for `--kd-path`) |
+| `{kernel}` | the `-k` connection string from `MCP_WINDBG_KERNEL_CONNECTION` |
 
 ### Step kinds
 

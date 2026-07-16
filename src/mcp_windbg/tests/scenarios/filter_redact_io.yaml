@@ -5,7 +5,7 @@ server:
 steps:
   # process_input: 'secret' in the path argument is redacted before the tool runs,
   # so the not-found error echoes the redacted path.
-  - call: list_windbg_dumps
+  - call: list_dumps
     arguments:
       directory_path: "{dumps_dir}/secret-folder"
     expect:
@@ -16,7 +16,7 @@ steps:
         - "secret"
 
   # process_output: a successful result is rewritten on the way back.
-  - call: list_windbg_dumps
+  - call: list_dumps
     arguments:
       directory_path: "{dumps_dir}"
     expect:

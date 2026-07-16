@@ -84,24 +84,32 @@ def scenario_markers(scenario: dict[str, Any]) -> set[str]:
     """Pytest markers implied by a scenario's requirements (for conftest)."""
     requires = _requires(scenario)
     markers: set[str] = set()
-    if requires.get("cdb") or _remote_spec(scenario) is not None:
+    if requires.get("cdb") or _remote_spec(scenario) is not None or requires.get("kernel"):
         markers.add("live")
     if _remote_spec(scenario) is not None:
         markers.add("remote")
+    if requires.get("kernel"):
+        markers.add("kernel")
     return markers
 
 
 def skip_reason(scenario: dict[str, Any]) -> Optional[str]:
     """Why this scenario should be skipped on this machine, or None to run.
 
-    Only a missing cdb.exe causes a skip. The Git LFS dumps are mandatory - a
-    scenario that needs one hard-fails (see run_scenario) rather than skipping,
-    so a repo without `git lfs pull` is a loud error, not silent green.
+    Only a missing debugger or an unconfigured kernel target causes a skip. The
+    Git LFS dumps are mandatory - a scenario that needs one hard-fails (see
+    run_scenario) rather than skipping, so a repo without `git lfs pull` is a
+    loud error, not silent green.
     """
     requires = _requires(scenario)
     needs_cdb = bool(requires.get("cdb")) or _remote_spec(scenario) is not None
     if needs_cdb and not harness.cdb_available():
         return "cdb.exe not found"
+    if requires.get("kernel"):
+        if harness.find_kd() is None:
+            return "kd.exe not found"
+        if harness.kernel_connection() is None:
+            return f"no kernel target configured ({harness.KERNEL_CONNECTION_ENV} unset)"
     return None
 
 
@@ -131,6 +139,12 @@ async def run_scenario(scenario: dict[str, Any]) -> None:
     cdb = harness.find_cdb()
     if cdb:
         mapping["cdb"] = cdb
+    kd = harness.find_kd()
+    if kd:
+        mapping["kd"] = kd
+    kernel = harness.kernel_connection()
+    if kernel:
+        mapping["kernel"] = kernel
 
     try:
         if remote_spec is not None:
@@ -250,6 +264,7 @@ async def _run_step(
         tool = step["call"]
         is_error, text = await _call_tool(session, tool, arguments)
         _check(scenario, index, f"call {tool}", expect, text, is_error)
+        _apply_capture(scenario, index, step, text, mapping)
         return
 
     if "get_prompt" in step:
@@ -272,6 +287,12 @@ async def _run_step(
         _check(scenario, index, "list_tools", expect, text, is_error=False)
         return
 
+    if "list_prompts" in step:
+        result = await session.list_prompts()
+        text = "\n".join(prompt.name for prompt in result.prompts)
+        _check(scenario, index, "list_prompts", expect, text, is_error=False)
+        return
+
     if "server_input" in step:
         if remote_server is None:
             raise AssertionError(
@@ -286,6 +307,32 @@ async def _run_step(
         _label(scenario, index, "?")
         + f": unknown step kind (keys: {sorted(step)})"
     )
+
+
+def _apply_capture(
+    scenario: dict[str, Any],
+    index: int,
+    step: dict[str, Any],
+    text: str,
+    mapping: dict[str, str],
+) -> None:
+    """Store regex captures from a step's output for later placeholders.
+
+    ``capture: {name: pattern}`` searches the step output; group(1) (or the whole
+    match) becomes ``{name}`` in subsequent steps. This is how a scenario threads
+    an opaque session_id returned by an open_* call into later run_/close_ calls -
+    exactly what an LLM does when it reads the id and reuses it.
+    """
+    import re
+
+    for name, pattern in (step.get("capture") or {}).items():
+        match = re.search(pattern, text)
+        if not match:
+            raise AssertionError(
+                _label(scenario, index, "capture")
+                + f": pattern /{pattern}/ for {name!r} not found\n--- output ---\n{text[:1000]}"
+            )
+        mapping[name] = match.group(1) if match.groups() else match.group(0)
 
 
 async def _call_tool(session: ClientSession, tool: str, arguments: dict[str, Any]):

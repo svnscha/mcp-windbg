@@ -1,14 +1,25 @@
-name: Run commands on a dump
-description: run_windbg_cmd auto-creates a session and returns raw command output.
+name: Run commands on a dump session
+description: run_cdb_command drives an open session by id; wrong-kind routing is rejected.
 requires:
   cdb: true
   dump: DemoCrash1.exe.7088.dmp
 server:
   args: ["--timeout", "120"]
 steps:
-  - call: run_windbg_cmd
+  - call: open_cdb_dump
     arguments:
       dump_path: "{dump}"
+      include_stack_trace: false
+      include_modules: false
+      include_threads: false
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
+    expect:
+      isError: false
+
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
       command: "version"
     expect:
       isError: false
@@ -16,18 +27,27 @@ steps:
         - "Command: version"
         - "Microsoft (R) Windows Debugger"
 
-  - call: run_windbg_cmd
+  - call: run_cdb_command
     arguments:
-      dump_path: "{dump}"
+      session_id: "{sid}"
       command: "lm"
     expect:
       contains:
         - "Command: lm"
         - start
 
-  - call: close_windbg_dump
+  - call: run_kd_command      # a cdb session addressed by a kernel tool is rejected
     arguments:
-      dump_path: "{dump}"
+      session_id: "{sid}"
+      command: "vertarget"
+    expect:
+      isError: true
+      contains:
+        - "is a cdb session"
+
+  - call: close_cdb_session
+    arguments:
+      session_id: "{sid}"
     expect:
       contains:
-        - "Successfully unloaded"
+        - "Successfully closed cdb session"

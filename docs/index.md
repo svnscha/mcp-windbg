@@ -57,7 +57,7 @@ chatting. The rest of this guide is about that setup and the things you can ask 
 | **Windows** (x64) | The server drives `cdb.exe` from the Windows debugger, which is Windows-only. |
 | **Debugging Tools for Windows** | Provides `cdb.exe`. Installed with WinDbg from the Microsoft Store, or the Windows SDK / WDK. See [Getting started](getting-started.md). |
 | **An MCP client** | GitHub Copilot in VS Code, Claude Desktop, GitHub Copilot CLI, or any MCP-compatible client. See [Client configuration](reference/clients.md). |
-| **`uv` or Python 3.10+** | To run the server. `uvx` is the simplest path and needs no manual install step. |
+| **Python 3.10+** | To run the server: `pip install mcp-windbg`. See [Getting started](getting-started.md). |
 | **Symbols for your target** | So the debugger can map addresses back to functions and source. A symbol server works out of the box. |
 
 !!! note "What this is, and is not"

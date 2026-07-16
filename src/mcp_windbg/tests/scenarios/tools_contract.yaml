@@ -1,13 +1,19 @@
 name: Tools contract
-description: The server advertises exactly the seven documented tools.
+description: The server advertises exactly the nine harmonized, session-id tools.
 steps:
   - list_tools: true
     expect:
       contains:
-        - list_windbg_dumps
-        - open_windbg_dump
-        - close_windbg_dump
-        - open_windbg_remote
-        - close_windbg_remote
-        - run_windbg_cmd
+        - list_dumps
+        - open_cdb_dump
+        - open_cdb_remote
+        - open_kd_session
+        - run_cdb_command
+        - run_kd_command
+        - close_cdb_session
+        - close_kd_session
         - send_ctrl_break
+      not_contains:
+        - open_windbg_dump
+        - run_windbg_cmd
+        - open_windbg_kernel

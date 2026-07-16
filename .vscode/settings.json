@@ -1,7 +1,17 @@
 {
-    "python.testing.pytestArgs": [
-        "tests"
-    ],
+    // No path argument: pytest falls back to `testpaths` in pyproject.toml
+    // (src/mcp_windbg/tests), so VS Code and the command line discover the same
+    // suite. Passing a path here overrides testpaths and silently diverges.
+    "python.testing.pytestArgs": [],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    // Kernel scenarios read MCP_WINDBG_KERNEL_CONNECTION, which VS Code does not
+    // inherit from your shell. Put it in .env (gitignored: it holds your KDNET
+    // key). Without the file the kernel tests just skip.
+    //
+    // Both settings are needed: envFile alone does not reach the test run, which
+    // goes through a terminal, so useEnvFile must apply the file there too.
+    "python.envFile": "${workspaceFolder}/.env",
+    "python.terminal.useEnvFile": true
 }

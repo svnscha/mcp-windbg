@@ -1,39 +1,41 @@
 name: Dump session lifecycle
-description: A dump session is reused across calls, then closed; closing twice is a no-op.
+description: A session is opened, reused by id across calls, then closed; closing twice is a no-op.
 requires:
   cdb: true
   dump: DemoCrash1.exe.7088.dmp
 server:
   args: ["--timeout", "120"]
 steps:
-  - call: open_windbg_dump
+  - call: open_cdb_dump
     arguments:
       dump_path: "{dump}"
       include_stack_trace: false
       include_modules: false
       include_threads: false
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
     expect:
       contains:
         - "Crash Analysis"
 
-  - call: run_windbg_cmd      # reuses the already-open session
+  - call: run_cdb_command      # reuses the already-open session by id
     arguments:
-      dump_path: "{dump}"
+      session_id: "{sid}"
       command: "version"
     expect:
       contains:
         - "Command: version"
 
-  - call: close_windbg_dump
+  - call: close_cdb_session
     arguments:
-      dump_path: "{dump}"
+      session_id: "{sid}"
     expect:
       contains:
-        - "Successfully unloaded"
+        - "Successfully closed cdb session"
 
-  - call: close_windbg_dump   # nothing left to close
+  - call: close_cdb_session   # nothing left to close
     arguments:
-      dump_path: "{dump}"
+      session_id: "{sid}"
     expect:
       contains:
-        - "No active session found"
+        - "No active cdb session found"

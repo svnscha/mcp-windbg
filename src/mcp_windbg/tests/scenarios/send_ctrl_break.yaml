@@ -4,9 +4,11 @@ requires:
   remote:
     target: ["waitfor.exe", "SomeSignalThatNeverComes"]   # blocks forever once resumed
 steps:
-  - call: open_windbg_remote
+  - call: open_cdb_remote
     arguments:
       connection_string: "{remote}"
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
     expect:
       isError: false
 
@@ -15,14 +17,14 @@ steps:
 
   - call: send_ctrl_break
     arguments:
-      connection_string: "{remote}"
+      session_id: "{sid}"
     expect:
       contains:
         - "Sent CTRL+BREAK"
 
-  - call: run_windbg_cmd
+  - call: run_cdb_command
     arguments:
-      connection_string: "{remote}"
+      session_id: "{sid}"
       command: "r"
     expect:
       contains:

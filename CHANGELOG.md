@@ -5,14 +5,79 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-07-16
+
+First stable release, and the one where kernel debugging actually works.
+
+The tool surface is redesigned around opaque **session ids** and split by debugger engine:
+user-mode (`cdb.exe`) and kernel (`kd.exe`). **This is a breaking change** for clients of the
+0.x tools. Every `*_windbg_*` tool has a new name, listed under Changed.
+
+### Added
+
+- **Kernel debugging** - `open_kd_session`, `run_kd_command`, and `close_kd_session` attach to a
+  kernel target over KDNET (`net:port=,key=`), a named pipe (`com:pipe,port=\\.\pipe\...`), or
+  serial, driven by `kd.exe`. This was impossible in 0.x: every remote connection was launched
+  with `-remote`, which is user-mode only, so a kernel target could never connect (#62, #47).
+- **Kernel sessions arrive already stopped** - `open_kd_session` waits for the target's connect
+  banner and breaks in for you, so there is no separate break-in step.
+- **Closing a kernel session sets the machine running again** - `close_kd_session` sends `g` by
+  default (`resume: true`). Pass `resume: false` only to leave the target halted on purpose.
+- **`--kd-path`** - point the server at a specific `kd.exe`, the counterpart to `--cdb-path`.
+  Kernel sessions need their own option because `cdb.exe` cannot drive a kernel cable.
+- **Session ids** - every `open_*` returns an opaque `session_id` (`cdb-…` / `kd-…`) on its first
+  output line, and `run_*`, `close_*`, and `send_ctrl_break` address a session by that id. The
+  kind is enforced: a `cdb` id passed to `run_kd_command` (or the reverse) returns an error
+  naming the right tool.
+- **Per-call timeouts** - `timeout_seconds` on any `open_*` / `run_*` overrides that tool's
+  default (`open_cdb_dump` 180s, connects 60s, `run_cdb_command` 60s, `run_kd_command` 120s).
+  The server-wide `--timeout` (default 60s) is the floor.
+- **`remote-triage` prompt** - a guided investigation of a live user-mode target: break in,
+  orient, then track down the hang or crash.
+- **`kernel-triage` prompt** - the same for a kernel target, including telling a real bugcheck
+  apart from a plain break-in, and releasing the machine at the end.
 
 ### Changed
 
-- **Docs**: Added a Claude Code client guide (`claude mcp add` with both `uvx` and `python -m mcp_windbg`) to `docs/reference/clients.md`, and simplified the README configuration section to lead with the VS Code and Claude Code setups and link the docs for the rest.
-- **Docs**: Documented Autohand Code as an MCP client in `docs/reference/clients.md` (`autohand mcp add` with `--scope project`), noting that the server inherits `_NT_SYMBOL_PATH` from the launching environment since Autohand has no per-server env flag (#63).
-- **Dependencies**: Refreshed the runtime dependency floors to their latest releases - `mcp>=1.28.1`, `pydantic>=2.13.4`, `starlette>=1.3.1` (0.x to 1.x), `uvicorn>=0.51.0` - and the test tooling floor `pytest>=9.1.1`, and regenerated `uv.lock`. The streamable-http transport was smoke-tested against the Starlette 1.x major bump.
-- **Docs**: Switched the README Star History chart to the sealed-token star-history.com embed with light and dark variants.
+- **BREAKING** - `list_windbg_dumps` is now `list_dumps`.
+- **BREAKING** - `open_windbg_dump` is now `open_cdb_dump`.
+- **BREAKING** - `open_windbg_remote` is now `open_cdb_remote`.
+- **BREAKING** - `run_windbg_cmd` is now `run_cdb_command` (user mode) or `run_kd_command`
+  (kernel). The `connection_type` discriminator is gone; the tool name says which engine.
+- **BREAKING** - `close_windbg_dump` and `close_windbg_remote` are both now `close_cdb_session`.
+- **BREAKING** - `send_ctrl_break` takes a `session_id`.
+- **BREAKING** - sessions are addressed by id, not by dump path or connection string, and `run_*`
+  no longer opens one implicitly: open a session first. Reopening the same dump gives you an
+  independent session instead of silently reusing one.
+- **Module layout** - kernel sessions live in `kd_session.py` and user-mode in `cdb_session.py`,
+  over a shared `debug_session.py` that owns the subprocess and marker protocol.
+- **Docs** - README and the docs site rewritten around the new tools and the session-id flow,
+  with a "Debug a kernel target" guide, a Development page, and client guides for Claude Code and
+  Autohand Code (#63). Setup instructions standardize on `pip install mcp-windbg` and
+  `python -m mcp_windbg`.
+- **Dependencies** - runtime floors refreshed (`mcp>=1.28.1`, `pydantic>=2.13.4`,
+  `starlette>=1.3.1`, `uvicorn>=0.51.0`), plus `pytest>=9.1.1`, and `uv.lock` regenerated. The
+  streamable-http transport was smoke-tested against the Starlette 0.x to 1.x bump.
+
+### Fixed
+
+- **A slow command no longer wedges a live session.** When a command outruns its timeout the
+  debugger is still busy running it, so the server now breaks in with CTRL+BREAK and
+  resynchronizes before reporting the timeout. The session is usable again for the next command
+  instead of stranded.
+- **A slow command's output is no longer attributed to the next command.** Every command waits
+  on its own unique completion marker, so late output from one command can never be mistaken for
+  the next one's result.
+- **Debugger processes are cleaned up on close.** `cdb.exe` launched through the Microsoft Store
+  execution aliases spawns a child that a plain terminate left behind, still holding the target.
+  Shutdown now does a Windows process-tree kill.
+
+### Removed
+
+- All `*_windbg_*` tool names, and the `connection_type` parameter on `run_windbg_cmd` and
+  `send_ctrl_break`, superseded by the `cdb` / `kd` split.
+- Session reuse by dump path or connection string. `open_*` always creates a fresh session and
+  returns its id.
 
 ## [0.15.0] - 2026-06-08
 

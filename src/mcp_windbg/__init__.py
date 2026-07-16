@@ -9,9 +9,10 @@ def main():
         description="Give a model the ability to analyze Windows crash dumps with WinDbg/CDB"
     )
     parser.add_argument("--cdb-path", type=str, help="Custom path to cdb.exe")
+    parser.add_argument("--kd-path", type=str, help="Custom path to kd.exe (kernel debugging)")
     parser.add_argument("--symbols-path", type=str, help="Custom symbols path")
     parser.add_argument("--filter-script", type=str, help="Path to a Python script with process_input/process_output tool text hooks")
-    parser.add_argument("--timeout", type=int, default=30, help="Command timeout in seconds")
+    parser.add_argument("--timeout", type=int, default=60, help="Baseline command/connect timeout in seconds (floor for per-tool defaults)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--no-dump-dir-symbols", action="store_true",
                         help="Disable automatic inclusion of the dump file's directory in the symbol search path")
@@ -34,6 +35,7 @@ def main():
     if args.transport == "stdio":
         asyncio.run(serve(
             cdb_path=args.cdb_path,
+            kd_path=args.kd_path,
             symbols_path=args.symbols_path,
             filter_script=args.filter_script,
             timeout=args.timeout,
@@ -45,6 +47,7 @@ def main():
             host=args.host,
             port=args.port,
             cdb_path=args.cdb_path,
+            kd_path=args.kd_path,
             symbols_path=args.symbols_path,
             filter_script=args.filter_script,
             timeout=args.timeout,

@@ -6,18 +6,31 @@ requires:
 server:
   args: ["--cdb-path", "{cdb}", "--timeout", "120"]
 steps:
-  - call: run_windbg_cmd
+  - call: open_cdb_dump
     arguments:
       dump_path: "{dump}"
+      include_stack_trace: false
+      include_modules: false
+      include_threads: false
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
+    expect:
+      isError: false
+      contains:
+        - "Crash Analysis"
+
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
       command: "version"
     expect:
       isError: false
       contains:
         - "Microsoft (R) Windows Debugger"
 
-  - call: close_windbg_dump
+  - call: close_cdb_session
     arguments:
-      dump_path: "{dump}"
+      session_id: "{sid}"
     expect:
       contains:
-        - "Successfully unloaded"
+        - "Successfully closed cdb session"

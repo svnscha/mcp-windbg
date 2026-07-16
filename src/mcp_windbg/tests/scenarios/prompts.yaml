@@ -1,0 +1,59 @@
+name: Triage prompts
+description: >
+  Every packaged prompt is listed and served, and the target it is given is woven
+  into the text. Needs no debugger, so it runs everywhere.
+steps:
+  - list_prompts:
+    expect:
+      contains:
+        - dump-triage
+        - remote-triage
+        - kernel-triage
+
+  - get_prompt: dump-triage
+    expect:
+      contains:
+        - "Crash Dump Analysis Report"
+        - open_cdb_dump
+
+  - get_prompt: dump-triage
+    arguments:
+      dump_path: "C:/dumps/example.dmp"
+    expect:
+      contains:
+        - "Dump file to analyze:"
+        - "C:/dumps/example.dmp"
+
+  - get_prompt: remote-triage
+    expect:
+      contains:
+        - open_cdb_remote
+        - send_ctrl_break        # a remote target is NOT halted by connecting
+        - close_cdb_session
+
+  - get_prompt: remote-triage
+    arguments:
+      connection_string: "tcp:Port=5005,Server=192.168.0.100"
+    expect:
+      contains:
+        - "Target to connect to:"
+        - "tcp:Port=5005,Server=192.168.0.100"
+
+  - get_prompt: kernel-triage
+    expect:
+      contains:
+        - open_kd_session
+        - "already halted"        # the server breaks in for you
+        - "resume"                # releasing the machine is mandatory
+
+  - get_prompt: kernel-triage
+    arguments:
+      connection_string: "net:port=50000,key=1.2.3.4"
+    expect:
+      contains:
+        - "Kernel target to connect to:"
+        - "net:port=50000,key=1.2.3.4"
+
+  - get_prompt: no-such-prompt
+    expect:
+      isError: true
