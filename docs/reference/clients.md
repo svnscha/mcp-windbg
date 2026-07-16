@@ -42,6 +42,27 @@ Add server options such as a [filter script](../scenarios/redaction.md) after th
 for example `-- python -m mcp_windbg --filter-script C:\filters\pii_redaction.py`. Run
 `claude mcp list` to confirm it connected.
 
+## Claude Desktop
+
+Add to `claude_desktop_config.json` (at `%APPDATA%\Claude\claude_desktop_config.json`):
+
+```json title="claude_desktop_config.json"
+{
+    "mcpServers": {
+        "mcp-windbg": {
+            "command": "python",
+            "args": ["-m", "mcp_windbg"],
+            "env": {
+                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
+            }
+        }
+    }
+}
+```
+
+Restart Claude Desktop completely after saving. For background, see
+[Connect local MCP servers](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+
 ## VS Code (GitHub Copilot)
 
 Create `.vscode/mcp.json` in your workspace, or use **MCP: Open User Configuration** (press
@@ -73,16 +94,19 @@ path, add them to `args`:
          "--cdb-path", "C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\cdb.exe"]
 ```
 
-## Claude Desktop
+## GitHub Copilot CLI
 
-Add to `claude_desktop_config.json` (at `%APPDATA%\Claude\claude_desktop_config.json`):
+Edit `C:\Users\{username}\.copilot\mcp-config.json`. `"tools": ["*"]` enables all of the
+server's tools:
 
-```json title="claude_desktop_config.json"
+```json title="mcp-config.json"
 {
     "mcpServers": {
         "mcp-windbg": {
+            "type": "local",
             "command": "python",
             "args": ["-m", "mcp_windbg"],
+            "tools": ["*"],
             "env": {
                 "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
             }
@@ -90,9 +114,6 @@ Add to `claude_desktop_config.json` (at `%APPDATA%\Claude\claude_desktop_config.
     }
 }
 ```
-
-Restart Claude Desktop completely after saving. For background, see
-[Connect local MCP servers](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
 ## Autohand Code
 
@@ -107,35 +128,6 @@ autohand mcp add mcp-windbg python -m mcp_windbg
 Autohand has no flag for a per-server `_NT_SYMBOL_PATH`; the server inherits the environment
 that launched Autohand. Set `_NT_SYMBOL_PATH` in that shell (or system-wide) before starting
 Autohand so stack traces resolve.
-
-## GitHub Copilot CLI
-
-Edit `C:\Users\{username}\.copilot\mcp-config.json`:
-
-```json title="mcp-config.json"
-{
-    "mcpServers": {
-        "mcp-windbg": {
-            "type": "local",
-            "command": "uvx",
-            "args": [
-                "--from",
-                "git+https://github.com/svnscha/mcp-windbg",
-                "mcp-windbg"
-            ],
-            "tools": ["*"],
-            "env": {
-                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
-            }
-        }
-    }
-}
-```
-
-!!! note "Use uvx, not pip, with Copilot CLI"
-    Copilot CLI has had issues launching pip-installed MCP servers, see
-    [copilot-cli#191](https://github.com/github/copilot-cli/issues/191). `uvx` is reliable.
-    `"tools": ["*"]` enables all of the server's tools.
 
 ## HTTP transport
 
