@@ -166,6 +166,37 @@ Plain `pytest` reports every hermetic test's code as never executed, which is wh
 Explorer's coverage numbers are not trustworthy. CI gates on `--fail-under=88`; leave
 `MCP_WINDBG_KERNEL_CONNECTION` unset to reproduce its number, set it for the honest local one.
 
+#### What the scenarios alone cover
+
+To ask what the end-to-end suite reaches on its own, run only the scenarios and drop the
+`coverage run -m` wrapper: they exercise the server subprocess, and the pytest process is just
+the client driving it, so measuring the parent adds nothing.
+
+```powershell
+uv run coverage erase
+$env:MCP_WINDBG_COVERAGE = "1"
+uv run pytest src/mcp_windbg/tests/test_scenarios.py
+$env:MCP_WINDBG_COVERAGE = $null
+uv run coverage combine
+uv run coverage html -d htmlcov-e2e      # browsable, line by line -> htmlcov-e2e/index.html
+```
+
+Any marker or path narrows it, and `--include` trims the report to the modules you care about.
+This answers "what does this one scenario actually touch?" in seconds:
+
+```powershell
+uv run pytest src/mcp_windbg/tests/ -m kernel
+uv run coverage combine
+uv run coverage report --include="*kd_session*,*debug_session*"
+```
+
+!!! warning "Always start with `coverage erase`"
+    `combine` folds new data into an existing `.coverage`, so skipping the erase silently
+    unions this run with the last one, exactly when you are trying to isolate a subset. Note
+    that `erase` also deletes everything matching `.coverage.*`, including a snapshot you named
+    with that prefix. To keep data files around, point `COVERAGE_FILE` somewhere outside that
+    glob.
+
 See the [end-to-end scenario guide](https://github.com/svnscha/mcp-windbg/blob/main/src/mcp_windbg/tests/e2e/README.md)
 for the test format, and
 [manual feature verification](https://github.com/svnscha/mcp-windbg/blob/main/src/mcp_windbg/tests/e2e/manual-verification.md)
