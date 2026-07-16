@@ -226,6 +226,7 @@ def _optional_sections(session, args, timeout: int) -> list[str]:
 
 async def serve(
     cdb_path: Optional[str] = None,
+    kd_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     filter_script: Optional[str] = None,
     timeout: int = 60,
@@ -234,7 +235,7 @@ async def serve(
 ) -> None:
     """Run the WinDbg MCP server with stdio transport."""
     content_filter = load_filter_script(filter_script) if filter_script else None
-    server = _create_server(cdb_path, symbols_path, timeout, verbose, content_filter, "stdio", auto_dump_dir_symbols)
+    server = _create_server(cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "stdio", auto_dump_dir_symbols)
 
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
@@ -248,6 +249,7 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     host: str = "127.0.0.1",
     port: int = 8000,
     cdb_path: Optional[str] = None,
+    kd_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     filter_script: Optional[str] = None,
     timeout: int = 60,
@@ -261,7 +263,7 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     import uvicorn
 
     content_filter = load_filter_script(filter_script) if filter_script else None
-    server = _create_server(cdb_path, symbols_path, timeout, verbose, content_filter, "streamable-http", auto_dump_dir_symbols)
+    server = _create_server(cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "streamable-http", auto_dump_dir_symbols)
 
     # Create the session manager
     session_manager = StreamableHTTPSessionManager(
@@ -297,6 +299,7 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
 
 def _create_server(
     cdb_path: Optional[str] = None,
+    kd_path: Optional[str] = None,
     symbols_path: Optional[str] = None,
     timeout: int = 60,
     verbose: bool = False,
@@ -419,7 +422,7 @@ def _create_server(
 
             if name == "open_kd_session":
                 return filter_tool_content(name, _handle_open_kd_session(
-                    arguments, symbols_path, timeout, verbose
+                    arguments, kd_path, symbols_path, timeout, verbose
                 ), call_id)
 
             if name == "run_cdb_command":
@@ -532,14 +535,14 @@ def _create_server(
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 
-    def _handle_open_kd_session(arguments, symbols_path, server_timeout, verbose):
+    def _handle_open_kd_session(arguments, kd_path, symbols_path, server_timeout, verbose):
         args = OpenKdSession(**arguments)
         effective = _effective_timeout(args.timeout_seconds, KD_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
         try:
             session = KDSession(
-                kernel_connection=args.connection_string, symbols_path=effective_symbols,
-                timeout=effective, verbose=verbose,
+                kernel_connection=args.connection_string, kd_path=kd_path,
+                symbols_path=effective_symbols, timeout=effective, verbose=verbose,
             )
         except Exception as e:
             raise McpError(ErrorData(code=INTERNAL_ERROR, message=f"Failed to open kd session: {e}"))

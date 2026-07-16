@@ -17,6 +17,7 @@ Installed with pip, the entry point is `mcp-windbg` (or `python -m mcp_windbg`).
 | `--host HOST` | `127.0.0.1` | Host to bind for the HTTP transport. |
 | `--port PORT` | `8000` | Port to bind for the HTTP transport. |
 | `--cdb-path PATH` | auto-detect | Full path to `cdb.exe`. See [Symbols and CDB](#symbols-and-cdb). |
+| `--kd-path PATH` | auto-detect | Full path to `kd.exe`, used for kernel debugging. See [Symbols and CDB](#symbols-and-cdb). |
 | `--symbols-path PATH` | `_NT_SYMBOL_PATH` | Symbol search path used when opening a session. |
 | `--no-dump-dir-symbols` | off | Do not auto-add a dump's own directory to the symbol path. |
 | `--filter-script PATH` | none | Python script with tool-text hooks. See [Filter script hooks](#filter-script-hooks). |
@@ -64,6 +65,9 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
 
 - **`--cdb-path`** - the server auto-detects `cdb.exe` in the common Windows Kits and
   Microsoft Store locations. Set this when yours is installed elsewhere.
+- **`--kd-path`** - the same, for the `kd.exe` used by [`open_kd_session`](tools.md#open_kd_session).
+  Kernel debugging needs `kd.exe`; `cdb.exe` cannot drive a kernel connection, so this is a
+  separate option from `--cdb-path`.
 - **`--symbols-path`** - sets the symbol search path for new sessions. If omitted, the
   debugger uses `_NT_SYMBOL_PATH` from the environment, which is the usual way to configure
   the Microsoft symbol server (see [Getting started](../getting-started.md)).

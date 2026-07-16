@@ -93,6 +93,7 @@ Endpoint: `http://127.0.0.1:8000/mcp`
 --host HOST                              HTTP server host (default: 127.0.0.1)
 --port PORT                              HTTP server port (default: 8000)
 --cdb-path PATH                          Custom path to cdb.exe
+--kd-path PATH                           Custom path to kd.exe (kernel debugging)
 --symbols-path PATH                      Custom symbols path
 --filter-script PATH                     Python script with process_input/process_output tool text hooks
 --timeout SECONDS                        Baseline command/connect timeout, a floor for the per-tool defaults (default: 60)
