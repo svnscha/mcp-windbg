@@ -9,5 +9,9 @@
     // Kernel scenarios read MCP_WINDBG_KERNEL_CONNECTION, which VS Code does not
     // inherit from your shell. Put it in .env (gitignored: it holds your KDNET
     // key). Without the file the kernel tests just skip.
-    "python.envFile": "${workspaceFolder}/.env"
+    //
+    // Both settings are needed: envFile alone does not reach the test run, which
+    // goes through a terminal, so useEnvFile must apply the file there too.
+    "python.envFile": "${workspaceFolder}/.env",
+    "python.terminal.useEnvFile": true
 }

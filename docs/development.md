@@ -138,9 +138,10 @@ before shipping a kernel change.
 - **`python.testing.pytestArgs` stays empty.** Pytest then falls back to `testpaths` in
   `pyproject.toml` (`src/mcp_windbg/tests`). A path argument overrides `testpaths`, so
   discovery and the command line silently disagree about what the suite is.
-- **`python.envFile`** points at `.env`, since VS Code does not inherit your shell. Create it
-  to run the kernel scenarios from the Test Explorer. It is gitignored, as it holds your KDNET
-  key:
+- **`python.envFile` and `python.terminal.useEnvFile`** point at `.env` and apply it, since VS
+  Code does not inherit your shell. Both are needed: `envFile` alone does not reach the test
+  run, which goes through a terminal. Create the file to run the kernel scenarios from the Test
+  Explorer. It is gitignored, as it holds your KDNET key:
 
 ```ini title=".env"
 MCP_WINDBG_KERNEL_CONNECTION=net:port=50005,key=1.2.3.4
