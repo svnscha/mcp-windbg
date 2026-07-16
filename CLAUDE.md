@@ -19,24 +19,53 @@ uv run python -m mcp_windbg --verbose                              # run the ser
 uv run python -m mcp_windbg --transport streamable-http --port 8000   # HTTP transport
 ```
 
-Coverage measures the hosted server subprocess (the parent pytest process barely touches the
-server code, so plain `--cov` is misleading). Set `MCP_WINDBG_COVERAGE` so the harness launches
-the server under `coverage run --parallel-mode`, then combine and report:
+### Coverage
+
+The code under test runs in **two** processes, and both must be measured or the number lies:
+
+- the hosted server subprocess, where tool dispatch executes. Set `MCP_WINDBG_COVERAGE` so the
+  harness launches it under `coverage run --parallel-mode`.
+- the pytest process itself, where the hermetic unit tests (`tests/test_*.py`) run. This needs
+  `coverage run -m pytest`, not plain `pytest`. Miss this and every unit test reads as dead
+  code: that is how `kd_session.py` once reported 34% while fully tested.
+
+Both write parallel-mode data files that `coverage combine` merges:
 
 ```powershell
 uv run coverage erase
-$env:MCP_WINDBG_COVERAGE = "1"; uv run pytest src/mcp_windbg/tests/; $env:MCP_WINDBG_COVERAGE = $null
-uv run coverage combine                 # merge the per-subprocess .coverage.* files
+$env:MCP_WINDBG_COVERAGE = "1"
+uv run coverage run -m pytest src/mcp_windbg/tests/     # measures pytest AND the server
+$env:MCP_WINDBG_COVERAGE = $null
+uv run coverage combine                 # merge the per-process .coverage.* files
 uv run coverage report                  # or: uv run coverage html  ->  htmlcov/
 ```
+
+CI runs exactly this and gates on `--fail-under=88`. To reproduce CI's number, leave
+`MCP_WINDBG_KERNEL_CONNECTION` unset so the kernel scenarios skip as they do there. Run it with
+the variable set for the honest local number, which covers `kd_session.py` against a real
+target rather than a fake process.
+
+### Test suite
 
 The suite is a declarative end-to-end harness: each `tests/scenarios/*.yaml` file is run
 against a real `python -m mcp_windbg` server hosted over stdio and driven by a real MCP client
 (only the LLM is faked, by the scripted tool calls). Scenarios that need a debugger carry the
-`live` (and `remote`) marker and `pytest.skip` cleanly when `cdb.exe` or the Git LFS dump is
-absent, so `-m "not live"` always runs and stays green off-Windows. See
+`live` (and `remote` / `kernel`) marker and `pytest.skip` cleanly when `cdb.exe` or the Git LFS
+dump is absent, so `-m "not live"` always runs and stays green off-Windows. See
 `src/mcp_windbg/tests/e2e/README.md` for the scenario format. Test dumps live in
 `src/mcp_windbg/tests/dumps/` via Git LFS (`git lfs pull`).
+
+**Kernel scenarios.** `kernel_session.yaml` drives a real kernel target through `kd.exe`. CI has
+no target machine, so it skips there; locally, point it at a debuggable VM or box and it runs:
+
+```powershell
+$env:MCP_WINDBG_KERNEL_CONNECTION = "net:port=50005,key=1.2.3.4"   # the -k connection string
+uv run pytest src/mcp_windbg/tests/ -m kernel -v
+```
+
+Kernel code paths that CI cannot reach are held up by the hermetic fake-`kd.exe` tests in
+`tests/test_kd_session.py`. Treat those as the CI floor, not as proof the feature works: before
+shipping a kernel change, run the `kernel` marker against a real target.
 
 ## Layout
 

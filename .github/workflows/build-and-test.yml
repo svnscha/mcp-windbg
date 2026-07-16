@@ -50,10 +50,15 @@ jobs:
         MCP_WINDBG_COVERAGE: "1"   # measure the hosted server subprocess
       run: |
         uv run coverage erase
-        uv run pytest src/mcp_windbg/tests/ -v --tb=short
+        # `coverage run -m pytest` (not plain pytest) so the hermetic unit tests
+        # in the pytest process are measured too - the hosted server subprocess
+        # alone never exercises them. Both write parallel-mode data files.
+        uv run coverage run -m pytest src/mcp_windbg/tests/ -v --tb=short
         uv run coverage combine
-        # Actual coverage is ~91%; the floor has margin for cross-version and
-        # cdb-output jitter across the Windows x 5-Python-version matrix.
+        # The floor has margin for cross-version and cdb-output jitter across the
+        # Windows x 5-Python-version matrix. Kernel scenarios skip here (no target),
+        # so kd_session is held up by its hermetic tests; see CLAUDE.md for the
+        # local run that covers it for real.
         uv run coverage report --fail-under=88
 
     - name: Test CLI entry point

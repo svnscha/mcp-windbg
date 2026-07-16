@@ -19,6 +19,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from mcp_windbg.cdb_session import DEFAULT_CDB_PATHS
+from mcp_windbg.kd_session import DEFAULT_KD_PATHS
+
+#: Set this to a ``-k`` connection string (e.g. ``net:port=50005,key=1.2.3.4``)
+#: to run the kernel scenarios against a real target. Unset - as on CI, which has
+#: no target machine - those scenarios skip.
+KERNEL_CONNECTION_ENV = "MCP_WINDBG_KERNEL_CONNECTION"
 
 # Directory layout (this file lives in src/mcp_windbg/tests/e2e/).
 E2E_DIR = Path(__file__).resolve().parent
@@ -37,6 +43,24 @@ def find_cdb() -> Optional[str]:
 
 def cdb_available() -> bool:
     return find_cdb() is not None
+
+
+def find_kd() -> Optional[str]:
+    """Return the path to a usable kd.exe, or None when none is installed."""
+    for path in DEFAULT_KD_PATHS:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def kernel_connection() -> Optional[str]:
+    """The kernel target's ``-k`` connection string, or None when not configured."""
+    return os.environ.get(KERNEL_CONNECTION_ENV) or None
+
+
+def kernel_available() -> bool:
+    """True when both kd.exe and a configured kernel target are present."""
+    return find_kd() is not None and kernel_connection() is not None
 
 
 def server_command(server_args: list[str]) -> tuple[str, list[str]]:

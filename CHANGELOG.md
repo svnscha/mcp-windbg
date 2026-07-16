@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`--kd-path`**: point the server at a specific `kd.exe` for kernel debugging, the counterpart
+  to `--cdb-path`. Kernel sessions need `kd.exe` (`cdb.exe` cannot drive a kernel connection),
+  so the path was previously always auto-detected with no way to override it.
+- **Real kernel end-to-end test**: `scenarios/kernel_session.yaml` attaches to a live kernel
+  target, runs kernel-mode commands, and releases it on close. Set `MCP_WINDBG_KERNEL_CONNECTION`
+  to the `-k` connection string to run it (`-m kernel`); it skips where no target is configured.
+
+### Fixed
+
+- **Coverage measurement**: CI ran the test suite under plain `pytest`, so only the hosted server
+  subprocess was measured and every hermetic unit test counted as zero. Fully tested modules
+  reported as near-dead code (`kd_session.py` at 34%). CI now runs `coverage run -m pytest`, which
+  measures the pytest process and the server subprocess together.
+
 ## [1.0.0] - 2026-07-16
 
 First stable release. The tool surface is redesigned around opaque **session ids** and split

@@ -1,0 +1,60 @@
+name: Kernel session against a real target
+description: >
+  Attach to a real kernel target with kd.exe, run kernel-mode commands, and
+  release the target on close. Needs a live target: set
+  MCP_WINDBG_KERNEL_CONNECTION to its -k connection string (see CLAUDE.md).
+  Skipped when kd.exe or the target is absent, so CI stays green.
+requires:
+  kernel: true
+server:
+  args: ["--kd-path", "{kd}", "--timeout", "120"]
+steps:
+  # Attaching waits for "Connected to target", breaks in, and triages.
+  - call: open_kd_session
+    arguments:
+      connection_string: "{kernel}"
+    capture:
+      sid: 'session_id:\s*(kd-[0-9a-f]+)'
+    expect:
+      isError: false
+      contains:
+        - "Kernel Target Information"
+        - "Current Registers"
+
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "version"
+    expect:
+      isError: false
+      contains:
+        - "Microsoft (R) Windows Debugger"
+
+  # Proves we are really in kernel mode: the kernel module is only listed by a
+  # kernel debugger, and !pcr is a kernel-only extension.
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "lm m nt"
+    expect:
+      isError: false
+      contains:
+        - "nt"
+
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "!pcr"
+    expect:
+      isError: false
+      contains:
+        - "KPCR"
+
+  # resume: true leaves the target machine running rather than frozen at the break.
+  - call: close_kd_session
+    arguments:
+      session_id: "{sid}"
+      resume: true
+    expect:
+      contains:
+        - "Successfully closed kd session"

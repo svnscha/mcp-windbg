@@ -59,6 +59,7 @@ testpaths = ["src/mcp_windbg/tests"]
 markers = [
     "live: scenario needs a live cdb.exe (skips cleanly when absent)",
     "remote: scenario starts a local cdb remote server (implies live)",
+    "kernel: scenario drives a real kernel target via kd.exe (implies live; needs MCP_WINDBG_KERNEL_CONNECTION)",
 ]
 
 [project.optional-dependencies]
