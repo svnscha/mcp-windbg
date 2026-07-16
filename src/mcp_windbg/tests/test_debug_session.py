@@ -55,6 +55,7 @@ class _FakeProc:
         self.stdin = _FakeStdin(self)
         self.stdout = _FakeStdout(self)
         self._alive = True
+        self.pid = 4321
         self.signals: list = []
 
     def _feed(self, text: str):
@@ -64,7 +65,9 @@ class _FakeProc:
                 if not self._swallow:
                     self._out.put(marker)
             elif line in ("q", "\x02"):
-                continue  # shutdown control lines produce no output
+                # quit / detach: the real process exits, ending the reader loop
+                self._alive = False
+                self._out.put(_STOP)
             else:
                 self._out.put(f"OUT:{line}")
 

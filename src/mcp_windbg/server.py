@@ -194,6 +194,7 @@ class CloseCdbSession(BaseModel):
 class CloseKdSession(BaseModel):
     """Parameters for closing a kernel (kd) session."""
     session_id: str = Field(description="The kd session_id to close.")
+    resume: bool = Field(default=True, description="Resume the target machine on close (send 'g' so it runs again). Set false to intentionally leave it halted at the break - note that freezes the whole machine until a debugger resumes it.")
 
 
 class SendCtrlBreak(BaseModel):
@@ -435,7 +436,11 @@ def _create_server(
                 return filter_tool_content(name, _handle_close(CloseCdbSession(**arguments).session_id, "cdb"), call_id)
 
             if name == "close_kd_session":
-                return filter_tool_content(name, _handle_close(CloseKdSession(**arguments).session_id, "kd"), call_id)
+                close_args = CloseKdSession(**arguments)
+                record = _sessions.get(close_args.session_id)
+                if record and record["kind"] == "kd":
+                    record["session"].resume_on_close = close_args.resume
+                return filter_tool_content(name, _handle_close(close_args.session_id, "kd"), call_id)
 
             if name == "send_ctrl_break":
                 return filter_tool_content(name, _handle_send_ctrl_break(SendCtrlBreak(**arguments).session_id), call_id)

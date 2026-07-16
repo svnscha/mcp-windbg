@@ -174,12 +174,14 @@ Close a user-mode session and release its `cdb.exe` process.
 
 ## close_kd_session
 
-Close a kernel session and release its `kd.exe` process. Closing detaches (CTRL+B), which
-resumes the target - always close a kernel session when done so the target is not left frozen.
+Close a kernel session and release its `kd.exe` process. By default this **resumes the target
+machine** (sends `g`) so it runs again - a kernel target left halted at a break freezes the
+whole machine. Always close a kernel session when done.
 
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `session_id` | yes | The `kd` session id to close. |
+| `resume` | no | Resume the machine on close. Defaults to `true`. Set `false` to intentionally leave it halted at the break (it stays frozen until a debugger resumes it). |
 
 ---
 

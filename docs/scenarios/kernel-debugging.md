@@ -86,8 +86,10 @@ A typical bugcheck investigation:
 Close the kernel debugging session on net:port=50000,key=1.2.3.4
 ```
 
-This calls [`close_kd_session`](../reference/tools.md#close_kd_session) and releases the
-session.
+This calls [`close_kd_session`](../reference/tools.md#close_kd_session), which by default
+**resumes the machine** (sends `g`) and releases the session - a kernel target left halted at
+a break freezes the whole machine. Pass `resume: false` only if you deliberately want to leave
+it stopped.
 
 ## Related
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import signal
 import threading
+import time
 from typing import Optional
 
 from .debug_session import (
@@ -56,6 +57,11 @@ class KDSession(DebuggerSession):
     """A kernel ``kd.exe`` session attached with ``-k``."""
 
     is_live_session = True
+
+    #: Whether closing the session should let the target machine run again.
+    #: A kernel target left at a break freezes the whole machine, so the default
+    #: is to resume it; set False to intentionally leave it halted at the break.
+    resume_on_close = True
 
     def __init__(
         self,
@@ -131,3 +137,21 @@ class KDSession(DebuggerSession):
         except DebuggerError:
             self.shutdown()
             raise KDError("Kernel debugger did not reach a prompt after break-in")
+
+    def _release_target(self) -> None:
+        """Release the kernel target before the debugger process is dropped.
+
+        Unlike a user-mode remote, a kernel target is NOT resumed by CTRL+B - it
+        stays halted, which freezes the whole machine. To leave the machine
+        running we send ``g`` (go) and disconnect while it runs. A short burst of
+        ``g`` drains any queued break requests so a single stuck break does not
+        immediately re-halt it. When ``resume_on_close`` is False we send nothing
+        and let the process terminate with the target still halted at the break.
+        """
+        if not self.resume_on_close:
+            return
+        for _ in range(3):
+            self.process.stdin.write("g\n")
+            self.process.stdin.flush()
+            time.sleep(0.4)
+        time.sleep(0.6)  # let the target settle into a free run before we drop the link

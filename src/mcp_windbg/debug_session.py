@@ -281,29 +281,54 @@ class DebuggerSession:
 
     # -- Teardown ---------------------------------------------------------
 
+    def _release_target(self) -> None:
+        """Tell the debugger to release the target before the process is dropped.
+
+        - A dump session quits with ``q``.
+        - A live user-mode remote detaches with CTRL+B, which resumes the target.
+
+        Kernel sessions override this: CTRL+B does not resume a kernel target
+        (only ``g`` does), so :class:`~mcp_windbg.kd_session.KDSession` handles it.
+        """
+        if self.is_live_session:
+            self.process.stdin.write("\x02")  # CTRL+B detaches a user-mode remote
+        else:
+            self.process.stdin.write("q\n")
+        self.process.stdin.flush()
+
     def shutdown(self) -> None:
-        """Terminate the debugger process, detaching a live target cleanly."""
+        """Release the target, then terminate the debugger process."""
         try:
             if self.process and self.process.poll() is None:
                 try:
-                    if self.is_live_session:
-                        self.process.stdin.write("\x02")  # CTRL+B detaches
-                        self.process.stdin.flush()
-                    else:
-                        self.process.stdin.write("q\n")
-                        self.process.stdin.flush()
-                    self.process.wait(timeout=1)
+                    self._release_target()
+                    self.process.wait(timeout=2)
                 except Exception:
                     pass
 
                 if self.process.poll() is None:
-                    self.process.terminate()
-                    self.process.wait(timeout=3)
+                    self._terminate_process()
         except Exception as e:
             if self.verbose:
                 print(f"Error during shutdown: {e}")
         finally:
             self.process = None
+
+    def _terminate_process(self) -> None:
+        """Kill the debugger process. On Windows use a tree kill: cdb.exe/kd.exe
+        launched via the Microsoft Store execution aliases spawn a child that a
+        plain terminate() leaves behind holding the target/connection."""
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
+                capture_output=True,
+            )
+        else:  # pragma: no cover - project is Windows-only
+            self.process.terminate()
+        try:
+            self.process.wait(timeout=3)
+        except Exception:
+            pass
 
     def __enter__(self):  # pragma: no cover - convenience API, not used by the server
         return self

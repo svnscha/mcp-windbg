@@ -31,6 +31,10 @@ for clients of the 0.x tools; see the renames below.
 - **Cancel-on-timeout for live sessions**: a remote/kernel command that outruns its timeout is
   broken into with CTRL+BREAK and the session is resynchronized before the timeout is reported,
   so a slow command (e.g. `!process 0 0` over a flaky KDNET link) can no longer wedge the session.
+- **Resume-on-close for kernel sessions**: `close_kd_session` now resumes the target machine by
+  default (`resume: true`), sending `g` so it runs again instead of leaving the whole machine
+  frozen at the break. `resume: false` opts out. (CTRL+B, which detaches a user-mode remote,
+  does not resume a kernel target.)
 - **Module split**: kernel sessions live in a new `kd_session.py`, user-mode in `cdb_session.py`,
   both over a shared `debug_session.py` base that owns the subprocess and completion-marker
   protocol. Adds a "Debug a kernel target" guide and an LLM-executable feature-verification plan.
@@ -69,6 +73,11 @@ for clients of the 0.x tools; see the renames below.
   instead of hanging on a `-k` connection that `cdb.exe` could not drive (#62, #47).
 - **Slow live commands no longer hang the session**: they time out cleanly and the session
   remains usable for the next command.
+- **Closing a kernel session no longer freezes the machine**: it now resumes the target with
+  `g` (see resume-on-close above) instead of a CTRL+B that left the whole machine halted.
+- **Debugger processes are cleaned up on close**: `cdb.exe`/`kd.exe` launched via the Microsoft
+  Store execution aliases spawn a child that a plain terminate left behind holding the target;
+  shutdown now does a Windows process-tree kill so no stray debugger keeps the connection.
 
 ### Removed
 
