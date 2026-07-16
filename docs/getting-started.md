@@ -4,6 +4,14 @@ This page takes you from nothing to your **first crash dump analysis**. It uses 
 with GitHub Copilot and `uvx`, which is the quickest path. Other clients work the same way
 once the server is configured, see [Client configuration](reference/clients.md).
 
+!!! tip "Using Claude Code?"
+    Skip the VS Code steps - register the server with one command and jump straight to
+    [Analyze your first dump](#4-analyze-your-first-dump):
+
+    ```bash
+    claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg
+    ```
+
 ## 1. Check the prerequisites
 
 You need a 64-bit Windows machine with:
