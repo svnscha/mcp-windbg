@@ -1,12 +1,15 @@
 # Client configuration
 
 `mcp-windbg` works with any MCP client. Below are ready-to-paste snippets for the common
-ones. They all use `uvx`, which fetches and runs the server on demand, so there is no
-separate install step. For pip and from-source alternatives, see
-[Other install methods](#other-install-methods).
+ones. Install the server first, then point the client at it:
+
+```bash
+pip install mcp-windbg
+```
 
 All snippets set `_NT_SYMBOL_PATH` so stack traces resolve against the Microsoft symbol
-server. Adjust the path or add more locations as needed.
+server. Adjust the path or add more locations as needed. For running from a checkout, see
+[Development](../development.md); for `uvx`, see [Other install methods](#other-install-methods).
 
 ## Claude Code
 
@@ -15,17 +18,10 @@ project; drop it to scope the server to the current project only. Everything aft
 the command Claude Code runs:
 
 ```bash
-claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg
-```
-
-If you installed the package with pip or from source, run the module directly instead of
-`uvx`:
-
-```bash
 claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
 ```
 
-Either way Claude Code records the server in `.claude.json`:
+Claude Code records the server in `.claude.json`:
 
 ```json title=".claude.json"
 {
@@ -56,12 +52,8 @@ Create `.vscode/mcp.json` in your workspace, or use **MCP: Open User Configurati
     "servers": {
         "mcp_windbg": {
             "type": "stdio",
-            "command": "uvx",
-            "args": [
-                "--from",
-                "git+https://github.com/svnscha/mcp-windbg",
-                "mcp-windbg"
-            ],
+            "command": "python",
+            "args": ["-m", "mcp_windbg"],
             "env": {
                 "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
             }
@@ -77,7 +69,7 @@ To pass server options such as a [filter script](../scenarios/redaction.md) or a
 path, add them to `args`:
 
 ```json
-"args": ["--from", "git+https://github.com/svnscha/mcp-windbg", "mcp-windbg",
+"args": ["-m", "mcp_windbg",
          "--cdb-path", "C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\cdb.exe"]
 ```
 
@@ -89,12 +81,8 @@ Add to `claude_desktop_config.json` (at `%APPDATA%\Claude\claude_desktop_config.
 {
     "mcpServers": {
         "mcp-windbg": {
-            "command": "uvx",
-            "args": [
-                "--from",
-                "git+https://github.com/svnscha/mcp-windbg",
-                "mcp-windbg"
-            ],
+            "command": "python",
+            "args": ["-m", "mcp_windbg"],
             "env": {
                 "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
             }
@@ -113,13 +101,12 @@ Restart Claude Desktop completely after saving. For background, see
 current workspace instead of the user profile:
 
 ```bash
-autohand mcp add mcp-windbg uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg
+autohand mcp add mcp-windbg python -m mcp_windbg
 ```
 
 Autohand has no flag for a per-server `_NT_SYMBOL_PATH`; the server inherits the environment
 that launched Autohand. Set `_NT_SYMBOL_PATH` in that shell (or system-wide) before starting
-Autohand so stack traces resolve. If you installed the package with pip or from source,
-replace the `uvx ...` command with `python -m mcp_windbg`.
+Autohand so stack traces resolve.
 
 ## GitHub Copilot CLI
 
@@ -177,26 +164,15 @@ This transport has no authentication, so keep it on localhost or a trusted netwo
 
 ## Other install methods
 
-`uvx` is recommended, but you can also install the package directly.
+The snippets above use a pip install, which is the simplest path. Two alternatives:
 
-With pip:
-
-```bash
-pip install mcp-windbg
-```
+With `uvx`, which fetches and runs the server on demand with nothing installed first. Swap the
+`command` and `args` of any snippet above for:
 
 ```json
 {
-    "servers": {
-        "mcp_windbg": {
-            "type": "stdio",
-            "command": "python",
-            "args": ["-m", "mcp_windbg"],
-            "env": {
-                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
-            }
-        }
-    }
+    "command": "uvx",
+    "args": ["--from", "git+https://github.com/svnscha/mcp-windbg", "mcp-windbg"]
 }
 ```
 

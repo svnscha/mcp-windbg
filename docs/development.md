@@ -198,6 +198,4 @@ uv run coverage report --include="*kd_session*,*debug_session*"
     glob.
 
 See the [end-to-end scenario guide](https://github.com/svnscha/mcp-windbg/blob/main/src/mcp_windbg/tests/e2e/README.md)
-for the test format, and
-[manual feature verification](https://github.com/svnscha/mcp-windbg/blob/main/src/mcp_windbg/tests/e2e/manual-verification.md)
-for driving each debugging mode against a real target.
+for the test format.

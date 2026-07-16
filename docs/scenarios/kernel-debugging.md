@@ -42,9 +42,8 @@ connection string formats:
 
 !!! note "kd.exe drives kernel sessions"
     Kernel sessions run under `kd.exe` (auto-detected in the same Windows Kits / Microsoft
-    Store locations as `cdb.exe`); `cdb.exe` cannot drive a kernel cable. On connect the server
-    waits for the target and breaks in for you, so `open_kd_session` returns already stopped at
-    a prompt - the break-in step below is only needed to re-halt a target you have let run.
+    Store locations as `cdb.exe`, or set with [`--kd-path`](../reference/cli.md)); `cdb.exe`
+    cannot drive a kernel cable.
 
 !!! note "no_debuggee timeout"
     If `open_kd_session` times out mentioning `no_debuggee`, the target is not transmitting -
@@ -52,17 +51,12 @@ connection string formats:
     (KDNET is point-to-point, one debugger at a time). That is an environment issue, not a tool
     failure.
 
-## Break in, then inspect
+## Inspect the target
 
-If the target is running, pause it before you inspect state. Ask the model to break in, which
-calls [`send_ctrl_break`](../reference/tools.md#send_ctrl_break):
-
-```text
-Send CTRL+BREAK to the kernel target, then show the target version with vertarget
-```
-
-Once stopped, investigate through [`run_kd_command`](../reference/tools.md#run_kd_command)
-(which addresses the kernel session when asked about it):
+`open_kd_session` waits for the target to connect and **breaks in for you**, so it comes back
+already stopped at a prompt. There is no separate break-in step: start inspecting straight
+away through [`run_kd_command`](../reference/tools.md#run_kd_command), which addresses the
+kernel session when asked about it.
 
 ```text
 Show the current bugcheck analysis with !analyze -v
@@ -74,11 +68,19 @@ A typical bugcheck investigation:
 
 ```text
 1. Open a kernel debugging session on net:port=50000,key=1.2.3.4
-2. Send CTRL+BREAK so we can inspect safely
-3. Run !analyze -v and summarize the bugcheck
-4. Show the faulting driver and its stack
-5. List loaded modules and flag anything unsigned or unexpected
+2. Run !analyze -v and summarize the bugcheck
+3. Show the faulting driver and its stack
+4. List loaded modules and flag anything unsigned or unexpected
 ```
+
+!!! tip "Let it run, then re-halt it"
+    You only need [`send_ctrl_break`](../reference/tools.md#send_ctrl_break) to stop a target
+    you deliberately let run again (with `g`), for example to catch it in the act. A freshly
+    opened session is already halted.
+
+For a guided investigation, use the built-in [`kernel-triage`](../reference/prompts.md)
+prompt, which walks the model through orienting, testing a hypothesis, and releasing the
+machine at the end.
 
 ## Close the connection when done
 

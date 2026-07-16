@@ -5,102 +5,88 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- **`--kd-path`**: point the server at a specific `kd.exe` for kernel debugging, the counterpart
-  to `--cdb-path`. Kernel sessions need `kd.exe` (`cdb.exe` cannot drive a kernel connection),
-  so the path was previously always auto-detected with no way to override it.
-- **Real kernel end-to-end test**: `scenarios/kernel_session.yaml` attaches to a live kernel
-  target, runs kernel-mode commands, and releases it on close. Set `MCP_WINDBG_KERNEL_CONNECTION`
-  to the `-k` connection string to run it (`-m kernel`); it skips where no target is configured.
-
-### Fixed
-
-- **Coverage measurement**: CI ran the test suite under plain `pytest`, so only the hosted server
-  subprocess was measured and every hermetic unit test counted as zero. Fully tested modules
-  reported as near-dead code (`kd_session.py` at 34%). CI now runs `coverage run -m pytest`, which
-  measures the pytest process and the server subprocess together.
-
 ## [1.0.0] - 2026-07-16
 
-First stable release. The tool surface is redesigned around opaque **session ids** and split
-by debugger engine - user-mode (`cdb.exe`) and kernel (`kd.exe`). **This is a breaking change**
-for clients of the 0.x tools; see the renames below.
+First stable release, and the one where kernel debugging actually works.
+
+The tool surface is redesigned around opaque **session ids** and split by debugger engine:
+user-mode (`cdb.exe`) and kernel (`kd.exe`). **This is a breaking change** for clients of the
+0.x tools. Every `*_windbg_*` tool has a new name, listed under Changed.
 
 ### Added
 
-- **Kernel debugging (`kd.exe`)**: `open_kd_session` / `run_kd_command` / `close_kd_session`
-  attach to a kernel target with `-k` (KDNET `net:port=,key=`, named pipe `com:pipe,port=\\.\pipe\...`,
-  or serial) using `kd.exe`. On connect the server waits for the target's connect banner, breaks
-  in with CTRL+BREAK, and returns an already-stopped session. Kernel debugging was previously
-  impossible - remote connections were launched with `-remote` (user-mode only), so a kernel
-  target could never connect (#62, #47).
-- **Session-id model**: every `open_*` tool returns an opaque `session_id` (`cdb-…` / `kd-…`) on
-  the first output line; `run_*`, `close_*`, and `send_ctrl_break` address a session by that id.
-  Session kind is enforced - using a `cdb` id with `run_kd_command` (or vice versa) returns a
-  tool error naming the correct tool.
-- **Per-tool-call timeouts**: `timeout_seconds` on every `open_*`/`run_*` overrides the per-tool
-  default (`open_cdb_dump` 180s, connects 60s, `run_cdb_command` 60s, `run_kd_command` 120s);
-  the server-wide `--timeout` (now defaulting to 60s) is a floor.
-- **Cancel-on-timeout for live sessions**: a remote/kernel command that outruns its timeout is
-  broken into with CTRL+BREAK and the session is resynchronized before the timeout is reported,
-  so a slow command (e.g. `!process 0 0` over a flaky KDNET link) can no longer wedge the session.
-- **Resume-on-close for kernel sessions**: `close_kd_session` now resumes the target machine by
-  default (`resume: true`), sending `g` so it runs again instead of leaving the whole machine
-  frozen at the break. `resume: false` opts out. (CTRL+B, which detaches a user-mode remote,
-  does not resume a kernel target.)
-- **Module split**: kernel sessions live in a new `kd_session.py`, user-mode in `cdb_session.py`,
-  both over a shared `debug_session.py` base that owns the subprocess and completion-marker
-  protocol. Adds a "Debug a kernel target" guide and an LLM-executable feature-verification plan.
+- **Kernel debugging** - `open_kd_session`, `run_kd_command`, and `close_kd_session` attach to a
+  kernel target over KDNET (`net:port=,key=`), a named pipe (`com:pipe,port=\\.\pipe\...`), or
+  serial. This was impossible in 0.x: every remote connection was launched with `-remote`, which
+  is user-mode only, so a kernel target could never connect (#62, #47).
+- **Kernel sessions arrive already stopped** - `open_kd_session` waits for the target's connect
+  banner and breaks in for you, so there is no separate break-in step.
+- **Closing a kernel session sets the machine running again** - `close_kd_session` sends `g` by
+  default (`resume: true`). Pass `resume: false` only to leave the target halted on purpose.
+- **`--kd-path`** - point the server at a specific `kd.exe`, the counterpart to `--cdb-path`.
+- **Session ids** - every `open_*` returns an opaque `session_id` (`cdb-…` / `kd-…`) on its first
+  output line, and `run_*`, `close_*`, and `send_ctrl_break` address a session by that id. The
+  kind is enforced: a `cdb` id passed to `run_kd_command` (or the reverse) returns an error
+  naming the right tool.
+- **Per-call timeouts** - `timeout_seconds` on any `open_*` / `run_*` overrides that tool's
+  default (`open_cdb_dump` 180s, connects 60s, `run_cdb_command` 60s, `run_kd_command` 120s).
+  The server-wide `--timeout` (default 60s) is the floor.
+- **Live commands cancel instead of wedging** - a remote or kernel command that outruns its
+  timeout is broken into with CTRL+BREAK and the session resynchronized before the timeout is
+  reported, so a slow `!process 0 0` over a flaky KDNET link no longer strands the session.
+- **`remote-triage` prompt** - a guided investigation of a live user-mode target: break in,
+  orient, then track down the hang or crash.
+- **`kernel-triage` prompt** - the same for a kernel target, including telling a real bugcheck
+  apart from a plain break-in, and releasing the machine at the end.
 
 ### Changed
 
-- **BREAKING - tool surface renamed and split** (all `*_windbg_*` names removed):
-    - `list_windbg_dumps` → `list_dumps`
-    - `open_windbg_dump` → `open_cdb_dump`
-    - `open_windbg_remote` → `open_cdb_remote`
-    - `run_windbg_cmd` → `run_cdb_command` (user mode) / `run_kd_command` (kernel); the
-      `connection_type` discriminator is gone
-    - `close_windbg_dump` / `close_windbg_remote` → `close_cdb_session`; new `open_kd_session` /
-      `close_kd_session`
-    - `send_ctrl_break` now takes a `session_id`
-- **BREAKING - session addressing**: sessions are addressed by `session_id`, not by dump path /
-  connection string, and `run_*` no longer auto-creates a session (open one first). Reopening the
-  same dump now yields an independent session rather than reusing one.
+- **BREAKING** - `list_windbg_dumps` is now `list_dumps`.
+- **BREAKING** - `open_windbg_dump` is now `open_cdb_dump`.
+- **BREAKING** - `open_windbg_remote` is now `open_cdb_remote`.
+- **BREAKING** - `run_windbg_cmd` is now `run_cdb_command` (user mode) or `run_kd_command`
+  (kernel). The `connection_type` discriminator is gone; the tool name says which engine.
+- **BREAKING** - `close_windbg_dump` and `close_windbg_remote` are both now `close_cdb_session`.
+- **BREAKING** - `send_ctrl_break` takes a `session_id`.
+- **BREAKING** - sessions are addressed by id, not by dump path or connection string, and `run_*`
+  no longer opens one implicitly: open a session first. Reopening the same dump gives you an
+  independent session instead of silently reusing one.
+- **Kernel debugging runs under `kd.exe`** (auto-detected, or `--kd-path`), not `cdb.exe -k`.
+  `cdb.exe` cannot drive a kernel cable.
 - **Completion markers are unique per command**, so a slow command's late output can never be
-  attributed to the next command (fixes cross-command desync on live targets).
-- **Kernel debugging uses `kd.exe`** (auto-detected), not `cdb.exe -k`.
-- **Docs**: README, the docs site (tools/CLI reference, crash-dump/remote/kernel/triage guides,
-  troubleshooting), and the `dump-triage` prompt updated to the new tools and session-id flow;
-  `TESTPLAN.md` rewritten as an LLM-executable protocol.
-- **Docs**: Added a Claude Code client guide (`claude mcp add` with both `uvx` and `python -m mcp_windbg`)
-  and documented Autohand Code (`autohand mcp add --scope project`) in `docs/reference/clients.md`
-  (#63); added a Development page (`docs/development.md`); switched the README Star History chart to
-  the sealed-token embed with light/dark variants.
-- **Dependencies**: Refreshed the runtime floors - `mcp>=1.28.1`, `pydantic>=2.13.4`,
-  `starlette>=1.3.1` (0.x to 1.x), `uvicorn>=0.51.0` - and `pytest>=9.1.1`, and regenerated
-  `uv.lock`. The streamable-http transport was smoke-tested against the Starlette 1.x bump.
+  mistaken for the next command's result.
+- **Module layout** - kernel sessions live in `kd_session.py` and user-mode in `cdb_session.py`,
+  over a shared `debug_session.py` that owns the subprocess and marker protocol.
+- **Docs** - README and the docs site rewritten around the new tools and the session-id flow,
+  with a "Debug a kernel target" guide, a Development page, and client guides for Claude Code and
+  Autohand Code (#63). Setup instructions standardize on `pip install mcp-windbg` and
+  `python -m mcp_windbg`.
+- **Tests** - the suite is end-to-end: each scenario drives a real `python -m mcp_windbg` server
+  through a real MCP client. `kernel_session.yaml` covers a real kernel attach when
+  `MCP_WINDBG_KERNEL_CONNECTION` points at a target.
+- **Dependencies** - runtime floors refreshed (`mcp>=1.28.1`, `pydantic>=2.13.4`,
+  `starlette>=1.3.1`, `uvicorn>=0.51.0`), plus `pytest>=9.1.1`, and `uv.lock` regenerated. The
+  streamable-http transport was smoke-tested against the Starlette 0.x to 1.x bump.
 
 ### Fixed
 
-- **Kernel targets connect reliably** via `kd.exe` with a proper connect → break-in handshake,
-  instead of hanging on a `-k` connection that `cdb.exe` could not drive (#62, #47).
-- **Slow live commands no longer hang the session**: they time out cleanly and the session
-  remains usable for the next command.
-- **Closing a kernel session no longer freezes the machine**: it now resumes the target with
-  `g` (see resume-on-close above) instead of a CTRL+B that left the whole machine halted.
-- **Debugger processes are cleaned up on close**: `cdb.exe`/`kd.exe` launched via the Microsoft
-  Store execution aliases spawn a child that a plain terminate left behind holding the target;
-  shutdown now does a Windows process-tree kill so no stray debugger keeps the connection.
+- **Kernel targets connect reliably**, through a proper connect-then-break-in handshake instead
+  of hanging on a `-k` connection `cdb.exe` could not drive (#62, #47).
+- **Closing a kernel session no longer freezes the target machine.** It resumes with `g`; the
+  old CTRL+B detaches a user-mode remote but leaves a kernel target halted, and a halted kernel
+  target means the whole machine stops.
+- **Slow live commands no longer hang the session.** They time out cleanly and the session stays
+  usable for the next command.
+- **Debugger processes are cleaned up on close.** `cdb.exe` / `kd.exe` launched through the
+  Microsoft Store execution aliases spawn a child that a plain terminate left behind, still
+  holding the target. Shutdown now does a Windows process-tree kill.
 
 ### Removed
 
-- All `*_windbg_*` tool names and the `run_windbg_cmd` / `send_ctrl_break` `connection_type`
-  parameter, superseded by the `cdb`/`kd` split.
-- Path / connection-string session reuse - `open_*` always creates a fresh session and returns
-  its id.
+- All `*_windbg_*` tool names, and the `connection_type` parameter on `run_windbg_cmd` and
+  `send_ctrl_break`, superseded by the `cdb` / `kd` split.
+- Session reuse by dump path or connection string. `open_*` always creates a fresh session and
+  returns its id.
 
 ## [0.15.0] - 2026-06-08
 

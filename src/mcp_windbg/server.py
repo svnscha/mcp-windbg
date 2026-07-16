@@ -616,26 +616,49 @@ def _create_server(
                   f"Use the 'list_dumps' tool to discover available crash dumps."),
         )]
 
-    # Prompt constants
-    DUMP_TRIAGE_PROMPT_NAME = "dump-triage"
-    DUMP_TRIAGE_PROMPT_TITLE = "Crash Dump Triage Analysis"
-    DUMP_TRIAGE_PROMPT_DESCRIPTION = "Comprehensive single crash dump analysis with detailed metadata extraction and structured reporting"
+    # One entry per <name>.prompt.md in prompts/. Each takes a single optional
+    # argument; when the caller supplies it, it is pinned to the top of the prompt
+    # text so the model starts with the target instead of asking for it.
+    PROMPT_SPECS = {
+        "dump-triage": {
+            "title": "Crash Dump Triage Analysis",
+            "description": "Comprehensive single crash dump analysis with detailed metadata extraction and structured reporting",
+            "argument": "dump_path",
+            "argument_description": "Path to the Windows crash dump file to analyze (optional - will prompt if not provided)",
+            "label": "Dump file to analyze",
+        },
+        "remote-triage": {
+            "title": "Live Target Investigation",
+            "description": "Investigate a live user-mode target through a cdb debugging server: break in, orient, and track down a hang or crash",
+            "argument": "connection_string",
+            "argument_description": "The -remote connection string, e.g. tcp:Port=5005,Server=192.168.0.100 (optional - will prompt if not provided)",
+            "label": "Target to connect to",
+        },
+        "kernel-triage": {
+            "title": "Kernel Target Investigation",
+            "description": "Investigate a live kernel target over a -k connection: orient, track down a bugcheck or hang, and release the machine",
+            "argument": "connection_string",
+            "argument_description": "The -k connection string, e.g. net:port=50000,key=1.2.3.4 (optional - will prompt if not provided)",
+            "label": "Kernel target to connect to",
+        },
+    }
 
     @server.list_prompts()
     async def list_prompts() -> list[Prompt]:
         return [
             Prompt(
-                name=DUMP_TRIAGE_PROMPT_NAME,
-                title=DUMP_TRIAGE_PROMPT_TITLE,
-                description=DUMP_TRIAGE_PROMPT_DESCRIPTION,
+                name=name,
+                title=spec["title"],
+                description=spec["description"],
                 arguments=[
                     PromptArgument(
-                        name="dump_path",
-                        description="Path to the Windows crash dump file to analyze (optional - will prompt if not provided)",
+                        name=spec["argument"],
+                        description=spec["argument_description"],
                         required=False,
                     ),
                 ],
-            ),
+            )
+            for name, spec in PROMPT_SPECS.items()
         ]
 
     @server.get_prompt()
@@ -643,39 +666,39 @@ def _create_server(
         if arguments is None:
             arguments = {}
 
-        if name == DUMP_TRIAGE_PROMPT_NAME:
-            dump_path = arguments.get("dump_path", "")
-            try:
-                prompt_content = load_prompt("dump-triage")
-            except FileNotFoundError as e:
-                raise McpError(ErrorData(
-                    code=INTERNAL_ERROR,
-                    message=f"Prompt file not found: {e}"
-                ))
-
-            if dump_path:
-                prompt_text = f"**Dump file to analyze:** {dump_path}\n\n{prompt_content}"
-            else:
-                prompt_text = prompt_content
-
-            return GetPromptResult(
-                description=DUMP_TRIAGE_PROMPT_DESCRIPTION,
-                messages=[
-                    PromptMessage(
-                        role="user",
-                        content=TextContent(
-                            type="text",
-                            text=prompt_text
-                        ),
-                    ),
-                ],
-            )
-
-        else:
+        spec = PROMPT_SPECS.get(name)
+        if spec is None:
             raise McpError(ErrorData(
                 code=INVALID_PARAMS,
                 message=f"Unknown prompt: {name}"
             ))
+
+        try:
+            prompt_content = load_prompt(name)
+        except FileNotFoundError as e:
+            raise McpError(ErrorData(
+                code=INTERNAL_ERROR,
+                message=f"Prompt file not found: {e}"
+            ))
+
+        target = arguments.get(spec["argument"], "")
+        if target:
+            prompt_text = f"**{spec['label']}:** {target}\n\n{prompt_content}"
+        else:
+            prompt_text = prompt_content
+
+        return GetPromptResult(
+            description=spec["description"],
+            messages=[
+                PromptMessage(
+                    role="user",
+                    content=TextContent(
+                        type="text",
+                        text=prompt_text
+                    ),
+                ),
+            ],
+        )
 
     return server
 

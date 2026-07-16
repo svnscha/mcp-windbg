@@ -287,6 +287,12 @@ async def _run_step(
         _check(scenario, index, "list_tools", expect, text, is_error=False)
         return
 
+    if "list_prompts" in step:
+        result = await session.list_prompts()
+        text = "\n".join(prompt.name for prompt in result.prompts)
+        _check(scenario, index, "list_prompts", expect, text, is_error=False)
+        return
+
     if "server_input" in step:
         if remote_server is None:
             raise AssertionError(

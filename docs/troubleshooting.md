@@ -14,7 +14,7 @@ Common problems and fixes. If none of these help, enable
 - Verify the server runs at all:
 
     ```bash
-    uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg --help
+    python -m mcp_windbg --help
     ```
 
 ## CDB not found
@@ -57,7 +57,7 @@ A command that exceeds the per-command limit reports a timeout.
 
 - Verify the install: `pip list | findstr mcp-windbg`.
 - For a virtual environment, point `command` at that interpreter, for example
-  `${workspaceFolder}/.venv/Scripts/python`. Or use `uvx`, which avoids this entirely.
+  `${workspaceFolder}/.venv/Scripts/python`.
 
 ## Remote debugging issues
 
@@ -110,5 +110,5 @@ Check the basics:
 
 ```bash
 cdb.exe -version
-uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg --help
+python -m mcp_windbg --help
 ```

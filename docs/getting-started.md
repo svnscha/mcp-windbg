@@ -1,15 +1,15 @@
 # Getting started
 
-This page takes you from nothing to your **first crash dump analysis**. It uses VS Code
-with GitHub Copilot and `uvx`, which is the quickest path. Other clients work the same way
-once the server is configured, see [Client configuration](reference/clients.md).
+This page takes you from nothing to your **first crash dump analysis**. It uses VS Code with
+GitHub Copilot. Other clients work the same way once the server is configured, see
+[Client configuration](reference/clients.md).
 
 !!! tip "Using Claude Code?"
     Skip the VS Code steps - register the server with one command and jump straight to
     [Analyze your first dump](#4-analyze-your-first-dump):
 
     ```bash
-    claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg
+    claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
     ```
 
 ## 1. Check the prerequisites
@@ -27,14 +27,11 @@ You need a 64-bit Windows machine with:
     Windows*. The server auto-detects `cdb.exe` in the usual locations; if yours is
     elsewhere, you will pass `--cdb-path` later.
 
-- **`uv`**, a fast Python package manager that also provides `uvx`:
+- **Python 3.10+**, then install the server:
 
     ```powershell
-    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    pip install mcp-windbg
     ```
-
-    Prefer plain Python? Install Python 3.10+ instead and use `pip`, see
-    [Client configuration](reference/clients.md).
 
 - **VS Code** with the **GitHub Copilot** extension, and MCP enabled (step 3).
 
@@ -49,20 +46,15 @@ You need a 64-bit Windows machine with:
 
 ## 2. Configure the server in VS Code
 
-Create `.vscode/mcp.json` in your workspace. With `uvx`, there is nothing to install first,
-it fetches and runs the server on demand:
+Create `.vscode/mcp.json` in your workspace:
 
 ```json title=".vscode/mcp.json"
 {
     "servers": {
         "mcp_windbg": {
             "type": "stdio",
-            "command": "uvx",
-            "args": [
-                "--from",
-                "git+https://github.com/svnscha/mcp-windbg",
-                "mcp-windbg"
-            ],
+            "command": "python",
+            "args": ["-m", "mcp_windbg"],
             "env": {
                 "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
             }

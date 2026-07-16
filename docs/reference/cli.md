@@ -1,13 +1,12 @@
 # Command-line options
 
-The server is started by your MCP client, but the same options apply when you run it by hand.
-With `uvx` it is fetched and run on demand:
+The server is started by your MCP client, but the same options apply when you run it by hand:
 
 ```bash
-uvx --from git+https://github.com/svnscha/mcp-windbg mcp-windbg --help
+python -m mcp_windbg --help
 ```
 
-Installed with pip, the entry point is `mcp-windbg` (or `python -m mcp_windbg`).
+The `mcp-windbg` entry point is equivalent, if its scripts directory is on your `PATH`.
 
 ## All options
 

@@ -56,6 +56,9 @@ A typical hang investigation:
 5. Run !locks to check synchronization objects
 ```
 
+For a guided investigation, use the built-in [`remote-triage`](../reference/prompts.md)
+prompt, which walks the model through breaking in, orienting, and testing a hypothesis.
+
 ## Close the connection when done
 
 ```text

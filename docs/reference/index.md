@@ -6,7 +6,7 @@ The precise, lookup-style reference for `mcp-windbg`.
   transports, symbol and CDB paths, and the filter script hooks.
 - **[Tools](tools.md)** - the MCP tools the server exposes, their parameters, and the
   WinDbg commands that come up most often.
-- **[Prompts](prompts.md)** - the built-in `dump-triage` prompt and its argument.
+- **[Prompts](prompts.md)** - the built-in `dump-triage`, `remote-triage`, and `kernel-triage` prompts.
 - **[Client configuration](clients.md)** - configuration snippets for VS Code, Claude
   Desktop, and GitHub Copilot CLI, plus pip and from-source installs.
 
