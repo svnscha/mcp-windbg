@@ -1,7 +1,9 @@
 {
-    "python.testing.pytestArgs": [
-        "tests"
-    ],
+    // No path argument: pytest falls back to `testpaths` in pyproject.toml
+    // (src/mcp_windbg/tests), so VS Code and the command line discover the same
+    // suite. Passing a path here overrides testpaths and silently diverges.
+    "python.testing.pytestArgs": [],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe"
 }
