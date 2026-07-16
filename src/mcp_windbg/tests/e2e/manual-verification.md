@@ -1,10 +1,11 @@
 # Manual feature verification
 
 End-to-end checks for the four debugging capabilities, to run by hand against real
-targets. The automated suite (`scenarios/*.yaml`, `test_build_cdb_args.py`) proves the
-plumbing, but a real user-mode remote, and especially a real kernel attach, need live
-targets a CI runner does not have. Use this checklist to confirm an implementation on a
-machine that does.
+targets. The automated suite (`scenarios/*.yaml`) proves the plumbing, but a real user-mode
+remote, and especially a real kernel attach, need live targets a CI runner does not have.
+`kernel_session.yaml` automates the kernel attach once you point
+`MCP_WINDBG_KERNEL_CONNECTION` at a target; use this checklist for what it does not cover,
+on a machine that has one.
 
 Each step gives the exact tool call (the JSON a client sends) and what a healthy response
 contains. Drive them through any MCP client, or with `run_windbg_cmd` after opening a
@@ -14,8 +15,8 @@ session.
 | --- | --- | --- |
 | Crash-dump analysis | yes (`analyze_dump.yaml`) | no - a `.dmp` file |
 | User-mode remote (`-remote`) | yes (`remote_debugging.yaml`, local `cdb -server`) | a debug server |
-| Kernel debugging (`-k`) | no (arg-builder unit test only) | a VM/second machine |
-| Command construction (`-z`/`-remote`/`-k`) | yes (`test_build_cdb_args.py`) | no |
+| Kernel debugging (`-k`) | no (`kernel_session.yaml`, needs a target) | a VM/second machine |
+| Command construction (`-z`/`-remote`/`-k`) | yes (every scenario launches for real) | no |
 
 ## 1. Crash-dump analysis
 

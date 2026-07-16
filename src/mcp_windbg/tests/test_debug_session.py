@@ -1,10 +1,11 @@
-"""Hermetic tests for the DebuggerSession marker protocol.
+"""Hermetic test for the DebuggerSession command timeout.
 
-A fake in-process "debugger" stands in for cdb/kd: it reads the lines written to
-stdin and, mimicking the real thing, emits ``OUT:<cmd>`` for a command line and
-echoes the marker for a ``.echo <marker>`` line. That lets us exercise the real
-reader thread, per-command markers, and the timeout path without a debugger and
-without a live target.
+The scenarios drive a real debugger and cover the marker protocol's happy path
+(a command returns its own output) far better than a fake can. What they cannot
+do is make a debugger stop answering: hanging a real cdb.exe on demand is not
+something a scenario can arrange. So the fake in-process "debugger" here exists
+for that one case - it can be told to swallow markers, leaving the command to
+time out and exercise the cancel-on-timeout resync.
 """
 
 from __future__ import annotations
@@ -108,29 +109,6 @@ def make_session(monkeypatch):
     session = created.get("session")
     if session is not None:
         session.shutdown()
-
-
-def test_startup_reaches_prompt(make_session):
-    session, _ = make_session()
-    # If _startup's marker handshake worked, the session is ready and marker seq
-    # has advanced past the startup marker.
-    assert session._marker_seq == 1
-
-
-def test_sequential_commands_return_their_own_output(make_session):
-    session, _ = make_session()
-    assert session.send_command("first") == ["OUT:first"]
-    assert session.send_command("second") == ["OUT:second"]
-    assert session.send_command("third") == ["OUT:third"]
-
-
-def test_markers_are_unique_per_command(make_session):
-    session, _ = make_session()
-    before = session._marker_seq
-    session.send_command("a")
-    session.send_command("b")
-    # Two commands consumed two distinct, monotonically increasing markers.
-    assert session._marker_seq == before + 2
 
 
 def test_timeout_raises_when_marker_never_arrives(make_session):

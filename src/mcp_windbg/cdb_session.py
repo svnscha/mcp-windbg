@@ -40,25 +40,6 @@ DEFAULT_CDB_PATHS = [
 ]
 
 
-def build_cdb_args(
-    cdb_path: str,
-    dump_path: Optional[str] = None,
-    remote_connection: Optional[str] = None,
-    kernel_connection: Optional[str] = None,
-    symbols_path: Optional[str] = None,
-    additional_args: Optional[List[str]] = None,
-) -> List[str]:
-    """Thin wrapper over :func:`build_debugger_args` (kept for callers/tests)."""
-    return build_debugger_args(
-        cdb_path,
-        dump_path=dump_path,
-        remote_connection=remote_connection,
-        kernel_connection=kernel_connection,
-        symbols_path=symbols_path,
-        additional_args=additional_args,
-    )
-
-
 class CDBSession(DebuggerSession):
     """A user-mode ``cdb.exe`` session over a dump or a ``-remote`` server."""
 
