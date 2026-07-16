@@ -103,7 +103,67 @@ changes. For day-to-day development, prefer the editable install above.
 ```powershell
 uv run pytest src/mcp_windbg/tests/ -v                 # full suite (needs cdb.exe for live cases)
 uv run pytest src/mcp_windbg/tests/ -v -m "not live"   # hermetic subset, no debugger needed
+uv run pytest src/mcp_windbg/tests/ -v -m kernel       # kernel scenarios, needs a real target
 ```
+
+Markers gate what needs hardware: `live` needs `cdb.exe`, `remote` starts a local CDB server,
+and `kernel` needs `kd.exe` plus a target machine. Whatever is unavailable skips rather than
+fails, so the hermetic subset stays green anywhere.
+
+The `scenarios/*.yaml` files are not a separate runner: each becomes one parametrized case,
+addressed by its `name:` field rather than its filename.
+
+```powershell
+uv run pytest "src/mcp_windbg/tests/test_scenarios.py::test_scenario[Kernel session against a real target]" -v
+```
+
+### Kernel target
+
+Kernel scenarios attach to a real target, so they need its `-k` connection string in
+`MCP_WINDBG_KERNEL_CONNECTION`. Unset, they skip (as they do on CI, which has no target):
+
+```powershell
+$env:MCP_WINDBG_KERNEL_CONNECTION = "net:port=50005,key=1.2.3.4"
+uv run pytest src/mcp_windbg/tests/ -m kernel -v
+```
+
+The hermetic tests in `tests/test_kd_session.py` drive a fake `kd.exe` instead. They are the
+floor CI can reach, not proof the feature works: run the `kernel` marker against a real target
+before shipping a kernel change.
+
+### VS Code
+
+`.vscode/settings.json` is set up for discovery already. Two things there are load-bearing:
+
+- **`python.testing.pytestArgs` stays empty.** Pytest then falls back to `testpaths` in
+  `pyproject.toml` (`src/mcp_windbg/tests`). A path argument overrides `testpaths`, so
+  discovery and the command line silently disagree about what the suite is.
+- **`python.envFile`** points at `.env`, since VS Code does not inherit your shell. Create it
+  to run the kernel scenarios from the Test Explorer. It is gitignored, as it holds your KDNET
+  key:
+
+```ini title=".env"
+MCP_WINDBG_KERNEL_CONNECTION=net:port=50005,key=1.2.3.4
+```
+
+### Coverage
+
+The code runs in two processes and both must be measured, or the number lies. The scenarios
+drive a server subprocess (`MCP_WINDBG_COVERAGE` launches it under `coverage run`), while the
+hermetic tests run in the pytest process itself, so pytest needs starting under coverage too:
+
+```powershell
+uv run coverage erase
+$env:MCP_WINDBG_COVERAGE = "1"
+uv run coverage run -m pytest src/mcp_windbg/tests/     # measures pytest AND the server
+$env:MCP_WINDBG_COVERAGE = $null
+uv run coverage combine                 # merge the per-process .coverage.* files
+uv run coverage report                  # or: uv run coverage html  ->  htmlcov/
+```
+
+Plain `pytest` reports every hermetic test's code as never executed, which is why the Test
+Explorer's coverage numbers are not trustworthy. CI gates on `--fail-under=88`; leave
+`MCP_WINDBG_KERNEL_CONNECTION` unset to reproduce its number, set it for the honest local one.
 
 See the [end-to-end scenario guide](https://github.com/svnscha/mcp-windbg/blob/main/src/mcp_windbg/tests/e2e/README.md)
 for the test format, and

@@ -5,5 +5,9 @@
     "python.testing.pytestArgs": [],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe"
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    // Kernel scenarios read MCP_WINDBG_KERNEL_CONNECTION, which VS Code does not
+    // inherit from your shell. Put it in .env (gitignored: it holds your KDNET
+    // key). Without the file the kernel tests just skip.
+    "python.envFile": "${workspaceFolder}/.env"
 }
