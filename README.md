@@ -1,5 +1,7 @@
 # MCP Server for WinDbg Crash Analysis
 
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.svnscha%2Fmcp-windbg.svg)](https://mcptoplist.com/server/io.github.svnscha%2Fmcp-windbg)
+
 [![CI](https://github.com/svnscha/mcp-windbg/actions/workflows/ci.yml/badge.svg)](https://github.com/svnscha/mcp-windbg/actions/workflows/ci.yml)
 [![Docs](https://github.com/svnscha/mcp-windbg/actions/workflows/pages.yml/badge.svg)](https://svnscha.github.io/mcp-windbg/)
 [![PyPI](https://img.shields.io/pypi/v/mcp-windbg)](https://pypi.org/project/mcp-windbg/)
