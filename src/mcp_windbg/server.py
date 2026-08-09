@@ -202,6 +202,12 @@ class SendCtrlBreak(BaseModel):
     session_id: str = Field(description="A live session_id (cdb remote or kd) to break into.")
 
 
+class WaitForBreak(BaseModel):
+    """Parameters for waiting until the target breaks in."""
+    session_id: str = Field(description="A kd session_id to wait on.")
+    timeout_seconds: Optional[int] = Field(default=300, description="Maximum seconds to wait (default 300). The target may break due to a crash, breakpoint, or manual CTRL+BREAK.")
+
+
 def _combine_symbols(per_call: Optional[str], server_default: Optional[str]) -> Optional[str]:
     """Combine per-call and server-default symbol paths."""
     if per_call and server_default:
@@ -399,6 +405,15 @@ def _create_server(
                 """,
                 inputSchema=SendCtrlBreak.model_json_schema(),
             ),
+            Tool(
+                name="wait_for_break",
+                description="""
+                Block until a running target breaks in (crash/BSOD, breakpoint, or manual CTRL+BREAK).
+                Use after resuming with 'g' to wait for the target to stop on its own.
+                Returns all output kd produced when the break occurred (crash info, break-in banner, etc.).
+                """,
+                inputSchema=WaitForBreak.model_json_schema(),
+            ),
         ]
 
     @server.call_tool()
@@ -447,6 +462,10 @@ def _create_server(
 
             if name == "send_ctrl_break":
                 return filter_tool_content(name, _handle_send_ctrl_break(SendCtrlBreak(**arguments).session_id), call_id)
+
+            if name == "wait_for_break":
+                args = WaitForBreak(**arguments)
+                return filter_tool_content(name, _handle_wait_for_break(args), call_id)
 
             raise McpError(ErrorData(code=INVALID_PARAMS, message=f"Unknown tool: {name}"))
 
@@ -584,6 +603,23 @@ def _create_server(
             ))
         session.send_ctrl_break()
         return [TextContent(type="text", text=f"Sent CTRL+BREAK to session {session_id} ({record['label']}).")]
+
+    def _handle_wait_for_break(args: WaitForBreak) -> list[TextContent]:
+        record = _sessions.get(args.session_id)
+        if record is None:
+            raise McpError(ErrorData(
+                code=INVALID_PARAMS,
+                message=f"Unknown session_id {args.session_id!r}. Open a session first."
+            ))
+        session = record["session"]
+        if not getattr(session, "is_live_session", False):
+            raise McpError(ErrorData(
+                code=INVALID_PARAMS,
+                message=f"session_id {args.session_id!r} is a dump session; wait_for_break requires a live target."
+            ))
+        output = session.wait_for_break(timeout=args.timeout_seconds)
+        text = "Target broke in.\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
+        return [TextContent(type="text", text=text)]
 
     def _session_header(session_id: str, kind: str, what: str) -> str:
         run_tool = f"run_{kind}_command"

@@ -122,6 +122,7 @@ class DebuggerSession:
         self.ready_event = threading.Event()
         self._marker_seq = 0
         self._expected_marker: Optional[str] = None
+        self._target_running = False
 
         try:
             creationflags = 0
@@ -207,6 +208,14 @@ class DebuggerSession:
         if not self.ready_event.wait(timeout or self.timeout):
             raise DebuggerError("Timed out waiting for debugger prompt")
 
+    _GO_COMMANDS = frozenset({"g", "gh", "gn", "gN", "gu", "gc", "p", "t", "pa", "ta"})
+
+    @staticmethod
+    def _is_go_command(command: str) -> bool:
+        """Return True if *command* resumes the target (fire-and-forget)."""
+        token = command.strip().split()[0] if command.strip() else ""
+        return token in DebuggerSession._GO_COMMANDS
+
     def send_command(self, command: str, timeout: Optional[int] = None) -> List[str]:
         """Send a command and return its output lines.
 
@@ -214,12 +223,28 @@ class DebuggerSession:
         CTRL+BREAK and the session is resynchronized before the timeout is
         reported, so the next command starts from a clean prompt.
 
+        Go-class commands (``g``, ``gh``, ``gn``, ...) are fire-and-forget:
+        they resume the target and no prompt arrives until the next break, so
+        we write them without a marker and return immediately.
+
         Raises:
             DebuggerError: if the process is gone, I/O fails, or the command
                 times out.
         """
         if not self.process:
             raise DebuggerError("Debugger process is not running")
+
+        if self._is_go_command(command):
+            try:
+                self.process.stdin.write(f"{command}\n")
+                self.process.stdin.flush()
+            except (IOError, ValueError) as e:
+                raise DebuggerError(f"Failed to send command: {e}")
+            self._target_running = True
+            return ["Target resumed."]
+
+        if self._target_running and self.is_live_session:
+            self._break_in_and_resync()
 
         marker = self._next_marker()
         self.ready_event.clear()
@@ -266,6 +291,58 @@ class DebuggerSession:
             self._expected_marker = None
         return resynced
 
+    def _break_in_and_resync(self) -> None:
+        """Break into a running target and wait for the prompt before sending
+        the next command.  Called automatically when a regular command is issued
+        while ``_target_running`` is set."""
+        try:
+            self.process.send_signal(signal.CTRL_BREAK_EVENT)
+        except Exception as e:
+            raise DebuggerError(f"Failed to break into running target: {e}")
+        try:
+            self._wait_for_prompt(min(10, max(3, self.timeout)))
+        except DebuggerError:
+            pass
+        self._target_running = False
+
+    def wait_for_break(self, timeout: Optional[int] = None) -> List[str]:
+        """Block until the target breaks in (crash, breakpoint, or manual break).
+
+        Queues a marker into kd's stdin.  While the target runs freely kd
+        cannot process it, so the marker sits until the target stops.  When
+        the target eventually halts (BSOD, breakpoint, CTRL+BREAK), kd
+        processes the queued marker and this method returns all output
+        collected in between — typically the crash banner or break-in message.
+        """
+        if not self.process:
+            raise DebuggerError("Debugger process is not running")
+        if not self._target_running:
+            return ["Target is not running."]
+
+        marker = self._next_marker()
+        self.ready_event.clear()
+        with self.lock:
+            self.output_lines = []
+            self._expected_marker = marker
+
+        try:
+            self.process.stdin.write(f".echo {marker}\n")
+            self.process.stdin.flush()
+        except (IOError, ValueError) as e:
+            raise DebuggerError(f"Failed to queue marker: {e}")
+
+        wait = timeout or 300
+        if not self.ready_event.wait(wait):
+            raise DebuggerError(
+                f"Target did not break within {wait} seconds"
+            )
+
+        self._target_running = False
+        with self.lock:
+            result = self.output_lines.copy()
+            self.output_lines = []
+        return result
+
     def send_ctrl_break(self) -> None:
         """Deliver CTRL+BREAK to break into a running target.
 
@@ -278,6 +355,7 @@ class DebuggerSession:
             self.process.send_signal(signal.CTRL_BREAK_EVENT)
         except Exception as e:
             raise DebuggerError(f"Failed to send CTRL+BREAK: {e}")
+        self._target_running = False
 
     # -- Teardown ---------------------------------------------------------
 
