@@ -5,6 +5,24 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-21
+
+A single-line dependency fix, but an important one: every fresh install of 1.0.0 was broken.
+
+### Fixed
+
+- **Installs no longer pull an incompatible `mcp`** - the runtime requirement is now
+  `mcp>=1.28.1,<2.0.0`. `mcp` 2.0.0 renames `McpError` to `MCPError` and drops the low-level
+  `Server.list_tools()` decorator this server registers its tools with, so an unpinned install
+  resolved to 2.x and died at import with
+  `ImportError: cannot import name 'McpError' from 'mcp.shared.exceptions'` (#76). Thanks to
+  @aphroteus for the fix, and to @arjunarjun07 for pinning down the cause.
+
+  If you hit this on 1.0.0, upgrading is the fix: `pip install --upgrade mcp-windbg`. The manual
+  workaround (`pip install "mcp<2"`) is no longer needed.
+
+  Moving to the 2.x server API is tracked in #78.
+
 ## [1.0.0] - 2026-07-16
 
 First stable release, and the one where kernel debugging actually works.
