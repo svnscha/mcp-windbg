@@ -226,6 +226,12 @@ hand the CPU back to the target, and the debugger prints nothing more until it s
 return straight away, leaving the target running - they do not wait for output, and they do not
 count against the command timeout.
 
+The server confirms the debugger actually took the resume before reporting it. Two things follow.
+If the target stops again immediately - a `gu` that returns in microseconds, or a breakpoint hit
+at once - you get that output instead of the "target resumed" message, because it never really
+left. And a [`send_ctrl_break`](#send_ctrl_break) issued in the same breath as the `g` still
+reaches the target, rather than being answered by a debugger that had not read the `g` yet.
+
 From there you have three options:
 
 - [`wait_for_break`](#wait_for_break) - block until the target stops, and collect the bugcheck or

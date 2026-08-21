@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An ordinary command after `g` breaks in by itself** - no need to interleave `send_ctrl_break`
   manually, and whatever the target printed on the way to stopping leads that command's output
   instead of being discarded.
+- **A break-in issued the instant `g` returns is no longer swallowed** - resuming wrote the `g`
+  and returned without waiting for the debugger to read it, so for a moment the debugger was
+  still sitting at its prompt with the resume unread. A CTRL+BREAK arriving in that window was
+  answered by the prompt instead of reaching the target, and the break was simply lost: the
+  caller then waited out a full `wait_for_break` timeout on a machine nothing was going to stop.
+  Measured against a live KDNET target, a break sent with no gap after `g` was lost every single
+  time. The resume is now confirmed consumed before it is reported. A go-class command that stops
+  again at once - a `gu` returning in microseconds, a breakpoint hit immediately - reports what it
+  printed instead of claiming the target is running.
 - **Break-in asks before it signals** - a CTRL+BREAK aimed at a target that has in fact already
   stopped queues a break request a kernel target honours later, re-halting a machine we thought
   we had released. The session probes for a prompt first and only signals if that goes

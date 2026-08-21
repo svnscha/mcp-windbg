@@ -155,6 +155,7 @@ def _fast_break_in_probe(monkeypatch):
     is about a slow kernel cable; the fake answers instantly or not at all, so
     shorten it and keep the suite quick."""
     monkeypatch.setattr(debug_session, "BREAK_IN_PROBE_TIMEOUT", 0.2)
+    monkeypatch.setattr(debug_session, "RESUME_CONFIRM_TIMEOUT", 0.2)
 
 
 @pytest.fixture(autouse=True)
@@ -211,8 +212,10 @@ def test_go_command_returns_immediately_and_leaves_target_running(make_session):
     assert proc.running is True
     assert session._target_running is True
     assert any("resumed" in line.lower() for line in out)
-    # No marker was queued behind the go command.
-    assert proc._queued == []
+    # What is queued behind the go is the probe that confirms the debugger
+    # consumed it, and nothing else. It is deliberately not a completion marker
+    # the command waits on: this call returned with the target still running.
+    assert proc._queued and all(line.startswith(".echo ") for line in proc._queued)
 
 
 def test_go_command_with_an_argument_is_still_go(make_session):
@@ -231,6 +234,25 @@ def test_step_commands_are_not_treated_as_go(make_session, command):
     assert out == [f"OUT:{command}"]
     assert session._target_running is False
     assert proc.running is False
+
+
+def test_go_that_stops_at_once_reports_the_stop_not_a_resume(make_session):
+    """A ``gu`` that returns in microseconds, or a breakpoint hit immediately,
+    leaves the target back at a prompt. Reporting "target resumed" there is two
+    lies for the price of one: it discards the output the caller wanted, and it
+    leaves ``_target_running`` set so the next ordinary command breaks into a
+    target that already stopped.
+
+    Confirming the resume is what makes this distinguishable - the debugger
+    answering the probe *is* the evidence the target never left.
+    """
+    session, proc = make_session(live=True)
+    proc._resumes_on_go = False  # the target comes straight back to the prompt
+    out = session.send_command("gu")
+    assert session._target_running is False
+    assert proc.running is False
+    assert out == ["OUT:gu"]
+    assert not any("resumed" in line.lower() for line in out)
 
 
 def test_go_on_a_dump_session_uses_the_normal_marker_protocol(make_session):

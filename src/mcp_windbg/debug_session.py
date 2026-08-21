@@ -52,6 +52,16 @@ DEFAULT_WAIT_FOR_BREAK_TIMEOUT = 300
 # go-class command, and only when the target really is still going.
 BREAK_IN_PROBE_TIMEOUT = 2
 
+# How long a go-class command waits to see whether the debugger consumed it.
+# Until it has, the debugger is still sitting at its prompt with our ``g`` in
+# its input queue, and a CTRL+BREAK meant for the running target is answered by
+# that prompt instead - the break is swallowed and whoever sent it then waits
+# out a full timeout on a target nothing is going to stop. Reporting the resume
+# only once it has demonstrably taken effect closes that window. Measured
+# against a live KDNET target the debugger consumes it within ~50ms; the rest is
+# headroom for a loaded link.
+RESUME_CONFIRM_TIMEOUT = 0.5
+
 
 class DebuggerError(Exception):
     """Raised for any debugger session failure (launch, timeout, I/O)."""
@@ -503,12 +513,35 @@ class DebuggerSession:
         except (IOError, ValueError, AttributeError) as e:
             raise DebuggerError(f"Failed to send command: {e}")
         self._target_running = True
+
+        if not self._resume_took_effect():
+            # The debugger answered, so the target is already back at a prompt:
+            # a `gu` that returned in microseconds, or a breakpoint hit at once.
+            # Its output is the useful answer, not a claim that it is running.
+            self._target_running = False
+            return pending + self._take_output()
+
         return pending + [
             f"Target resumed with '{command}'; it is running and produces no "
             "output until it stops.",
             "Wait for it with wait_for_break, or halt it with send_ctrl_break. Any "
             "other command breaks in automatically first.",
         ]
+
+    def _resume_took_effect(self) -> bool:
+        """True once the debugger has consumed the resume and the target is away.
+
+        Probes with a marker the debugger can only answer from a prompt. Silence
+        means it has stopped reading stdin, which is exactly what running the
+        target looks like from here - and, crucially, means the resume is no
+        longer sitting unread in the input queue where it would swallow the next
+        CTRL+BREAK. An answer means the target never left, or came straight back.
+        """
+        try:
+            self._wait_for_prompt(RESUME_CONFIRM_TIMEOUT)
+        except DebuggerError:
+            return not self._abandon_marker()
+        return False
 
     def _break_in_and_resync(self) -> List[str]:
         """Get a running target back to a prompt, and return what it printed.
