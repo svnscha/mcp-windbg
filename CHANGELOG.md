@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Runs on the mcp 2.x SDK** - the requirement is now `mcp>=2.0.0`, up from the `<2.0.0` cap
+  1.0.1 shipped as a stopgap. 2.0.0 removed the low-level `@server.list_tools()` /
+  `@server.call_tool()` decorators this server registered its tools through, so the handlers are
+  now passed to `Server(...)` directly and return the SDK's result types (`ListToolsResult`,
+  `CallToolResult`) instead of bare lists. `McpError` is `MCPError`, and it takes a code and a
+  message rather than an `ErrorData`. None of this is visible to clients: the same nine tools
+  with the same schemas, over both stdio and streamable-http (#78).
+
+  Installing mcp-windbg pulls the SDK it needs, so there is nothing to do on upgrade. Python
+  support is unchanged - the 2.x SDK requires 3.10+, exactly as this project already did.
+
 ### Added
 
 - **`wait_for_break`** - block until a target you resumed stops again (bugcheck, breakpoint, or a

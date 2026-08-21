@@ -24,7 +24,7 @@ from anyio import BrokenResourceError, ClosedResourceError
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
-from mcp.shared.exceptions import McpError
+from mcp.shared.exceptions import MCPError
 
 from . import harness
 
@@ -41,10 +41,11 @@ DEFAULT_TIMEOUT = 180
 # stdout_reader catches anyio.ClosedResourceError but not BrokenResourceError
 # around its read_stream_writer.send(), so a send into a just-closed receiver
 # escapes as a BrokenResourceError inside the task group's ExceptionGroup.
-# Confirmed still present in mcp 1.27.2 (the latest at the time of writing), so
-# bumping the dependency does not fix it. We suppress it only after every step
-# has completed, so a real failure (which raises before `completed` is set) is
-# never masked.
+# mcp 2.0.0 fixed that specific race - stdout_reader now catches
+# BrokenResourceError as well as ClosedResourceError around its send - but the
+# guard is kept for the other transports and for teardown noise from any other
+# source. It suppresses only after every step has completed, so a real failure
+# (which raises before `completed` is set) is never masked.
 _TEARDOWN_NOISE = (BrokenResourceError, ClosedResourceError)
 
 
@@ -215,7 +216,7 @@ async def _run_http(scenario, server_args, remote_server, mapping, timeout) -> N
         url = f"http://127.0.0.1:{port}/mcp"
         try:
             with anyio.fail_after(timeout):
-                async with streamable_http_client(url) as (read_stream, write_stream, _):
+                async with streamable_http_client(url) as (read_stream, write_stream):
                     async with ClientSession(read_stream, write_stream) as session:
                         await session.initialize()
                         await _run_steps(scenario, session, remote_server, mapping)
@@ -271,7 +272,7 @@ async def _run_step(
         name = step["get_prompt"]
         try:
             result = await session.get_prompt(name, arguments or None)
-        except McpError as exc:
+        except MCPError as exc:
             _check(scenario, index, f"get_prompt {name}", expect, str(exc), is_error=True)
             return
         text = "\n".join(
@@ -336,13 +337,14 @@ def _apply_capture(
 
 
 async def _call_tool(session: ClientSession, tool: str, arguments: dict[str, Any]):
-    """Call a tool, normalizing both isError results and raised McpErrors."""
+    """Call a tool, normalizing both isError results and raised MCPErrors."""
     try:
         result = await session.call_tool(tool, arguments)
-    except McpError as exc:
+    except MCPError as exc:
         return True, str(exc)
     text = "\n".join(getattr(item, "text", "") for item in result.content)
-    return bool(result.isError), text
+    # mcp 2.x names the field is_error in Python; the wire format is still isError.
+    return bool(result.is_error), text
 
 
 def _label(scenario: dict[str, Any], index: int, kind: str) -> str:
