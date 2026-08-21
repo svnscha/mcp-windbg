@@ -42,7 +42,7 @@ It is not a magical auto-fix. It is a Python wrapper around `cdb.exe` / `kd.exe`
 
 ## Tools
 
-Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pass it to the matching `run_*`, `close_*`, and `send_ctrl_break` calls. User-mode targets (dumps and `-remote`) run under `cdb.exe`; kernel targets run under `kd.exe`.
+Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pass it to the matching `run_*`, `close_*`, `send_ctrl_break`, and `wait_for_break` calls. User-mode targets (dumps and `-remote`) run under `cdb.exe`; kernel targets run under `kd.exe`.
 
 | Tool | Purpose |
 |------|---------|
@@ -55,6 +55,7 @@ Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pa
 | `close_cdb_session` | Close a user-mode session |
 | `close_kd_session` | Close a kernel session (resumes the target machine) |
 | `send_ctrl_break` | Break into a running live session |
+| `wait_for_break` | Wait for a target you resumed with `g` to stop again |
 
 Parameters, timeouts, and the built-in triage prompts are in the [tools reference](https://svnscha.github.io/mcp-windbg/reference/tools/).
 

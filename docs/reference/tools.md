@@ -14,6 +14,7 @@ one from your request, but this is the precise contract for each.
 | [`close_cdb_session`](#close_cdb_session) | Close a user-mode session. |
 | [`close_kd_session`](#close_kd_session) | Close a kernel session. |
 | [`send_ctrl_break`](#send_ctrl_break) | Break into a running target. |
+| [`wait_for_break`](#wait_for_break) | Wait for a resumed target to stop. |
 
 ## Sessions and session ids
 
@@ -24,8 +25,8 @@ first line of its output, for example:
 session_id: cdb-1a2b3c4d
 ```
 
-Pass that id to every follow-up call for the session - `run_*`, `close_*`, and
-`send_ctrl_break`. Sessions are persistent (the `cdb.exe`/`kd.exe` process stays alive between
+Pass that id to every follow-up call for the session - `run_*`, `close_*`, `send_ctrl_break`,
+and `wait_for_break`. Sessions are persistent (the `cdb.exe`/`kd.exe` process stays alive between
 calls), and several can be open at once, so you can compare dumps side by side. Close sessions
 when you finish to free resources.
 
@@ -197,6 +198,59 @@ before inspecting a running remote session, or to halt a kernel target.
 A dump session has no running target, so this returns an error for `cdb` dump ids. Used by
 [Debug a remote target](../scenarios/remote-debugging.md) and
 [Debug a kernel target](../scenarios/kernel-debugging.md).
+
+---
+
+## wait_for_break
+
+Block until a target you resumed stops again - on a bugcheck, a breakpoint, or a CTRL+BREAK from
+elsewhere - and return everything the debugger printed when it did.
+
+| Parameter | Required | Description |
+| --- | --- | --- |
+| `session_id` | yes | A live session id (cdb remote or kd) whose target is running. |
+| `timeout_seconds` | no | How long to wait. Defaults to 300. |
+
+It asks the debugger rather than trusting a flag, so it is right about a target that is running
+for reasons this server never caused - one resumed from the machine's own console, say. If the
+target is already stopped it returns immediately. If the wait expires the target is **left
+running**: wait again, or halt it with [`send_ctrl_break`](#send_ctrl_break).
+
+---
+
+## Letting the target run
+
+`g` and its relatives (`gh`, `gn`, `gN`, `gc`, `gu`) are different from every other command: they
+hand the CPU back to the target, and the debugger prints nothing more until it stops. Sent through
+[`run_cdb_command`](#run_cdb_command) or [`run_kd_command`](#run_kd_command) on a live session they
+return straight away, leaving the target running - they do not wait for output, and they do not
+count against the command timeout.
+
+From there you have three options:
+
+- [`wait_for_break`](#wait_for_break) - block until the target stops, and collect the bugcheck or
+  breakpoint report.
+- [`send_ctrl_break`](#send_ctrl_break) - halt it now.
+- Just send another command. The server breaks in for you first and puts whatever the target
+  printed on the way to stopping - the bugcheck banner, the breakpoint report - at the head of
+  that command's output, so the reason it stopped is never lost.
+
+Qualified and compound forms count too. `~0 g` and `~*g` resume the target, and in
+`bp nt!NtCreateFile; g` the breakpoint runs first with its result returned to you - so a typo'd
+symbol shows up as `Couldn't resolve error` instead of a wait for a break that can never come.
+A `;` inside a quoted command string (`bp X ".echo hit; g"`) belongs to the breakpoint, not to
+you, and is left alone.
+
+Stepping commands (`p`, `t`, `pa`, `ta`, ...) are *not* in this family: they run a single
+instruction or line and come back to the prompt, so they behave like any other command.
+
+A second `g` while the target really is still running is refused rather than queued - it would
+have resumed the target again the instant it stopped.
+
+While [`wait_for_break`](#wait_for_break) is parked on a session, other calls on that **same**
+session are refused immediately with a message pointing at
+[`send_ctrl_break`](#send_ctrl_break); other sessions keep working normally, and closing the
+session ends the wait.
 
 ---
 

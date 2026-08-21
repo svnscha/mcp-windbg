@@ -1,4 +1,5 @@
 import os
+import functools
 import traceback
 import glob
 import winreg
@@ -8,6 +9,7 @@ from typing import Dict, Optional
 from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession
+from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT
 from .kd_session import KDSession
 from .filter_script import FilterScript, load_filter_script
 from .prompts import load_prompt
@@ -27,6 +29,7 @@ from mcp.types import (
     INVALID_PARAMS,
     INTERNAL_ERROR,
 )
+import anyio.to_thread
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,9 @@ CDB_REMOTE_OPEN_TIMEOUT = 60
 KD_OPEN_TIMEOUT = 60
 CDB_COMMAND_TIMEOUT = 60
 KD_COMMAND_TIMEOUT = 120
+# wait_for_break is not a command timeout: it is how long we are willing to sit
+# on a running target waiting for it to bugcheck or hit a breakpoint.
+WAIT_FOR_BREAK_TIMEOUT = DEFAULT_WAIT_FOR_BREAK_TIMEOUT
 
 
 def _effective_timeout(per_call: Optional[int], tool_default: int, server_timeout: int) -> int:
@@ -93,6 +99,31 @@ def _require_session(session_id: str, kind: str):
             ),
         ))
     return record["session"]
+
+
+def _require_live_session(session_id: str, what: str):
+    """Return the session for ``session_id``, requiring a live (non-dump) target.
+
+    Shared by the tools that only make sense against something that runs -
+    ``send_ctrl_break`` and ``wait_for_break`` - and accepts either kind, since a
+    cdb remote and a kd session both have a target to stop.
+    """
+    record = _sessions.get(session_id)
+    if record is None:
+        raise McpError(ErrorData(
+            code=INVALID_PARAMS,
+            message=f"Unknown session_id {session_id!r}. Open a session first.",
+        ))
+    session = record["session"]
+    if not getattr(session, "is_live_session", False):
+        raise McpError(ErrorData(
+            code=INVALID_PARAMS,
+            message=(
+                f"session_id {session_id!r} is a dump session; there is no "
+                f"running target to {what}."
+            ),
+        ))
+    return session
 
 
 def _close_session(session_id: str, kind: str) -> bool:
@@ -200,6 +231,12 @@ class CloseKdSession(BaseModel):
 class SendCtrlBreak(BaseModel):
     """Parameters for breaking into a running session."""
     session_id: str = Field(description="A live session_id (cdb remote or kd) to break into.")
+
+
+class WaitForBreak(BaseModel):
+    """Parameters for waiting until a resumed target stops."""
+    session_id: str = Field(description="A live session_id (cdb remote or kd) whose target is running.")
+    timeout_seconds: Optional[int] = Field(default=None, description=f"Maximum seconds to wait (default {WAIT_FOR_BREAK_TIMEOUT}). The target stops on a crash/bugcheck, a breakpoint, or a CTRL+BREAK from elsewhere.")
 
 
 def _combine_symbols(per_call: Optional[str], server_default: Optional[str]) -> Optional[str]:
@@ -399,6 +436,17 @@ def _create_server(
                 """,
                 inputSchema=SendCtrlBreak.model_json_schema(),
             ),
+            Tool(
+                name="wait_for_break",
+                description="""
+                Block until a resumed target stops, and return everything it printed when it did.
+                Use this after letting the target run with 'g' - to catch the bugcheck, the
+                breakpoint report, or the break-in banner. Returns immediately if the target is
+                already stopped. If it is still running when the wait expires, the target is left
+                running: wait again, or halt it with send_ctrl_break.
+                """,
+                inputSchema=WaitForBreak.model_json_schema(),
+            ),
         ]
 
     @server.call_tool()
@@ -447,6 +495,9 @@ def _create_server(
 
             if name == "send_ctrl_break":
                 return filter_tool_content(name, _handle_send_ctrl_break(SendCtrlBreak(**arguments).session_id), call_id)
+
+            if name == "wait_for_break":
+                return filter_tool_content(name, await _handle_wait_for_break(WaitForBreak(**arguments)), call_id)
 
             raise McpError(ErrorData(code=INVALID_PARAMS, message=f"Unknown tool: {name}"))
 
@@ -570,20 +621,33 @@ def _create_server(
         return [TextContent(type="text", text=f"No active {kind} session found for session_id {session_id}")]
 
     def _handle_send_ctrl_break(session_id) -> list[TextContent]:
-        record = _sessions.get(session_id)
-        if record is None:
-            raise McpError(ErrorData(
-                code=INVALID_PARAMS,
-                message=f"Unknown session_id {session_id!r}. Open a session first."
-            ))
-        session = record["session"]
-        if not getattr(session, "is_live_session", False):
-            raise McpError(ErrorData(
-                code=INVALID_PARAMS,
-                message=f"session_id {session_id!r} is a dump session; there is no running target to break into."
-            ))
+        session = _require_live_session(session_id, "break into")
+        label = _sessions[session_id]["label"]
         session.send_ctrl_break()
-        return [TextContent(type="text", text=f"Sent CTRL+BREAK to session {session_id} ({record['label']}).")]
+        return [TextContent(type="text", text=f"Sent CTRL+BREAK to session {session_id} ({label}).")]
+
+    async def _handle_wait_for_break(args: WaitForBreak) -> list[TextContent]:
+        session = _require_live_session(args.session_id, "wait on")
+        # Deliberately not _effective_timeout: the --timeout floor is about how
+        # long a *command* may take, and has nothing to say about how long you
+        # are willing to sit on a target waiting for it to bugcheck.
+        wait = (
+            args.timeout_seconds
+            if args.timeout_seconds and args.timeout_seconds > 0
+            else WAIT_FOR_BREAK_TIMEOUT
+        )
+        # This blocks for minutes by design. Run it on a worker thread so the
+        # event loop keeps serving - otherwise the server could not answer the
+        # send_ctrl_break this tool's own timeout message tells you to use.
+        output = await anyio.to_thread.run_sync(
+            functools.partial(session.wait_for_break, timeout=wait)
+        )
+        if not output:
+            return [TextContent(type="text", text="Target stopped, printing nothing.")]
+        return [TextContent(
+            type="text",
+            text="Target stopped.\n\nOutput:\n```\n" + "\n".join(output) + "\n```",
+        )]
 
     def _session_header(session_id: str, kind: str, what: str) -> str:
         run_tool = f"run_{kind}_command"

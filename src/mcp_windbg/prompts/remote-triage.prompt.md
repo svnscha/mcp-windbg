@@ -108,5 +108,8 @@ would distinguish them.]
   report a stale value as current.
 - Ask the user before anything that changes target state or execution (`g`, `p`, `t`, `bp`,
   `ed`). Inspection is safe; control is not.
+- `g` returns immediately and leaves the process running; it does not wait for anything. Use
+  `wait_for_break` to block until the target stops (a breakpoint, an exception), or just send the
+  next command - it breaks in by itself first.
 - If a command times out, the target may simply be busy. Raise `timeout_seconds` on
   `run_cdb_command` rather than declaring a hang.

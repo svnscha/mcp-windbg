@@ -187,12 +187,23 @@ def test_init_raises_when_kd_not_found(monkeypatch):
         KDSession(kernel_connection="net:port=50005,key=1.2.3.4")
 
 
-def test_on_output_line_sets_connected_event_only_on_banner():
+@pytest.mark.parametrize(
+    "banner",
+    [
+        # KDNET
+        "Connected to target 10.0.0.5 on port 50005 on local IP 10.0.0.1.",
+        # Named pipe / serial. Matching only the KDNET wording made every
+        # pipe-connected session time out in _startup (#47).
+        "Kernel Debugger connection established.",
+    ],
+)
+def test_on_output_line_sets_connected_event_only_on_banner(banner):
     obj = KDSession.__new__(KDSession)
     obj._connected_event = __import__("threading").Event()
     obj._on_output_line("Waiting to reconnect...")
+    obj._on_output_line("Opened \\\\.\\pipe\\com_1")
     assert not obj._connected_event.is_set()
-    obj._on_output_line("Connected to target 10.0.0.5 on port 50005 on local IP 10.0.0.1.")
+    obj._on_output_line(banner)
     assert obj._connected_event.is_set()
 
 
