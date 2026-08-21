@@ -101,6 +101,10 @@ distinguish them.]
 - Never leave a session open at the end of an investigation. Release the target.
 - Do not send CTRL+BREAK right after opening. `open_kd_session` already broke in. Use
   `send_ctrl_break` only to re-halt a target you deliberately let run with `g`.
+- `g` returns immediately and leaves the machine running - it does not wait. To watch for the
+  bugcheck you expect, follow it with `wait_for_break`, which blocks until the target stops and
+  hands you what it printed. Any ordinary command breaks in by itself first, so you never have to
+  interleave `send_ctrl_break` manually.
 - Kernel commands can be slow on a busy machine or over a serial cable. Raise
   `timeout_seconds` on `run_kd_command` for heavy extensions (`!process 0 7`, `!poolused`)
   rather than declaring a hang.

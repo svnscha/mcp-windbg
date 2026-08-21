@@ -1,0 +1,89 @@
+name: Resume and wait against a real kernel target
+description: >
+  The kernel half of resume_and_wait.yaml, against the machine the bugs were
+  reported on (#71, #72, #73). 'g' releases the target instead of the timeout
+  handler re-freezing it, an ordinary command afterwards breaks in by itself,
+  and a CTRL+BREAK issued the instant 'g' returns is not swallowed by a
+  debugger that had not read the 'g' yet. Needs a live target: set
+  MCP_WINDBG_KERNEL_CONNECTION to its -k connection string (see CLAUDE.md).
+requires:
+  kernel: true
+server:
+  args: ["--kd-path", "{kd}", "--timeout", "120"]
+steps:
+  - call: open_kd_session
+    arguments:
+      connection_string: "{kernel}"
+    capture:
+      sid: 'session_id:\s*(kd-[0-9a-f]+)'
+    expect:
+      isError: false
+
+  # Before the fix this sat until the command timeout and then CTRL+BREAK'd the
+  # machine back to a halt - the exact opposite of what 'g' asked for (#72).
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "g"
+    expect:
+      isError: false
+      contains:
+        - "resumed"
+
+  # An ordinary command while the machine runs breaks in on its own and returns
+  # real output, rather than timing out and freezing the VM as a side effect (#73).
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "vertarget"
+    expect:
+      isError: false
+      contains:
+        - "Kernel Version"
+
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "g"
+    expect:
+      isError: false
+      contains:
+        - "resumed"
+
+  # The race: this break lands with no gap at all after the 'g' above. Until the
+  # resume is confirmed consumed, the debugger is still at its prompt and answers
+  # the break itself - it never reaches the target, and the wait below then sits
+  # out its full timeout on a machine nothing is going to stop.
+  - call: send_ctrl_break
+    arguments:
+      session_id: "{sid}"
+    expect:
+      isError: false
+
+  - call: wait_for_break
+    arguments:
+      session_id: "{sid}"
+      timeout_seconds: 30
+    expect:
+      isError: false
+      contains:
+        - "Break instruction exception"
+
+  # The session is still usable at a clean prompt afterwards.
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "vertarget"
+    expect:
+      isError: false
+      contains:
+        - "Kernel Version"
+
+  # resume: true leaves the machine running rather than frozen at the break.
+  - call: close_kd_session
+    arguments:
+      session_id: "{sid}"
+      resume: true
+    expect:
+      contains:
+        - "Successfully closed kd session"

@@ -1,0 +1,78 @@
+name: Resume a target and wait for it
+description: >
+  'g' through run_cdb_command resumes the target instead of hanging, an ordinary
+  command afterwards breaks in by itself, and wait_for_break reports a target
+  that is still running rather than halting it.
+requires:
+  remote:
+    target: ["waitfor.exe", "SomeSignalThatNeverComes"]   # blocks forever once resumed
+steps:
+  - call: open_cdb_remote
+    arguments:
+      connection_string: "{remote}"
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
+    expect:
+      isError: false
+
+  # Before the fix this sat until the command timeout and then CTRL+BREAK'd the
+  # target back to a halt - the opposite of what 'g' asked for.
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
+      command: "g"
+    expect:
+      isError: false
+      contains:
+        - "resumed"
+
+  # An ordinary command breaks in on its own, so callers never sequence it.
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
+      command: "r"
+    expect:
+      isError: false
+      contains:
+        - "Break instruction exception"
+
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
+      command: "g"
+    expect:
+      isError: false
+
+  # This target never stops by itself, so the wait expires and says so - and
+  # leaves the target running rather than halting it behind the caller's back.
+  - call: wait_for_break
+    arguments:
+      session_id: "{sid}"
+      timeout_seconds: 2
+    expect:
+      isError: true
+      contains:
+        - "still running"
+
+  - call: send_ctrl_break
+    arguments:
+      session_id: "{sid}"
+    expect:
+      isError: false
+
+  # send_ctrl_break only requests a break; wait_for_break establishes that it
+  # actually landed, and returns the banner the debugger printed when it did.
+  - call: wait_for_break
+    arguments:
+      session_id: "{sid}"
+      timeout_seconds: 30
+    expect:
+      isError: false
+      contains:
+        - "Break instruction exception"
+
+  - call: close_cdb_session
+    arguments:
+      session_id: "{sid}"
+    expect:
+      isError: false

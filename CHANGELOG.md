@@ -5,6 +5,60 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`wait_for_break`** - block until a target you resumed stops again (bugcheck, breakpoint, or a
+  CTRL+BREAK from elsewhere) and return everything the debugger printed when it did. If the wait
+  expires the target is left running, so waiting never halts a machine behind your back.
+
+### Fixed
+
+- **`g` no longer freezes the target it was supposed to release** - go-class commands (`g`, `gh`,
+  `gn`, `gN`, `gc`, `gu`) hand the CPU back to the target, after which the debugger stops reading
+  its stdin. The marker protocol queued an `.echo` the debugger could not answer, so the command
+  hit its timeout and the cancel-on-timeout CTRL+BREAK halted the target again - the exact
+  opposite of what was asked. They are now written bare and return immediately. The step family
+  (`p`, `t`, `pa`, `ta`, ...) is unaffected: it returns to the prompt on its own and keeps the
+  marker round-trip (#74).
+- **An ordinary command after `g` breaks in by itself** - no need to interleave `send_ctrl_break`
+  manually, and whatever the target printed on the way to stopping leads that command's output
+  instead of being discarded.
+- **A break-in issued the instant `g` returns is no longer swallowed** - resuming wrote the `g`
+  and returned without waiting for the debugger to read it, so for a moment the debugger was
+  still sitting at its prompt with the resume unread. A CTRL+BREAK arriving in that window was
+  answered by the prompt instead of reaching the target, and the break was simply lost: the
+  caller then waited out a full `wait_for_break` timeout on a machine nothing was going to stop.
+  Measured against a live KDNET target, a break sent with no gap after `g` was lost every single
+  time. The resume is now confirmed consumed before it is reported. A go-class command that stops
+  again at once - a `gu` returning in microseconds, a breakpoint hit immediately - reports what it
+  printed instead of claiming the target is running.
+- **Break-in asks before it signals** - a CTRL+BREAK aimed at a target that has in fact already
+  stopped queues a break request a kernel target honours later, re-halting a machine we thought
+  we had released. The session probes for a prompt first and only signals if that goes
+  unanswered, which also makes `send_ctrl_break` safe to issue speculatively.
+- **`wait_for_break` trusts the debugger, not a flag** - it is right about a target running for
+  reasons this server never caused, and a second `g` while the target really is still running is
+  refused rather than queued behind the first.
+- **`bp nt!X; g` reports whether the breakpoint was set** - the part before the `g` runs with its
+  output returned, so a typo'd symbol surfaces as `Couldn't resolve error` rather than as a wait
+  for a break that can never arrive. A `;` inside a quoted command string is left alone.
+- **Output is no longer lost at a deadline** - a marker that lands in the moment between a timeout
+  expiring and being handled now counts as arrived, and the break-in output a timed-out command
+  was carrying rides along on the error instead of vanishing with it.
+- **One operation at a time per session** - `wait_for_break` parks for minutes on a worker thread
+  so the rest of the server keeps answering; a second call against the same session is refused
+  at once, with a message pointing at `send_ctrl_break`, rather than interleaving markers and
+  returning each other's output. The refusal never waits, so it cannot stall the server it exists
+  to keep responsive.
+- **Closing a session ends a wait parked on it** - instead of leaving a thread sitting out its
+  full timeout on a debugger that no longer exists and then reporting the target as still running.
+- **Kernel sessions over a named pipe or serial cable connect** - `kd` announces a COM/pipe link
+  with `Kernel Debugger connection established`, not the KDNET `Connected to target ...`. Only the
+  latter was matched, so `open_kd_session` timed out on a target that was in fact attached
+  (#47, #74).
+
 ## [1.0.1] - 2026-08-21
 
 A single-line dependency fix, but an important one: every fresh install of 1.0.0 was broken.

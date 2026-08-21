@@ -33,10 +33,15 @@ from .debug_session import (
 # Raised for kernel session failures.
 KDError = DebuggerError
 
-# The banner ``kd`` prints once the kernel link is up (KDNET or COM). Matched as
-# a substring; the full line is e.g.
-#   "Connected to target 172.16.2.189 on port 50005 on local IP 172.16.2.183."
-KERNEL_CONNECTED_BANNER = "Connected to target"
+# The banners ``kd`` prints once the kernel link is up. They differ by transport,
+# and matching only the KDNET one made every pipe/serial session time out in
+# _startup even though the target was connected (#47). Matched as substrings:
+#   KDNET:       "Connected to target 172.16.2.189 on port 50005 on local IP ..."
+#   pipe/serial: "Kernel Debugger connection established."
+KERNEL_CONNECTED_BANNERS = (
+    "Connected to target",
+    "Kernel Debugger connection established",
+)
 
 # Default paths where kd.exe (kernel debugger) might be located.
 DEFAULT_KD_PATHS = [
@@ -114,7 +119,7 @@ class KDSession(DebuggerSession):
 
     def _on_output_line(self, line: str) -> None:
         """Notice the connect banner (called under the reader lock)."""
-        if KERNEL_CONNECTED_BANNER in line:
+        if any(banner in line for banner in KERNEL_CONNECTED_BANNERS):
             self._connected_event.set()
 
     def _startup(self) -> None:
