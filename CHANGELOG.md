@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Runs on the mcp 2.x SDK** - the requirement is now `mcp>=2.0.0`, up from the `<2.0.0` cap
+  1.0.1 shipped as a stopgap. 2.0.0 removed the low-level `@server.list_tools()` /
+  `@server.call_tool()` decorators this server registered its tools through, so the handlers are
+  now passed to `Server(...)` directly and return the SDK's result types (`ListToolsResult`,
+  `CallToolResult`) instead of bare lists. `McpError` is `MCPError`, and it takes a code and a
+  message rather than an `ErrorData`. None of this is visible to clients: the same nine tools
+  with the same schemas, over both stdio and streamable-http (#78).
+
+  Installing mcp-windbg pulls the SDK it needs, so there is nothing to do on upgrade. Python
+  support is unchanged - the 2.x SDK requires 3.10+, exactly as this project already did.
+- **Every runtime dependency is capped at the next major** - `mcp<3.0.0`, `pydantic<3.0.0`,
+  `starlette<2.0.0`, `uvicorn<1.0.0`. #76 happened because `mcp>=1.28.1` had no upper bound, so
+  the 2.0.0 release landed in fresh installs and broke them at import; moving the floor to 2.x
+  without a ceiling would have left the identical trap for 3.0.0. mcp-windbg is an application
+  rather than a library, so an upper bound cannot cause a diamond conflict for anyone, and it
+  turns the next breaking SDK release into a Dependabot PR that fails CI instead of an install
+  everybody has to work around by hand.
+- **A weekly canary tests the versions users will actually get** - CI installs from `uv.lock`, so
+  it only ever proved the server works against the exact versions pinned there, while a PyPI
+  install resolves to whatever the ranges allow. `dependency-canary.yml` closes that gap: it
+  resolves to the newest allowed versions, ignoring the lock, and runs the hermetic suite against
+  them every Monday. It is scheduled rather than attached to pull requests on purpose - an
+  upstream release breaking the build should page the maintainer, not block someone's unrelated PR.
+
 ### Added
 
 - **`wait_for_break`** - block until a target you resumed stops again (bugcheck, breakpoint, or a
