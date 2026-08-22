@@ -1,0 +1,91 @@
+name: Release Please
+
+# Release automation, in two phases that both run from this one file.
+#
+# 1. Every push to main, release-please recomputes what the next version would
+#    be from the Conventional Commit subjects since the last release, and opens
+#    or rewrites a "chore(main): release X.Y.Z" PR carrying the version bumps
+#    and the CHANGELOG entry.
+# 2. Merging that PR pushes to main, which runs this workflow again. This time
+#    release-please sees a merged release PR, creates the tag and the GitHub
+#    release, and the publish job below ships it to PyPI.
+#
+# The publish job lives in this same workflow on purpose. A release created with
+# the default GITHUB_TOKEN does not trigger other workflows, so the old
+# `on: push: tags: [v*]` publish would silently never fire. Calling it via
+# `needs` sidesteps that entirely - no cross-workflow trigger is involved.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # tags, releases, and the release branch
+      pull-requests: write   # open and rewrite the release PR
+      issues: write          # the autorelease:* labels are an issues-scope API
+    outputs:
+      # `releases_created` is always set to the string 'true' or 'false'. Compare
+      # it explicitly: any non-empty string is truthy in a GitHub Actions
+      # expression, so a bare `if: ...outputs.releases_created` is always true.
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Releases and PRs made with GITHUB_TOKEN do not trigger workflows, so
+          # CI does not run on the release PR itself. Supply a PAT or GitHub App
+          # token here if you want the PR gated by the test matrix before merge.
+          # token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+  # release-please is configured with skip-changelog, so CHANGELOG.md stays
+  # hand-written - but it still creates the GitHub release with its own notes,
+  # generated from commit subjects. Those are thinner than the entry a human
+  # wrote, so replace them with it.
+  release-notes:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Use the hand-written CHANGELOG entry as the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          CLEAN_VERSION="${TAG#v}"
+          # Matched with index()/substr() rather than a dynamic regex: awk
+          # treats "\[" in a string as a plain "[", which silently turns the
+          # pattern into a character class that matches every "## [" heading,
+          # so the notes become whichever section happens to be first.
+          awk -v hdr="## [$CLEAN_VERSION]" '
+            index($0, hdr) == 1 { found = 1; next }
+            found && substr($0, 1, 4) == "## [" { exit }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ -s release_notes.md ]; then
+            gh release edit "$TAG" --notes-file release_notes.md
+            echo "Release notes taken from the CHANGELOG entry for $CLEAN_VERSION."
+          else
+            # Not fatal: the release exists either way, and the publish job's
+            # version-consistency check is what actually fails a missing entry.
+            echo "::warning::No CHANGELOG section for $CLEAN_VERSION - keeping the generated notes."
+          fi
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    uses: ./.github/workflows/publish-mcp.yml
+    secrets: inherit
