@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Installing mcp-windbg pulls the SDK it needs, so there is nothing to do on upgrade. Python
   support is unchanged - the 2.x SDK requires 3.10+, exactly as this project already did.
+- **Every runtime dependency is capped at the next major** - `mcp<3.0.0`, `pydantic<3.0.0`,
+  `starlette<2.0.0`, `uvicorn<1.0.0`. #76 happened because `mcp>=1.28.1` had no upper bound, so
+  the 2.0.0 release landed in fresh installs and broke them at import; moving the floor to 2.x
+  without a ceiling would have left the identical trap for 3.0.0. mcp-windbg is an application
+  rather than a library, so an upper bound cannot cause a diamond conflict for anyone, and it
+  turns the next breaking SDK release into a Dependabot PR that fails CI instead of an install
+  everybody has to work around by hand.
 
 ### Added
 
