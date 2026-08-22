@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than a library, so an upper bound cannot cause a diamond conflict for anyone, and it
   turns the next breaking SDK release into a Dependabot PR that fails CI instead of an install
   everybody has to work around by hand.
+- **A weekly canary tests the versions users will actually get** - CI installs from `uv.lock`, so
+  it only ever proved the server works against the exact versions pinned there, while a PyPI
+  install resolves to whatever the ranges allow. `dependency-canary.yml` closes that gap: it
+  resolves to the newest allowed versions, ignoring the lock, and runs the hermetic suite against
+  them every Monday. It is scheduled rather than attached to pull requests on purpose - an
+  upstream release breaking the build should page the maintainer, not block someone's unrelated PR.
 
 ### Added
 

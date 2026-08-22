@@ -1,0 +1,51 @@
+name: Dependency canary
+
+# Resolves the runtime dependencies to the newest versions the pyproject ranges
+# allow - ignoring uv.lock - and runs the hermetic suite against them.
+#
+# Why this exists: CI installs from uv.lock, so it only ever proves the server
+# works against the exact versions we pinned. Users installing from PyPI get
+# whatever the ranges permit, which can be newer than anything CI has seen. That
+# gap is how a breaking SDK release reaches users first (#76). This job closes
+# it by testing tomorrow's resolution today.
+#
+# It runs on a schedule rather than on pull requests on purpose: an upstream
+# release breaking the build should page us, not block someone's unrelated PR.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"   # Mondays 07:00 UTC, ahead of Dependabot's 09:00 run
+  workflow_dispatch:
+
+jobs:
+  latest-allowed:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.13
+
+    - name: Resolve to the newest allowed versions
+      # --upgrade ignores the pinned versions in uv.lock; --resolution highest
+      # makes the intent explicit rather than relying on the default.
+      run: uv sync --dev --upgrade --resolution highest
+
+    - name: Show what that resolved to
+      run: |
+        uv run python -c "import importlib.metadata as m; [print(f'{p:12} {m.version(p)}') for p in ('mcp','pydantic','starlette','uvicorn')]"
+
+    - name: Run the hermetic suite
+      # The live and kernel scenarios need cdb.exe and a target, neither of which
+      # this job has. The hermetic subset still drives a real MCP client against a
+      # real server subprocess, so an SDK change lands here first.
+      run: uv run pytest src/mcp_windbg/tests/ -v --tb=short -m "not live"
+
+    - name: Check the CLI still starts
+      run: uv run python -m mcp_windbg --help
