@@ -5,7 +5,11 @@
   "packages": {
     ".": {
       "package-name": "mcp-windbg",
-      "skip-changelog": true
+      "skip-changelog": true,
+      "extra-files": [
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" }
+      ]
     }
   }
 }
