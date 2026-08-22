@@ -101,16 +101,52 @@ Tool and CLI facts come from `src/mcp_windbg/server.py` (tool schemas) and
 
 ## Versioning and release
 
-The version lives in three places that must agree: `pyproject.toml` (`version`), `server.json`
-(top-level `version` and every `packages[*].version`), and the top `## [x.y.z]` heading in
-`CHANGELOG.md`. Day-to-day work lands under a `## [Unreleased]` heading; the version-
-consistency check (`scripts/check-version-consistency.ps1`) only runs on release builds, so
-`main` may sit at `[Unreleased]`.
+Releases are driven by [release-please](https://github.com/googleapis/release-please). You do
+not bump versions and you do not push tags. You **do** still write `CHANGELOG.md` by hand: it is
+configured with `skip-changelog`, so release-please never touches it.
 
-To release: bump all three to the new version, set the CHANGELOG date, then tag `vX.Y.Z` and
-push. `publish-mcp.yml` runs the tests, builds, publishes to PyPI, and creates the GitHub
-release; that workflow runs the consistency check (it calls build-and-test with
-`check-version: true`).
+**PR titles decide the version.** Because PRs are squash-merged, the PR title becomes the commit
+subject, which is what release-please reads. It must be a Conventional Commit:
+
+| PR title prefix | Bump | Shown in the release notes |
+| :-------------- | :--- | :------------------------- |
+| `feat:` | minor | yes |
+| `fix:` | patch | yes |
+| `perf:` `docs:` `deps:` | patch | yes |
+| `chore:` `ci:` `test:` `refactor:` `build:` `style:` | patch | hidden |
+| any prefix with `!`, or a `BREAKING CHANGE:` footer | **major** | yes |
+
+A title with no recognized prefix contributes nothing. If everything since the last release is
+hidden-only (`chore`, `ci`, `test`, ...), release-please opens no release PR at all - by design,
+not a failure. `Release-As: X.Y.Z` in a commit body forces an exact version.
+
+**The flow.** Every push to `main` runs `release-please.yml`, which opens or rewrites a
+`chore(main): release X.Y.Z` PR carrying the version bumps. Before merging it, **add the
+`CHANGELOG.md` entry to that PR**: rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` to match
+the version in the PR title. Merging pushes to `main`, which runs the workflow again; this time
+release-please creates the tag and the GitHub release, `release-notes` replaces the generated
+notes with your CHANGELOG entry, and `publish` calls `publish-mcp.yml` to run the full test
+matrix and ship to PyPI.
+
+Forgetting the CHANGELOG entry is caught, but late: `scripts/check-version-consistency.ps1` runs
+on the release build and fails when the top `## [x.y.z]` heading does not match `pyproject.toml`.
+The tag and release will already exist, so fix the CHANGELOG on `main` and re-run
+`publish-mcp.yml` by hand via `workflow_dispatch`.
+
+**What release-please keeps in sync.** `release-please-config.json` drives it. The `python`
+release type updates `pyproject.toml`'s `[project] version` natively. `server.json` is not
+something it knows about, so it is handled by two `extra-files` JSONPath entries (`$.version` and
+`$.packages[*].version`) - the top-level and per-package versions are separate fields, and one
+entry carries one JSONPath.
+
+**Two setup requirements**, easy to lose track of:
+
+- Settings -> Actions -> General -> "Allow GitHub Actions to create and approve pull requests"
+  must stay enabled, or opening the release PR fails with a 403.
+- Releases created with the default `GITHUB_TOKEN` do not trigger other workflows. That is why
+  `publish-mcp.yml` is `workflow_call`/`workflow_dispatch` rather than `on: push: tags` - a tag
+  trigger would silently never fire. It is also why CI does not run on the release PR itself;
+  supply a PAT or GitHub App token to `release-please.yml` if you want that gate.
 
 ## Docs
 
