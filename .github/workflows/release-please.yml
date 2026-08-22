@@ -19,6 +19,11 @@ on:
   push:
     branches:
       - main
+  # Rebuild the release PR on demand. release-please leaves an open release PR
+  # alone when the version it computes has not changed, so a config fix that
+  # only alters the PR's *contents* is not picked up on its own - delete the
+  # release branch and run this to have it rebuilt.
+  workflow_dispatch:
 
 permissions:
   contents: read

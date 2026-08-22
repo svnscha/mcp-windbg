@@ -133,6 +133,16 @@ No user facing commits found since c7ae1a6 - skipping
 `No user facing commits found` means everything that did parse was a hidden type. Neither is an
 error; both mean there is nothing to release yet.
 
+**A config change does not rewrite an open release PR.** release-please leaves an existing
+release PR alone when the version it computes has not changed, so fixing something that only
+affects the PR's *contents* - an `extra-files` entry, say - has no visible effect. Delete the
+`release-please--branches--main--*` branch (which closes the PR) and re-run the workflow from the
+Actions tab via `workflow_dispatch`; it rebuilds the PR with the new config.
+
+**Check the release PR's diff before merging it.** It should touch `pyproject.toml`,
+`.release-please-manifest.json`, and all three versions in `server.json`. A missing `server.json`
+means the `extra-files` entries are not firing.
+
 **The flow.** Every push to `main` runs `release-please.yml`, which opens or rewrites a
 `chore(main): release X.Y.Z` PR carrying the version bumps. Before merging it, **add the
 `CHANGELOG.md` entry to that PR**: rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` to match
