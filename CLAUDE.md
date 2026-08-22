@@ -120,6 +120,19 @@ A title with no recognized prefix contributes nothing. If everything since the l
 hidden-only (`chore`, `ci`, `test`, ...), release-please opens no release PR at all - by design,
 not a failure. `Release-As: X.Y.Z` in a commit body forces an exact version.
 
+**When no release PR appears and you expected one**, read the `release-please` job log. It says
+which commits it could use:
+
+```
+commit could not be parsed: 30c7dd9 Fix kernel go/break-in handling, add wait_for_break (#80)
+Considering: 1 commits
+No user facing commits found since c7ae1a6 - skipping
+```
+
+`could not be parsed` means the subject was not a Conventional Commit, so it counted for nothing.
+`No user facing commits found` means everything that did parse was a hidden type. Neither is an
+error; both mean there is nothing to release yet.
+
 **The flow.** Every push to `main` runs `release-please.yml`, which opens or rewrites a
 `chore(main): release X.Y.Z` PR carrying the version bumps. Before merging it, **add the
 `CHANGELOG.md` entry to that PR**: rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` to match
