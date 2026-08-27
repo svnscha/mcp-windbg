@@ -131,7 +131,7 @@ Claude Desktop, Copilot CLI, Autohand Code, HTTP, and from-source setups.
 Restart your client, then ask for what you want:
 
 ```text
-Analyze the crash dump at C:\dumpspp.dmp
+Analyze the crash dump at C:\dumps\app.dmp
 Connect to tcp:Port=5005,Server=192.168.0.100 and show me the current thread state
 Open a kernel session on net:port=50000,key=1.2.3.4, run !analyze -v, and tell me which driver bugchecked
 ```
