@@ -42,6 +42,12 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
+    # uv.lock is not something release-please knows how to update, so it went
+    # stale for a whole release once without anything noticing. `uv sync` would
+    # quietly refresh it, so check before syncing, not after.
+    - name: Check uv.lock is in step with pyproject.toml
+      run: uv lock --check
+
     - name: Install dependencies
       run: uv sync --dev
 
