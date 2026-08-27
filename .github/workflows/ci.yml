@@ -7,5 +7,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Skip release PRs. They only carry version bumps and the CHANGELOG entry, and
+  # the full matrix runs again from publish-mcp.yml before anything ships, so the
+  # run here proves nothing. It also fails transiently: release-please pushes the
+  # version bump first and sync-lockfile updates uv.lock a moment later, so any
+  # CI in between sees a lockfile that does not match pyproject.toml and goes red
+  # on a state nobody will ever merge.
+  #
+  # head_ref is empty for push events, so those are unaffected.
   build-and-test:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     uses: ./.github/workflows/build-and-test.yml
