@@ -1,7 +1,7 @@
 # MCP Server for WinDbg Crash Analysis
 
-[![CI](https://github.com/svnscha/mcp-windbg/actions/workflows/ci.yml/badge.svg)](https://github.com/svnscha/mcp-windbg/actions/workflows/ci.yml)
-[![Docs](https://github.com/svnscha/mcp-windbg/actions/workflows/pages.yml/badge.svg)](https://svnscha.github.io/mcp-windbg/)
+[![CI](https://github.com/svnscha/mcp-windbg/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/svnscha/mcp-windbg/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/github/deployments/svnscha/mcp-windbg/github-pages?label=docs)](https://svnscha.github.io/mcp-windbg/)
 [![PyPI](https://img.shields.io/pypi/v/mcp-windbg)](https://pypi.org/project/mcp-windbg/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
