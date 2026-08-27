@@ -70,7 +70,21 @@ Parameters, timeouts, and the built-in triage prompts are in the [tools referenc
 > [!TIP]
 > In enterprise environments, MCP server usage might be restricted by organizational policies. Check with your IT team about AI tool usage and ensure you have the necessary permissions before proceeding.
 
-**Install**
+**Claude Code - install the plugin.** This is the shortest path: no `pip install`, no MCP
+config to edit. It brings the ten tools, four skills (`analyze-dump`, `debug-remote`,
+`kernel-debug`, `windbg-doctor`) and a `crash-analyst` agent that investigates a dump on its own
+and reports back.
+
+```
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg@mcp-windbg
+```
+
+The plugin launches the server with [uv](https://docs.astral.sh/uv/)'s `uvx`, which fetches the
+pinned version from PyPI on first use. See the [plugin
+README](plugins/mcp-windbg/README.md) for symbols setup and how to run it without uv.
+
+**Any other client - install the package**
 
 ```bash
 pip install mcp-windbg
@@ -78,7 +92,7 @@ pip install mcp-windbg
 
 **Configure your client.** The two most common setups are below; see the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for Claude Desktop, Copilot CLI, Autohand Code, HTTP, and from-source.
 
-Claude Code - register the server from the command line:
+Claude Code - if you did not use the plugin above, register the server directly:
 
 ```bash
 claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg

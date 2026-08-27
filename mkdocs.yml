@@ -89,6 +89,7 @@ nav:
       - Command-line options: reference/cli.md
       - Tools: reference/tools.md
       - Prompts: reference/prompts.md
+      - Claude Code plugin: reference/plugin.md
       - Client configuration: reference/clients.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md

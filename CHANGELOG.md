@@ -5,6 +5,47 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **A Claude Code plugin, and a marketplace to serve it from this repo** - installing is now two
+  lines with no `pip install` and no MCP configuration to hand-edit:
+
+  ```
+  /plugin marketplace add svnscha/mcp-windbg
+  /plugin install mcp-windbg@mcp-windbg
+  ```
+
+  The plugin launches the server with `uvx`, which fetches the pinned version from PyPI on first
+  use, so the only prerequisites are Windows, CDB, and uv.
+
+  It ships the ten tools, four skills - `analyze-dump`, `debug-remote`, `kernel-debug`, and
+  `windbg-doctor` for diagnosing a machine that cannot debug - and a `crash-analyst` agent that
+  investigates a dump on its own and returns a verdict with its evidence, what it ruled out, and
+  what to do next. Always-on context cost is about 400 tokens; a skill or agent costs more only
+  when it fires.
+
+  Symbols work out of the box: the plugin supplies the Microsoft symbol server as a *default* for
+  `_NT_SYMBOL_PATH`, and an existing value wins over it, so a symbol path you tuned yourself is
+  never overwritten.
+
+### Changed
+
+- **Dependency floors raised to current releases** - `mcp` 2.1.1, `starlette` 1.6.0, `uvicorn`
+  0.52.4, and `pymdown-extensions` 11.0.2 for the docs build. The major-version caps are
+  unchanged, and `uv.lock` is regenerated to match; it had been left at 1.0.1 since the 1.1.0
+  release, because release-please has no updater for it.
+
+### Fixed
+
+- **The version-consistency check reports mismatches instead of crashing on them** - it looped
+  with `foreach ($error in $errors)`, and `$error` is a read-only PowerShell automatic variable,
+  so the moment it had something to report it threw "Cannot overwrite variable Error" and lost
+  the diagnostic. The build still failed, but never said which files disagreed. It now also
+  covers the plugin manifest, the marketplace entry, and the server version pinned in the
+  plugin's `.mcp.json`.
+
 ## [1.1.0] - 2026-08-22
 
 ### Changed

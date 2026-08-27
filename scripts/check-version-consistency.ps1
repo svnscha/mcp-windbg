@@ -55,8 +55,31 @@ try {
     $CHANGELOG_VERSION = $changelogMatch.Matches[0].Groups[1].Value
     Write-Host "INFO: CHANGELOG.md version: $CHANGELOG_VERSION" -ForegroundColor Green
     
+    # Extract versions from the Claude plugin + marketplace manifests. These are
+    # kept in step by release-please extra-files entries; checking them here is
+    # what catches an entry that silently stopped matching.
+    $PLUGIN_VERSION = (Get-Content "plugins/mcp-windbg/.claude-plugin/plugin.json" -Raw | ConvertFrom-Json).version
+    $MARKETPLACE_VERSION = (Get-Content ".claude-plugin/marketplace.json" -Raw | ConvertFrom-Json).plugins[0].version
+    $mcpArgs = (Get-Content "plugins/mcp-windbg/.mcp.json" -Raw | ConvertFrom-Json).mcpServers.'mcp-windbg'.args
+    $PINNED_VERSION = ($mcpArgs[0] -split '@')[-1]
+    Write-Host "INFO: plugin.json version: $PLUGIN_VERSION" -ForegroundColor Green
+    Write-Host "INFO: marketplace.json plugin version: $MARKETPLACE_VERSION" -ForegroundColor Green
+    Write-Host "INFO: plugin .mcp.json pinned server: $PINNED_VERSION" -ForegroundColor Green
+
     # Check if all versions match
     $errors = @()
+
+    if ($PYPROJECT_VERSION -ne $PLUGIN_VERSION) {
+        $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != plugin.json ($PLUGIN_VERSION)"
+    }
+
+    if ($PYPROJECT_VERSION -ne $MARKETPLACE_VERSION) {
+        $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != marketplace.json ($MARKETPLACE_VERSION)"
+    }
+
+    if ($PYPROJECT_VERSION -ne $PINNED_VERSION) {
+        $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != plugin .mcp.json pin ($PINNED_VERSION)"
+    }
     
     if ($PYPROJECT_VERSION -ne $SERVER_VERSION) {
         $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != server.json ($SERVER_VERSION)"
@@ -71,8 +94,10 @@ try {
     }
     
     if ($errors.Count -gt 0) {
-        foreach ($error in $errors) {
-            Write-Host "ERROR: $error" -ForegroundColor Red
+        # Not $error: that is a read-only PowerShell automatic variable, and
+        # assigning it threw before any mismatch could be reported.
+        foreach ($mismatch in $errors) {
+            Write-Host "ERROR: $mismatch" -ForegroundColor Red
         }
         exit 1
     }
