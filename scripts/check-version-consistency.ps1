@@ -1,11 +1,16 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Checks version consistency between pyproject.toml, server.json, and CHANGELOG.md
+    Checks that every version in the repository, and the CHANGELOG entry, agree
 
 .DESCRIPTION
-    This script extracts version information from pyproject.toml, server.json, and CHANGELOG.md
-    and verifies that all versions are consistent across these files.
+    Extracts the version from pyproject.toml, server.json (top level and package),
+    .release-please-manifest.json, the Claude plugin manifest, the marketplace entry and the
+    server version pinned in the plugin's .mcp.json, and checks they all match. Also checks that
+    CHANGELOG.md's top heading names that version and has an entry underneath it.
+
+    Run as a gate before release-please creates a tag: everything it asserts is something that
+    cannot be fixed after a release without publishing a second one.
 
 .EXAMPLE
     .\check-version-consistency.ps1
@@ -54,6 +59,22 @@ try {
     }
     $CHANGELOG_VERSION = $changelogMatch.Matches[0].Groups[1].Value
     Write-Host "INFO: CHANGELOG.md version: $CHANGELOG_VERSION" -ForegroundColor Green
+
+    # A heading on its own still matches the version but leaves release-notes with nothing to
+    # publish, so read what sits under it, up to the next heading. LineNumber is 1-based and the
+    # array is 0-based, so indexing with it starts on the line after the heading.
+    $changelogLines = Get-Content "CHANGELOG.md"
+    $entryBody = @()
+    for ($i = $changelogMatch.LineNumber; $i -lt $changelogLines.Count; $i++) {
+        if ($changelogLines[$i].StartsWith("## [")) { break }
+        $entryBody += $changelogLines[$i]
+    }
+    $CHANGELOG_EMPTY = -not ($entryBody | Where-Object { $_.Trim() })
+
+    # The version release-please itself tracks. If this drifts from pyproject.toml the next
+    # release is computed from the wrong base.
+    $MANIFEST_VERSION = (Get-Content ".release-please-manifest.json" -Raw | ConvertFrom-Json).'.'
+    Write-Host "INFO: .release-please-manifest.json version: $MANIFEST_VERSION" -ForegroundColor Green
     
     # Extract versions from the Claude plugin + marketplace manifests. These are
     # kept in step by release-please extra-files entries; checking them here is
@@ -91,6 +112,14 @@ try {
     
     if ($PYPROJECT_VERSION -ne $CHANGELOG_VERSION) {
         $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != CHANGELOG.md ($CHANGELOG_VERSION)"
+    }
+
+    if ($PYPROJECT_VERSION -ne $MANIFEST_VERSION) {
+        $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != .release-please-manifest.json ($MANIFEST_VERSION)"
+    }
+
+    if ($CHANGELOG_EMPTY) {
+        $errors += "CHANGELOG.md has a '## [$CHANGELOG_VERSION]' heading with nothing under it - the release notes would be empty"
     }
     
     if ($errors.Count -gt 0) {

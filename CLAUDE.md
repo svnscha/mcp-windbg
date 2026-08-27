@@ -165,10 +165,17 @@ and then, in the same run:
 The last two are chained through `needs` rather than triggered, for the `GITHUB_TOKEN` reason
 below: neither the tag nor the `main` fast-forward starts a workflow on its own.
 
-Forgetting the CHANGELOG entry is caught, but late: `scripts/check-version-consistency.ps1` runs
-on the release build and fails when the top `## [x.y.z]` heading does not match `pyproject.toml`.
-The tag and release will already exist, so fix the CHANGELOG on `develop` and re-run
-`publish-mcp.yml` by hand via `workflow_dispatch`.
+Forgetting the CHANGELOG entry fails the release before it happens. The `preflight` job runs
+`scripts/check-version-consistency.ps1` ahead of release-please whenever the head commit is a
+`chore(develop): release ...` merge, and release-please does not run unless it passes. It asserts
+that `pyproject.toml`, both versions in `server.json`, `.release-please-manifest.json`, the plugin
+manifest, the marketplace entry and the `uvx` pin in the plugin's `.mcp.json` all carry the same
+version, that `CHANGELOG.md`'s top heading names it, and that the heading has an entry under it.
+No tag is created when any of that is wrong, so the fix is a commit to `develop` rather than a
+second release.
+
+The same script still runs from the publish build, which is what guards a `publish-mcp.yml`
+started by hand.
 
 **What release-please keeps in sync.** `release-please-config.json` drives it. The `python`
 release type updates `pyproject.toml`'s `[project] version` natively. `server.json` is not
