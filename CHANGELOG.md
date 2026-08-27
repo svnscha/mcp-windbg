@@ -5,16 +5,7 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Fixed
-
-- **The `crash-analyst` agent no longer hard-codes the plugin's installed name** - its `tools:`
-  list named MCP tools as `mcp__plugin_mcp-windbg_mcp-windbg__*`, and that middle segment is the
-  name the plugin is installed under. Under any marketplace entry not called exactly
-  `mcp-windbg` the list would have matched nothing, leaving the agent with no debugger tools at
-  all. It now denies the mutating tools instead, which keeps it read-only without naming the
-  plugin.
+## [1.2.0] - 2026-08-27
 
 ### Added
 
@@ -47,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release, because release-please has no updater for it.
 
 ### Fixed
+
+- **The `crash-analyst` agent no longer hard-codes the plugin's installed name** - its `tools:`
+  list named MCP tools as `mcp__plugin_mcp-windbg_mcp-windbg__*`, and that middle segment is the
+  name the plugin is installed under. Under any marketplace entry not called exactly
+  `mcp-windbg` the list would have matched nothing, leaving the agent with no debugger tools at
+  all. It now denies the mutating tools instead, which keeps it read-only without naming the
+  plugin.
 
 - **The version-consistency check reports mismatches instead of crashing on them** - it looped
   with `foreach ($error in $errors)`, and `$error` is a read-only PowerShell automatic variable,
