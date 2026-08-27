@@ -33,7 +33,35 @@ permissions:
   contents: read
 
 jobs:
+  # The last moment before a tag exists. release-please creates the tag and the
+  # GitHub release in a single step, so anything asserted after it - as the
+  # version-consistency check was, from the publish job - reports a problem that
+  # has already shipped and needs a second release to correct. Everything that
+  # must be true of a release is therefore asserted here, and release-please does
+  # not run unless it holds.
+  #
+  # Only a release merge is checked. On an ordinary push CHANGELOG.md carries a
+  # `## [Unreleased]` heading, which is correct there and would fail the version
+  # comparison, so the check would cry wolf on every commit.
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Assert every version and the CHANGELOG agree
+        shell: pwsh
+        run: |
+          $subject = git log -1 --pretty=%s
+          if ($subject -notmatch '^chore\(develop\): release ') {
+            Write-Host "Not a release merge - nothing to assert."
+            Write-Host "  head commit: $subject"
+            exit 0
+          }
+          Write-Host "Release merge detected: $subject"
+          ./scripts/check-version-consistency.ps1
+
   release-please:
+    needs: preflight
     runs-on: ubuntu-latest
     permissions:
       contents: write        # tags, releases, and the release branch
