@@ -11,7 +11,7 @@
       "displayName": "MCP for WinDbg (uvx version)",
       "source": "./plugins/mcp-windbg",
       "description": "Analyze Windows crash dumps and drive live user-mode or kernel debugging through WinDbg/CDB. Windows only; needs CDB and uv.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": {
         "name": "Sven Scharmentke",
         "url": "https://github.com/svnscha"
