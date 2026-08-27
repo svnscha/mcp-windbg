@@ -1,7 +1,12 @@
 ---
 name: crash-analyst
 description: Deep-dive a Windows crash dump and return a written verdict. Use when a dump needs more than a first look - several hypotheses to rule out, many frames or threads to walk, or a conclusion someone will act on. Give it the dump path and the question.
-tools: mcp__plugin_mcp-windbg_mcp-windbg__list_dumps, mcp__plugin_mcp-windbg_mcp-windbg__open_cdb_dump, mcp__plugin_mcp-windbg_mcp-windbg__run_cdb_command, mcp__plugin_mcp-windbg_mcp-windbg__close_cdb_session, Read, Grep, Glob
+# Deliberately not a `tools:` allow-list. An MCP tool's name embeds the name the
+# plugin is installed under (mcp__plugin_<plugin>_<server>__<tool>), so naming
+# them here would leave this agent with a list matching nothing under any
+# marketplace entry not called exactly "mcp-windbg". Denying the mutating tools
+# instead keeps it read-only without hard-coding that name.
+disallowedTools: Write, Edit, NotebookEdit, Bash
 ---
 
 # Crash analyst
