@@ -4,7 +4,7 @@ Windows crash dump analysis and live WinDbg debugging, inside Claude Code.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
-/plugin install mcp-windbg@mcp-windbg
+/plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
 That is the whole installation. There is no `pip install` step and no MCP config

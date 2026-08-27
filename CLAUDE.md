@@ -99,6 +99,18 @@ matching file:
 Tool and CLI facts come from `src/mcp_windbg/server.py` (tool schemas) and
 `src/mcp_windbg/__init__.py` (command-line options). Keep `docs/reference/` in sync with them.
 
+**The plugin has two names, and they do different jobs.** The marketplace entry in
+`.claude-plugin/marketplace.json` is named `mcp-windbg-uvx` - that is the install identity, so
+the command is `/plugin install mcp-windbg-uvx@mcp-windbg`, and it is what the plugin cache
+directory is named after. The `name` in `plugins/mcp-windbg/.claude-plugin/plugin.json` stays
+`mcp-windbg`, and that is what skills and MCP tools are scoped by: `/mcp-windbg:analyze-dump` and
+`mcp__plugin_mcp-windbg_mcp-windbg__<tool>`, whatever the entry is called.
+
+That split is deliberate. It lets a second entry ship the same plugin a different way -
+`mcp-windbg-native` for a bundled binary, `mcp-windbg-pipx` for `pipx run` - while every variant
+keeps identical skill names, identical tool names, and one set of documentation. Change
+`plugin.json`'s name and you rename every skill and every tool with it.
+
 ## Versioning and release
 
 Releases are driven by [release-please](https://github.com/googleapis/release-please). You do

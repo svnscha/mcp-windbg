@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   ```
   /plugin marketplace add svnscha/mcp-windbg
-  /plugin install mcp-windbg@mcp-windbg
+  /plugin install mcp-windbg-uvx@mcp-windbg
   ```
 
   The plugin launches the server with `uvx`, which fetches the pinned version from PyPI on first

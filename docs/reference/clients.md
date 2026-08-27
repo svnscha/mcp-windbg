@@ -20,7 +20,7 @@ path. It needs no `pip install` and no MCP configuration:
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
-/plugin install mcp-windbg@mcp-windbg
+/plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
 Alongside the ten tools you get four skills - `/mcp-windbg:analyze-dump`,

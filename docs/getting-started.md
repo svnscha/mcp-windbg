@@ -10,7 +10,7 @@ GitHub Copilot. Other clients work the same way once the server is configured, s
 
     ```
     /plugin marketplace add svnscha/mcp-windbg
-    /plugin install mcp-windbg@mcp-windbg
+    /plugin install mcp-windbg-uvx@mcp-windbg
     ```
 
     Then jump to [Analyze your first dump](#4-analyze-your-first-dump), or just run
