@@ -9,6 +9,9 @@ on:
       - mkdocs.yml
       - requirements-docs.txt
       - .github/workflows/pages.yml
+  # Called by release-please.yml once main has been fast-forwarded onto a
+  # release. That push is made with GITHUB_TOKEN and so triggers nothing itself.
+  workflow_call:
   workflow_dispatch:
 
 permissions:

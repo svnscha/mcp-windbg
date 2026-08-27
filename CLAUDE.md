@@ -105,6 +105,13 @@ Releases are driven by [release-please](https://github.com/googleapis/release-pl
 not bump versions and you do not push tags. You **do** still write `CHANGELOG.md` by hand: it is
 configured with `skip-changelog`, so release-please never touches it.
 
+**Branches.** `develop` is the working branch and the base for every `feat/*` and `fix/*` PR;
+it is the repository default, so PRs and Dependabot target it automatically. `main` is not a
+branch you commit to - `release-please.yml` fast-forwards it onto each released commit, so it
+always equals the last released state. Never push to `main` directly: the fast-forward is a
+plain one, so a commit on `main` that `develop` lacks fails the next release until someone
+merges `main` back into `develop` by hand.
+
 **PR titles decide the version.** Because PRs are squash-merged, the PR title becomes the commit
 subject, which is what release-please reads. It must be a Conventional Commit:
 
@@ -136,24 +143,31 @@ error; both mean there is nothing to release yet.
 **A config change does not rewrite an open release PR.** release-please leaves an existing
 release PR alone when the version it computes has not changed, so fixing something that only
 affects the PR's *contents* - an `extra-files` entry, say - has no visible effect. Delete the
-`release-please--branches--main--*` branch (which closes the PR) and re-run the workflow from the
-Actions tab via `workflow_dispatch`; it rebuilds the PR with the new config.
+`release-please--branches--develop--*` branch (which closes the PR) and re-run the workflow
+from the Actions tab via `workflow_dispatch`; it rebuilds the PR with the new config.
 
 **Check the release PR's diff before merging it.** It should touch `pyproject.toml`,
 `.release-please-manifest.json`, and all three versions in `server.json`. A missing `server.json`
 means the `extra-files` entries are not firing.
 
-**The flow.** Every push to `main` runs `release-please.yml`, which opens or rewrites a
-`chore(main): release X.Y.Z` PR carrying the version bumps. Before merging it, **add the
+**The flow.** Every push to `develop` runs `release-please.yml`, which opens or rewrites a
+`chore(develop): release X.Y.Z` PR carrying the version bumps. Before merging it, **add the
 `CHANGELOG.md` entry to that PR**: rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` to match
-the version in the PR title. Merging pushes to `main`, which runs the workflow again; this time
-release-please creates the tag and the GitHub release, `release-notes` replaces the generated
-notes with your CHANGELOG entry, and `publish` calls `publish-mcp.yml` to run the full test
-matrix and ship to PyPI.
+the version in the PR title. Merging that PR is what "release now" means. It pushes to `develop`,
+which runs the workflow again; this time release-please creates the tag and the GitHub release,
+and then, in the same run:
+
+- `release-notes` replaces the generated notes with your CHANGELOG entry.
+- `fast-forward-main` pushes `main` to the released commit.
+- `publish` calls `publish-mcp.yml` to run the full test matrix and ship to PyPI.
+- `docs` calls `pages.yml` to deploy the documentation site.
+
+The last two are chained through `needs` rather than triggered, for the `GITHUB_TOKEN` reason
+below: neither the tag nor the `main` fast-forward starts a workflow on its own.
 
 Forgetting the CHANGELOG entry is caught, but late: `scripts/check-version-consistency.ps1` runs
 on the release build and fails when the top `## [x.y.z]` heading does not match `pyproject.toml`.
-The tag and release will already exist, so fix the CHANGELOG on `main` and re-run
+The tag and release will already exist, so fix the CHANGELOG on `develop` and re-run
 `publish-mcp.yml` by hand via `workflow_dispatch`.
 
 **What release-please keeps in sync.** `release-please-config.json` drives it. The `python`
@@ -168,8 +182,10 @@ entry carries one JSONPath.
   must stay enabled, or opening the release PR fails with a 403.
 - Releases created with the default `GITHUB_TOKEN` do not trigger other workflows. That is why
   `publish-mcp.yml` is `workflow_call`/`workflow_dispatch` rather than `on: push: tags` - a tag
-  trigger would silently never fire. It is also why CI does not run on the release PR itself;
-  supply a PAT or GitHub App token to `release-please.yml` if you want that gate.
+  trigger would silently never fire. The same applies to the `main` fast-forward, which is why
+  `pages.yml` gained a `workflow_call` trigger instead of watching `main`. It is also why CI does
+  not run on the release PR itself; supply a PAT or GitHub App token to `release-please.yml` if
+  you want that gate.
 
 ## Docs
 
