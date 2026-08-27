@@ -2,23 +2,27 @@ name: Release Please
 
 # Release automation, in two phases that both run from this one file.
 #
-# 1. Every push to main, release-please recomputes what the next version would
-#    be from the Conventional Commit subjects since the last release, and opens
-#    or rewrites a "chore(main): release X.Y.Z" PR carrying the version bumps
-#    and the CHANGELOG entry.
-# 2. Merging that PR pushes to main, which runs this workflow again. This time
-#    release-please sees a merged release PR, creates the tag and the GitHub
-#    release, and the publish job below ships it to PyPI.
+# Work lands on develop. main is moved only by this workflow, so it always
+# equals the last released commit.
 #
-# The publish job lives in this same workflow on purpose. A release created with
-# the default GITHUB_TOKEN does not trigger other workflows, so the old
-# `on: push: tags: [v*]` publish would silently never fire. Calling it via
-# `needs` sidesteps that entirely - no cross-workflow trigger is involved.
+# 1. Every push to develop, release-please recomputes what the next version
+#    would be from the Conventional Commit subjects since the last release, and
+#    opens or rewrites a "chore(develop): release X.Y.Z" PR carrying the version
+#    bumps and the CHANGELOG entry.
+# 2. Merging that PR pushes to develop, which runs this workflow again. This
+#    time release-please sees a merged release PR and creates the tag and the
+#    GitHub release. The jobs below then fast-forward main onto that commit,
+#    ship to PyPI, and publish the docs.
+#
+# Everything downstream lives in this same workflow on purpose. A release - or a
+# push - made with the default GITHUB_TOKEN does not trigger other workflows, so
+# an `on: push: tags` publish, or a pages build watching main, would silently
+# never fire. Calling them through `needs` sidesteps that entirely.
 
 on:
   push:
     branches:
-      - main
+      - develop
   # Rebuild the release PR on demand. release-please leaves an open release PR
   # alone when the version it computes has not changed, so a config fix that
   # only alters the PR's *contents* is not picked up on its own - delete the
@@ -41,12 +45,18 @@ jobs:
       # expression, so a bare `if: ...outputs.releases_created` is always true.
       releases_created: ${{ steps.release.outputs.releases_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      # The release commit on develop. main is fast-forwarded onto exactly this.
+      sha: ${{ steps.release.outputs.sha }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          # Without this release-please works against the repository's default
+          # branch. That is develop today, but stating it keeps this workflow
+          # correct if the default is ever changed back.
+          target-branch: develop
           # Releases and PRs made with GITHUB_TOKEN do not trigger workflows, so
           # CI does not run on the release PR itself. Supply a PAT or GitHub App
           # token here if you want the PR gated by the test matrix before merge.
@@ -94,3 +104,42 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     uses: ./.github/workflows/publish-mcp.yml
     secrets: inherit
+
+  # main is a pointer to the last released commit, moved only from here. This is
+  # a plain fast-forward, so it fails loudly rather than rewriting anything if
+  # main carries commits develop does not - which happens only if someone pushed
+  # to main directly.
+  fast-forward-main:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward main onto the released commit
+        env:
+          SHA: ${{ needs.release-please.outputs.sha }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          if git push origin "$SHA:refs/heads/main"; then
+            echo "main now points at $SHA ($TAG)."
+          else
+            echo "::error::Could not fast-forward main onto $SHA ($TAG). main has commits that develop does not; merge main into develop and re-run this workflow."
+            exit 1
+          fi
+
+  # Docs describe the released version, so they publish from a release rather
+  # than from every push. Chained rather than triggered: the fast-forward above
+  # is a GITHUB_TOKEN push and so does not start pages.yml on its own.
+  docs:
+    needs: [release-please, fast-forward-main]
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
