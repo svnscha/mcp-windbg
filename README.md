@@ -75,18 +75,13 @@ Python is not a prerequisite in itself. Each route below states what it needs.
 
 ### The plugin
 
-The shortest path: two lines, no `pip install`, no MCP configuration to edit.
+The shortest path: two lines, no `pip install`, no MCP configuration to edit. Adds four
+skills and a `crash-analyst` agent on top of the ten tools, with symbols preconfigured.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
-
-Alongside the ten tools you get four skills - `/mcp-windbg:analyze-dump`,
-`/mcp-windbg:debug-remote`, `/mcp-windbg:kernel-debug`, and `/mcp-windbg:windbg-doctor` for
-checking that a machine can debug at all - plus a `crash-analyst` agent that investigates a dump
-on its own and reports a verdict with its evidence. Symbols work out of the box, and a
-`_NT_SYMBOL_PATH` you already set wins over the default.
 
 Needs [uv](https://docs.astral.sh/uv/), which supplies `uvx`: `winget install astral-sh.uv`. The
 plugin uses it to fetch the pinned server from PyPI on first use, so there is nothing else to
