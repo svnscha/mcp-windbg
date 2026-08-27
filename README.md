@@ -77,7 +77,7 @@ and reports back.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
-/plugin install mcp-windbg@mcp-windbg
+/plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
 The plugin launches the server with [uv](https://docs.astral.sh/uv/)'s `uvx`, which fetches the

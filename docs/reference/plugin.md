@@ -8,7 +8,7 @@ configuration.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
-/plugin install mcp-windbg@mcp-windbg
+/plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
 The first line registers this repository as a plugin marketplace; the second installs the plugin
@@ -103,13 +103,13 @@ Note that editing the installed copy is overwritten when the plugin updates.
 
 ```
 /plugin marketplace update mcp-windbg
-/plugin update mcp-windbg@mcp-windbg
+/plugin update mcp-windbg-uvx@mcp-windbg
 ```
 
 To remove it:
 
 ```
-/plugin uninstall mcp-windbg@mcp-windbg
+/plugin uninstall mcp-windbg-uvx@mcp-windbg
 /plugin marketplace remove mcp-windbg
 ```
 
