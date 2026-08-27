@@ -75,9 +75,6 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       # The release commit on develop. main is fast-forwarded onto exactly this.
       sha: ${{ steps.release.outputs.sha }}
-      # Branch of the open release PR, empty when there is none. `pr` is a JSON
-      # string, so the && short-circuits rather than handing fromJson nothing.
-      pr_branch: ${{ steps.release.outputs.pr && fromJson(steps.release.outputs.pr).headBranchName }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
@@ -100,21 +97,44 @@ jobs:
   # uv regenerates it, on the release PR, before anyone merges it.
   sync-lockfile:
     needs: release-please
-    if: ${{ needs.release-please.outputs.pr_branch != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.pr_branch }}
+          fetch-depth: 0
+
+      # Asking for the PR rather than reading release-please's `pr` output: that
+      # output is only set on the run that creates or updates the PR, and
+      # release-please deliberately leaves an open release PR alone when the
+      # version it computes has not changed. Every later push to develop would
+      # therefore skip this job with the PR sitting there unsynced.
+      - name: Find the open release PR
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch=$(gh pr list --state open --base develop --json headRefName --jq '[.[] | select(.headRefName | startswith("release-please--"))][0].headRefName // ""')
+          if [ -z "$branch" ]; then
+            echo "No open release PR - nothing to sync."
+          else
+            echo "Release PR branch: $branch"
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - uses: astral-sh/setup-uv@v7
+        if: steps.find.outputs.branch != ''
         with:
           version: "latest"
 
       - name: Regenerate uv.lock and commit it if it moved
+        if: steps.find.outputs.branch != ''
+        env:
+          BRANCH: ${{ steps.find.outputs.branch }}
         run: |
+          git checkout -B "$BRANCH" "origin/$BRANCH"
           uv lock
           if git diff --quiet -- uv.lock; then
             echo "uv.lock is already in step with pyproject.toml."
@@ -123,8 +143,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: sync uv.lock with the release version" -- uv.lock
-          git push
-          echo "uv.lock synced onto the release PR."
+          git push origin "$BRANCH"
+          echo "uv.lock synced onto $BRANCH."
 
   # release-please is configured with skip-changelog, so CHANGELOG.md stays
   # hand-written - but it still creates the GitHub release with its own notes,
