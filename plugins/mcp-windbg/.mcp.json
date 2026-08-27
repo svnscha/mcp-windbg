@@ -3,7 +3,7 @@
     "mcp-windbg": {
       "command": "uvx",
       "args": [
-        "mcp-windbg@1.1.0"
+        "mcp-windbg@1.2.0"
       ],
       "env": {
         "_NT_SYMBOL_PATH": "${_NT_SYMBOL_PATH:-SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols}"
