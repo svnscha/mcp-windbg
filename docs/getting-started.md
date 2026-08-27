@@ -5,12 +5,17 @@ GitHub Copilot. Other clients work the same way once the server is configured, s
 [Client configuration](reference/clients.md).
 
 !!! tip "Using Claude Code?"
-    Skip the VS Code steps - register the server with one command and jump straight to
-    [Analyze your first dump](#4-analyze-your-first-dump):
+    Skip the VS Code steps and install the [plugin](reference/plugin.md) instead. There is no
+    `pip install` and nothing to configure - symbols included:
 
-    ```bash
-    claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
     ```
+    /plugin marketplace add svnscha/mcp-windbg
+    /plugin install mcp-windbg@mcp-windbg
+    ```
+
+    Then jump to [Analyze your first dump](#4-analyze-your-first-dump), or just run
+    `/mcp-windbg:analyze-dump`. You still need the prerequisites in step 1, plus
+    [uv](https://docs.astral.sh/uv/).
 
 ## 1. Check the prerequisites
 

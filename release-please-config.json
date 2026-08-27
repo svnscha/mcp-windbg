@@ -7,8 +7,31 @@
       "package-name": "mcp-windbg",
       "skip-changelog": true,
       "extra-files": [
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" }
+        {
+          "type": "json",
+          "path": "server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "server.json",
+          "jsonpath": "$.packages[*].version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/mcp-windbg/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[*].version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/mcp-windbg/.mcp.json",
+          "jsonpath": "$.mcpServers['mcp-windbg'].args[0]"
+        }
       ]
     }
   }

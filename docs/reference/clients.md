@@ -13,6 +13,29 @@ server. Adjust the path or add more locations as needed. For running from a chec
 
 ## Claude Code
 
+### The plugin (recommended)
+
+The [plugin](https://github.com/svnscha/mcp-windbg/tree/main/plugins/mcp-windbg) is the shortest
+path. It needs no `pip install` and no MCP configuration:
+
+```
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg@mcp-windbg
+```
+
+Alongside the ten tools you get four skills - `/mcp-windbg:analyze-dump`,
+`/mcp-windbg:debug-remote`, `/mcp-windbg:kernel-debug`, and `/mcp-windbg:windbg-doctor` for
+diagnosing a setup that will not work - plus a `crash-analyst` agent that investigates a dump on
+its own and reports a verdict with its evidence. The plugin runs the server with `uvx`, so it needs
+[uv](https://docs.astral.sh/uv/) on `PATH`; it pins the server version so the plugin and the
+server it drives stay in step.
+
+Symbols work out of the box: the plugin supplies the Microsoft symbol server as a **default**
+for `_NT_SYMBOL_PATH`. If you already have that variable set, your value wins and the default is
+ignored, so a symbol path you tuned yourself is never overwritten.
+
+### Registering the server directly
+
 Register the server with `claude mcp add`. The `-s user` scope makes it available in every
 project; drop it to scope the server to the current project only. Everything after `--` is
 the command Claude Code runs:

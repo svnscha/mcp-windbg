@@ -1,0 +1,13 @@
+{
+  "name": "mcp-windbg",
+  "description": "Analyze Windows crash dumps and drive live user-mode or kernel debugging through WinDbg/CDB.",
+  "version": "1.1.0",
+  "author": {
+    "name": "Sven Scharmentke",
+    "url": "https://github.com/svnscha"
+  },
+  "homepage": "https://svnscha.github.io/mcp-windbg/",
+  "repository": "https://github.com/svnscha/mcp-windbg",
+  "license": "MIT",
+  "keywords": ["debugging", "windbg", "cdb", "kd", "crash-dump", "kernel", "windows"]
+}
