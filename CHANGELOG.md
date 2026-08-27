@@ -5,6 +5,23 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-08-27
+
+### Changed
+
+- **The README install section is organised by client, not by install method** - Claude Code
+  has its own heading, with the plugin and a manual `claude mcp add` beneath it, and other
+  clients follow. Python is no longer listed as a prerequisite, because it is not one for the
+  plugin route: each route now states what it needs next to the command it applies to. The note
+  about enterprise policy moves to the top, where it can still change whether you proceed.
+
+### Fixed
+
+- **A corrupted path in the README example prompts** - `C:\dumps\app.dmp` shipped with a literal
+  BEL byte where the `\a` should have been, so anyone copying that line got a control character
+  instead of a path. Every markdown, workflow and JSON file in the repository was swept for
+  stray control characters; this was the only one.
+
 ## [1.2.0] - 2026-08-27
 
 ### Added
