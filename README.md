@@ -61,44 +61,52 @@ Parameters, timeouts, and the built-in triage prompts are in the [tools referenc
 
 ## Quick start
 
-**Prerequisites**
-
-- Windows with [Debugging Tools for Windows](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) or [WinDbg from the Microsoft Store](https://apps.microsoft.com/detail/9pgjgd53tn86), which ship `cdb.exe` and `kd.exe` (auto-detected).
-- Python 3.10 or higher.
-- Any MCP-compatible client (Claude Code, GitHub Copilot, Claude Desktop, Cursor, Windsurf, Cline, ...).
-
 > [!TIP]
 > In enterprise environments, MCP server usage might be restricted by organizational policies. Check with your IT team about AI tool usage and ensure you have the necessary permissions before proceeding.
 
-**Claude Code - install the plugin.** This is the shortest path: no `pip install`, no MCP
-config to edit. It brings the ten tools, four skills (`analyze-dump`, `debug-remote`,
-`kernel-debug`, `windbg-doctor`) and a `crash-analyst` agent that investigates a dump on its own
-and reports back.
+**Prerequisites**
+
+- Windows with [Debugging Tools for Windows](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) or [WinDbg from the Microsoft Store](https://apps.microsoft.com/detail/9pgjgd53tn86), which ship `cdb.exe` and `kd.exe` (auto-detected).
+- Any MCP-compatible client (Claude Code, GitHub Copilot, Claude Desktop, Cursor, Windsurf, Cline, ...).
+
+Python is not a prerequisite in itself. Each route below states what it needs.
+
+## Install in Claude Code
+
+### The plugin
+
+The shortest path: two lines, no `pip install`, no MCP configuration to edit. Adds four
+skills and a `crash-analyst` agent on top of the ten tools, with symbols preconfigured.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
-The plugin launches the server with [uv](https://docs.astral.sh/uv/)'s `uvx`, which fetches the
-pinned version from PyPI on first use. See the [plugin
-README](plugins/mcp-windbg/README.md) for symbols setup and how to run it without uv.
+Needs [uv](https://docs.astral.sh/uv/), which supplies `uvx`: `winget install astral-sh.uv`. The
+plugin uses it to fetch the pinned server from PyPI on first use, so there is nothing else to
+install. See the [plugin README](plugins/mcp-windbg/README.md) for symbols and options.
 
-**Any other client - install the package**
+### Registering the server yourself
+
+If you would rather not use the plugin, or you already run the package:
+
+```bash
+pip install mcp-windbg
+claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
+```
+
+Needs Python 3.10 or higher. The tools are identical; the skills and the agent are not included.
+
+## Install in another client
 
 ```bash
 pip install mcp-windbg
 ```
 
-**Configure your client.** The two most common setups are below; see the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for Claude Desktop, Copilot CLI, Autohand Code, HTTP, and from-source.
-
-Claude Code - if you did not use the plugin above, register the server directly:
-
-```bash
-claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
-```
-
-VS Code (GitHub Copilot) - press `F1` and select **MCP: Open User Configuration** to enable it in every workspace:
+Needs Python 3.10 or higher. Then point the client at `python -m mcp_windbg`. For VS Code
+(GitHub Copilot), press `F1` and select **MCP: Open User Configuration** to enable it in every
+workspace:
 
 ```json
 {
@@ -115,7 +123,12 @@ VS Code (GitHub Copilot) - press `F1` and select **MCP: Open User Configuration*
 }
 ```
 
-Restart your client, then start debugging:
+See the [client configuration guide](https://svnscha.github.io/mcp-windbg/reference/clients/) for
+Claude Desktop, Copilot CLI, Autohand Code, HTTP, and from-source setups.
+
+## Start debugging
+
+Restart your client, then ask for what you want:
 
 ```text
 Analyze the crash dump at C:\dumps\app.dmp
