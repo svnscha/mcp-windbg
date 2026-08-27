@@ -3,7 +3,11 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [ develop, main, master ]
+    # develop only. master does not exist, and main is moved solely by
+    # fast-forward-main, a GITHUB_TOKEN push, which by design starts no
+    # workflow - so listing them implies a gate that cannot fire. The develop
+    # run is what the CI badge reads, and what catches a PR merged while behind.
+    branches: [ develop ]
   workflow_dispatch:
 
 jobs:
