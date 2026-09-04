@@ -5,6 +5,12 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Unicode command output on Chinese, Japanese and Korean Windows** ([#102](https://github.com/svnscha/mcp-windbg/issues/102)) - on a multibyte system code page (936, 932, 949, or the "Use Unicode UTF-8" setting 65001) the debugger truncates its text output over a pipe, dropping the tail of any line that contains non-ASCII text; a `du` of a Chinese string came back empty or partial, other Unicode output was cut short, and a line split in the middle of a character could leave the session unresponsive. On these code pages the session now mirrors output to a UTF-16 log and reads each command's output from it, keyed by the markers it already uses to synchronize; the result is complete for every command. Single-byte code pages (such as Western 1252), where the pipe is lossless, are detected and left on the pipe path unchanged.
+
 ## [1.2.1] - 2026-08-27
 
 ### Changed

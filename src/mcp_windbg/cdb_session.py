@@ -83,6 +83,10 @@ class CDBSession(DebuggerSession):
         self.dump_path = dump_path
         self.remote_connection = remote_connection
         self.is_live_session = bool(remote_connection)
+        # A -remote client drives a debug engine on the server, so .logopen would
+        # open the Unicode log on the server (a path/lifecycle we do not own).
+        # The log-output transport is only for sessions whose engine is ours.
+        self._engine_is_local = remote_connection is None
 
         cdb_path = find_executable(DEFAULT_CDB_PATHS, cdb_path)
         if not cdb_path:
