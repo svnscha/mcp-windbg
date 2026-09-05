@@ -11,6 +11,7 @@ reading its stdin, so anything written to it is queued until the target stops.
 
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import time
@@ -88,6 +89,10 @@ class _FakeProc:
         #: test hang one specific command without also hanging the break-in
         #: probe that precedes it.
         self.answer_budget: "int | None" = None
+        #: When a ``.logopen /u <path>`` is seen, the fake mirrors a UTF-16
+        #: transcript to this file the way cdb/kd do, so the log-content channel
+        #: can be exercised without a real multibyte debugger.
+        self._log_path = None
 
     def _feed(self, text: str):
         for line in text.splitlines():
@@ -96,7 +101,20 @@ class _FakeProc:
             else:
                 self._handle(line)
 
+    def _open_log(self, path: str):
+        self._log_path = path
+        with open(path, "wb") as handle:
+            handle.write(b"\xff\xfe")  # UTF-16LE BOM, as cdb writes
+        self._log_write("Opened log file\r\n")
+
+    def _log_write(self, text: str):
+        with open(self._log_path, "ab") as handle:
+            handle.write(text.encode("utf-16-le"))
+
     def _handle(self, line: str):
+        logging = self._log_path is not None and not line.startswith(".logopen")
+        if logging:
+            self._log_write(f"0:000> {line}\r\n")  # the transcript echoes the command
         if line.startswith(".echo "):
             marker = line[len(".echo "):]
             if self.answer_budget is not None:
@@ -105,6 +123,10 @@ class _FakeProc:
                 self.answer_budget -= 1
             if not self._swallow:
                 self._out.put(marker)
+                if logging:
+                    self._log_write(f"{marker}\r\n")
+        elif line.startswith(".logopen /u "):
+            self._open_log(line[len(".logopen /u "):].strip())
         elif line in ("q", "\x02"):
             # quit / detach: the real process exits, ending the reader loop
             self._alive = False
@@ -113,6 +135,8 @@ class _FakeProc:
             self.running = True
         else:
             self._out.put(f"OUT:{line}")
+            if logging:
+                self._log_write(f"OUT:{line}\r\n")
 
     def target_stops(self, *lines: str):
         """The target halts on its own (bugcheck, breakpoint), draining stdin."""
@@ -156,6 +180,15 @@ def _fast_break_in_probe(monkeypatch):
     shorten it and keep the suite quick."""
     monkeypatch.setattr(debug_session, "BREAK_IN_PROBE_TIMEOUT", 0.2)
     monkeypatch.setattr(debug_session, "RESUME_CONFIRM_TIMEOUT", 0.2)
+
+
+@pytest.fixture(autouse=True)
+def _single_byte_code_page(monkeypatch):
+    """Default the hermetic tests to the single-byte (pipe) path, so they behave
+    the same whatever the host's real code page is - otherwise a session built on
+    a multibyte host would auto-open the Unicode log mid-test. The log tests
+    re-patch this to True where they need it."""
+    monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: False)
 
 
 @pytest.fixture(autouse=True)
@@ -599,3 +632,66 @@ def test_a_timed_out_prefix_still_reports_why_the_target_stopped(make_session):
     with pytest.raises(DebuggerError) as exc:
         session.send_command("bp nt!NtCreateFile; g", timeout=1)
     assert "Fatal System Error" in str(exc.value)
+
+
+def test_output_is_read_from_the_unicode_log_on_a_multibyte_code_page(make_session, monkeypatch):
+    """On a multibyte code page the session opens a UTF-16 log and returns each
+    command's output from it (the fake mirrors that log). The pipe still drives
+    the markers; only the returned content comes from the log."""
+    monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: True)
+    session, proc = make_session()
+
+    assert session._log_active is True
+    assert proc._log_path is not None and os.path.exists(proc._log_path)
+    # Content comes from the log, marker-synced, with the prompt/echo scaffolding
+    # stripped - the same lines the pipe path would have returned.
+    assert session.send_command("r rip") == ["OUT:r rip"]
+    assert session.send_command("du @rsp") == ["OUT:du @rsp"]
+
+    logpath = session._log_path
+    session.shutdown()
+    assert not os.path.exists(logpath)  # the temp log is cleaned up
+
+
+def test_a_missing_log_falls_back_to_the_pipe_without_raising(make_session, monkeypatch):
+    """If the log cannot be read, the command still returns (from the pipe)
+    rather than failing - the reader must never depend on the log existing."""
+    monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: True)
+    session, proc = make_session()
+    assert session._log_active is True
+
+    # Drop the log out from under the reader: the next command falls back.
+    os.remove(session._log_path)
+    proc._log_path = None
+    assert session.send_command("lm") == ["OUT:lm"]
+
+
+def test_the_log_is_left_untouched_on_a_single_byte_code_page(make_session, monkeypatch):
+    """The default (single-byte) path never opens a log and returns pipe output
+    verbatim, so a Western setup is byte-for-byte unchanged."""
+    monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: False)
+    session, proc = make_session()
+
+    assert session._log_active is False
+    assert proc._log_path is None
+    assert session.send_command("r rip") == ["OUT:r rip"]
+
+
+def test_a_remote_client_keeps_the_pipe_even_on_a_multibyte_code_page(monkeypatch):
+    """A -remote client's engine runs on the server, so the log would open there,
+    not here. Such a session must stay on the pipe even on a multibyte page."""
+    monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: True)
+
+    class _RemoteLike(DebuggerSession):
+        is_live_session = True
+        _engine_is_local = False
+
+    proc = _FakeProc()
+    monkeypatch.setattr(debug_session.subprocess, "Popen", lambda *a, **k: proc)
+    session = _RemoteLike(debugger_path="fake", launch_args=["fake"], timeout=5, verbose=False)
+    try:
+        assert session._log_active is False
+        assert proc._log_path is None
+        assert session.send_command("r rip") == ["OUT:r rip"]
+    finally:
+        session.shutdown()

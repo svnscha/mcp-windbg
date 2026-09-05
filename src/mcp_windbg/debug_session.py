@@ -28,11 +28,14 @@ Two robustness properties this base guarantees:
 
 from __future__ import annotations
 
+import locale
 import os
 import re
 import signal
 import subprocess
+import tempfile
 import threading
+import time
 from typing import List, Optional
 
 # Detects a CDB/KD prompt line such as ``0:000>`` or ``3: kd>``.
@@ -132,6 +135,69 @@ def find_executable(paths: List[str], custom_path: Optional[str] = None) -> Opti
     return None
 
 
+def _debugger_output_encoding() -> str:
+    """The code page cdb/kd write their output in - the process ANSI code page,
+    which ``locale.getencoding`` reports (``getpreferredencoding`` on 3.10)."""
+    if hasattr(locale, "getencoding"):
+        return locale.getencoding()
+    return locale.getpreferredencoding(False)
+
+
+# A prompt at the head of a logged line: ``0:000> ``, ``0: kd> ``, ``1:001:x86> ``,
+# the local-kernel ``lkd> ``/``kd> `` forms, and the remote form that carries a
+# ``[server (tcp ...)]`` banner first. In the Unicode log these prefix the
+# command echo and the .echo marker line; the debugger's own output lines never
+# start with one.
+_LOGGED_PROMPT = re.compile(r"^(?:\[.*\]\s*)?(?:\d+:[^>]*|l?kd)>")
+
+
+def _acp_is_multibyte() -> bool:
+    """True when this machine's ANSI code page is multibyte (DBCS or UTF-8).
+
+    That is exactly when the debugger truncates its text output over a pipe, so
+    it is the gate for reading output from the Unicode log instead. Uses
+    ``GetCPInfo(GetACP()).MaxCharSize`` - 1 for a single-byte page such as
+    Western 1252, greater for 932/936/949/950/65001. False where the call is
+    unavailable, so a single-byte or non-Windows host keeps the pipe path.
+    """
+    try:
+        import ctypes
+
+        class _CPINFO(ctypes.Structure):
+            _fields_ = [
+                ("MaxCharSize", ctypes.c_uint),
+                ("DefaultChar", ctypes.c_char * 2),
+                ("LeadByte", ctypes.c_char * 12),
+            ]
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        info = _CPINFO()
+        if kernel32.GetCPInfo(kernel32.GetACP(), ctypes.byref(info)):
+            return info.MaxCharSize > 1
+    except Exception:
+        pass
+    return False
+
+
+def _extract_log_output(segment: str) -> List[str]:
+    """The debugger's own output lines from one command's Unicode-log segment.
+
+    The segment runs from just after the previous command's marker up to (not
+    including) the line that echoes this command's ``.echo <marker>``. Its first
+    line is the echo of the command itself; both it and any other prompt-prefixed
+    line are the transcript's scaffolding, not output, and are dropped. Leading
+    and trailing blank lines (a bare prompt writes one) are trimmed so a command
+    that prints nothing yields ``[]``, as the pipe path does.
+    """
+    lines = [ln.rstrip("\r") for ln in segment.split("\n")]
+    kept = [ln for ln in lines if not _LOGGED_PROMPT.match(ln)]
+    while kept and kept[0] == "":
+        kept.pop(0)
+    while kept and kept[-1] == "":
+        kept.pop()
+    return kept
+
+
 class DebuggerSession:
     """A debugger subprocess plus the marker protocol used to drive it.
 
@@ -144,6 +210,12 @@ class DebuggerSession:
     #: static dump. Live sessions get their own process group (so CTRL+BREAK can
     #: break in) and are detached with CTRL+B instead of quit with ``q``.
     is_live_session: bool = False
+
+    #: Whether this session's debug engine is our own subprocess (a dump or a
+    #: kernel target on the wire), rather than a remote server we are only a
+    #: client of. The Unicode-log transport needs the engine local, since it
+    #: opens and reads a log file on this machine. A -remote client sets False.
+    _engine_is_local: bool = True
 
     def __init__(
         self,
@@ -185,16 +257,29 @@ class DebuggerSession:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                # cdb/kd write output in the process ANSI code page (GetACP),
+                # regardless of PYTHONUTF8; decode with the same one, and never
+                # strictly, so a byte a multibyte code page split across reads
+                # cannot raise in the reader thread and wedge the session.
+                encoding=_debugger_output_encoding(),
+                errors="replace",
                 bufsize=1,
                 creationflags=creationflags,
             )
         except Exception as e:  # pragma: no cover - Popen rarely fails once the exe is located
             raise DebuggerError(f"Failed to start debugger process: {e}")
 
+        #: Unicode-log content channel (see _enable_unicode_log). Inactive until
+        #: the log is open, and only ever opened on a multibyte code page.
+        self._log_path: Optional[str] = None
+        self._log_offset = 0
+        self._log_active = False
+
         self.reader_thread = threading.Thread(target=self._read_output, daemon=True)
         self.reader_thread.start()
 
         self._startup()
+        self._enable_unicode_log()
 
     # -- Subclass hooks ---------------------------------------------------
 
@@ -438,7 +523,94 @@ class DebuggerSession:
                 f"Command timed out after {cmd_timeout} seconds: {command}{detail}{lost}"
             )
 
-        return self._take_output()
+        pipe_output = self._take_output()
+        if self._log_active:
+            # The pipe truncates multibyte output; the log does not. Prefer the
+            # log segment for this command, falling back to the pipe if the log
+            # has not caught up (it always should, the marker just landed).
+            logged = self._read_log_segment(marker)
+            if logged is not None:
+                return logged
+        return pipe_output
+
+    # -- Unicode log content channel --------------------------------------
+
+    def _enable_unicode_log(self) -> None:
+        """On a multibyte code page, mirror output to a UTF-16 log and read
+        command output from it instead of the truncating ANSI pipe.
+
+        cdb/kd write pipe (and ANSI-log) output short by each line's multibyte
+        expansion, losing the tail of any non-ASCII line; ``.logopen /u`` writes
+        a UTF-16 log that is complete and flushes per command. The pipe stays the
+        sync channel - the ``.echo`` markers are logged too, so each command's
+        output is the log slice ahead of its marker. Best effort: any failure
+        leaves the session on the pipe path exactly as before.
+        """
+        if not _acp_is_multibyte() or not self._engine_is_local:
+            return
+        try:
+            fd, path = tempfile.mkstemp(prefix="mcp_windbg_", suffix=".ulog")
+            os.close(fd)
+            os.remove(path)  # cdb creates it; a pre-existing file would be appended to
+            self._send_marked(f".logopen /u {path}", self.timeout)
+            if not os.path.exists(path):
+                return
+            self._log_path = path
+            self._log_offset = 0
+            self._log_active = True
+            # The log opens mid-command, so it starts with its banner and the
+            # logopen echo. One throwaway marked command drains all of that and
+            # leaves the offset at a clean boundary - robust to log-flush timing
+            # in a way that trusting the post-open file size is not.
+            self._send_marked(".echo", self.timeout)
+        except Exception:
+            self._cleanup_log()
+
+    def _read_log_segment(self, marker: str) -> Optional[List[str]]:
+        """This command's output from the Unicode log, or None if not ready.
+
+        The marker appears twice in the log: first in the echoed ``.echo
+        <marker>`` command, then as that command's output. Everything before the
+        first is this command's transcript; consuming through the second leaves
+        the offset at a clean boundary for the next command.
+        """
+        deadline = time.time() + max(2.0, self.timeout / 10)
+        while True:
+            try:
+                with open(self._log_path, "rb") as handle:
+                    handle.seek(self._log_offset)
+                    text = handle.read().decode("utf-16-le", errors="replace")
+            except OSError:
+                return None
+            first = text.find(marker)
+            second = text.find(marker, first + len(marker)) if first != -1 else -1
+            if first != -1 and second != -1:
+                line_start = text.rfind("\n", 0, first) + 1
+                end_nl = text.find("\n", second)
+                end = len(text) if end_nl == -1 else end_nl + 1
+                self._log_offset += len(text[:end].encode("utf-16-le"))
+                return _extract_log_output(text[:line_start])
+            if time.time() >= deadline:
+                return None
+            time.sleep(0.02)
+
+    def _cleanup_log(self) -> None:
+        self._log_active = False
+        if not self._log_path:
+            return
+        # A detached remote client is force-killed rather than quit, so the OS
+        # may still be releasing its handle on the log file when we get here; a
+        # dump/kernel session that quit cleanly releases it at once. Retry
+        # briefly so the temp file is not leaked in the remote case.
+        for _ in range(20):
+            try:
+                os.remove(self._log_path)
+                break
+            except FileNotFoundError:
+                break
+            except OSError:
+                time.sleep(0.05)
+        self._log_path = None
 
     def _marker_landed(self) -> bool:
         """True if the pending marker arrived just as the deadline expired."""
@@ -710,6 +882,7 @@ class DebuggerSession:
                 print(f"Error during shutdown: {e}")
         finally:
             self.process = None
+            self._cleanup_log()
 
     def _terminate_process(self) -> None:
         """Kill the debugger process. On Windows use a tree kill: cdb.exe/kd.exe
