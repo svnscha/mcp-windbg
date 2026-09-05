@@ -1,7 +1,7 @@
 {
   "name": "mcp-windbg",
   "description": "Analyze Windows crash dumps and drive live user-mode or kernel debugging through WinDbg/CDB.",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "author": {
     "name": "Sven Scharmentke",
     "url": "https://github.com/svnscha"
