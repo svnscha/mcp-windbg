@@ -29,6 +29,19 @@
         "windows"
       ],
       "category": "development"
+    },
+    {
+      "name": "mcp-windbg-skills",
+      "source": "./plugins/mcp-windbg/skills",
+      "strict": false,
+      "description": "Four WinDbg debugging skills for an independently configured mcp-windbg server. No bundled server, launcher, or agent.",
+      "version": "1.2.2",
+      "skills": ["./analyze-dump", "./debug-remote", "./kernel-debug", "./windbg-doctor"],
+      "author": { "name": "Sven Scharmentke" },
+      "homepage": "https://svnscha.github.io/mcp-windbg/reference/plugin/",
+      "repository": "https://github.com/svnscha/mcp-windbg",
+      "license": "MIT",
+      "category": "development"
     }
   ]
 }

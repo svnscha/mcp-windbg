@@ -13,12 +13,12 @@ server. Adjust the path or add more locations as needed. For running from a chec
 
 ## Claude Code
 
-### The plugin (recommended)
+### Server and skills with uvx
 
-The [plugin](https://github.com/svnscha/mcp-windbg/tree/main/plugins/mcp-windbg) is the shortest
+The [uvx plugin](plugin.md#server-and-skills-with-uvx) is the shortest
 path. It needs no `pip install` and no MCP configuration:
 
-```
+```text
 /plugin marketplace add svnscha/mcp-windbg
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
@@ -64,6 +64,20 @@ Claude Code records the server in `.claude.json`:
 Add server options such as a [filter script](../scenarios/redaction.md) after the command,
 for example `-- python -m mcp_windbg --filter-script C:\filters\pii_redaction.py`. Run
 `claude mcp list` to confirm it connected.
+
+### Skills for an existing server
+
+After registering your server, add the four workflows with the
+[skills-only plugin](plugin.md#skills-for-an-existing-server):
+
+```text
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg-skills@mcp-windbg
+```
+
+Use `/mcp-windbg-skills:analyze-dump` to start. The plugin uses your existing
+connection, including an HTTP service, and does not require uv or change the
+server's launch command, symbol settings, or version.
 
 ## Claude Desktop
 

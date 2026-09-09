@@ -5,6 +5,16 @@ description: Attach to a live Windows kernel target over KDNET, a named pipe, or
 
 # Debug a live Windows kernel target
 
+## MCP connection
+
+Use the existing mcp-windbg MCP connection, whether it is launched by a plugin,
+a native executable, Python, or an HTTP service. Tool names below are base
+names; resolve them against the tools exposed by that connection rather than
+assuming a plugin-specific prefix. Keep each session on the server that opened
+it. If multiple servers match, use the user's selected server or ask which one.
+If the required tools are unavailable, report the missing connection or tool
+and help check its configuration; do not register a second server.
+
 Drive a kernel target with the `mcp-windbg` kd tools. A kernel session halts the
 whole machine while it is broken in, so treat the target's running state as
 something you are responsible for.

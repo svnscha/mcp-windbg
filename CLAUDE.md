@@ -111,6 +111,13 @@ That split is deliberate. It lets a second entry ship the same plugin a differen
 keeps identical skill names, identical tool names, and one set of documentation. Change
 `plugin.json`'s name and you rename every skill and every tool with it.
 
+The skills-only entry `mcp-windbg-skills` is different: its source is
+`plugins/mcp-windbg/skills`, and `strict: false` makes the marketplace entry its
+manifest. It exposes those four shared directories without the parent plugin's
+MCP configuration or agent. Its skill namespace is `/mcp-windbg-skills:...`.
+Keep shared skills independent of launcher and tool namespace. The existing
+marketplace version wildcard updates both entries; the release check must check both.
+
 ## Versioning and release
 
 Releases are driven by [release-please](https://github.com/googleapis/release-please). You do

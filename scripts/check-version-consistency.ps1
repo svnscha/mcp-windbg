@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Extracts the version from pyproject.toml, server.json (top level and package),
-    .release-please-manifest.json, the Claude plugin manifest, the marketplace entry and the
+    .release-please-manifest.json, the Claude plugin manifest, every marketplace entry and the
     server version pinned in the plugin's .mcp.json, and checks they all match. Also checks that
     CHANGELOG.md's top heading names that version and has an entry underneath it.
 
@@ -80,11 +80,13 @@ try {
     # kept in step by release-please extra-files entries; checking them here is
     # what catches an entry that silently stopped matching.
     $PLUGIN_VERSION = (Get-Content "plugins/mcp-windbg/.claude-plugin/plugin.json" -Raw | ConvertFrom-Json).version
-    $MARKETPLACE_VERSION = (Get-Content ".claude-plugin/marketplace.json" -Raw | ConvertFrom-Json).plugins[0].version
+    $marketplacePlugins = (Get-Content ".claude-plugin/marketplace.json" -Raw | ConvertFrom-Json).plugins
     $mcpArgs = (Get-Content "plugins/mcp-windbg/.mcp.json" -Raw | ConvertFrom-Json).mcpServers.'mcp-windbg'.args
     $PINNED_VERSION = ($mcpArgs[0] -split '@')[-1]
     Write-Host "INFO: plugin.json version: $PLUGIN_VERSION" -ForegroundColor Green
-    Write-Host "INFO: marketplace.json plugin version: $MARKETPLACE_VERSION" -ForegroundColor Green
+    foreach ($plugin in $marketplacePlugins) {
+        Write-Host "INFO: marketplace $($plugin.name): $($plugin.version)" -ForegroundColor Green
+    }
     Write-Host "INFO: plugin .mcp.json pinned server: $PINNED_VERSION" -ForegroundColor Green
 
     # Check if all versions match
@@ -94,8 +96,10 @@ try {
         $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != plugin.json ($PLUGIN_VERSION)"
     }
 
-    if ($PYPROJECT_VERSION -ne $MARKETPLACE_VERSION) {
-        $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != marketplace.json ($MARKETPLACE_VERSION)"
+    foreach ($plugin in $marketplacePlugins) {
+        if ($PYPROJECT_VERSION -ne $plugin.version) {
+            $errors += "Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != marketplace $($plugin.name) ($($plugin.version))"
+        }
     }
 
     if ($PYPROJECT_VERSION -ne $PINNED_VERSION) {

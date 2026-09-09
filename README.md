@@ -73,7 +73,14 @@ Python is not a prerequisite in itself. Each route below states what it needs.
 
 ## Install in Claude Code
 
-### The plugin
+Choose the plugin that matches your setup:
+
+| Plugin | Server | Included workflows |
+| --- | --- | --- |
+| `mcp-windbg-uvx` | Launched by the plugin with uvx | Four skills and the `crash-analyst` agent |
+| `mcp-windbg-skills` | Your existing MCP connection | The same four skills |
+
+### Server and skills with uvx
 
 The shortest path: two lines, no `pip install`, no MCP configuration to edit. Adds four
 skills and a `crash-analyst` agent on top of the ten tools, with symbols preconfigured.
@@ -96,7 +103,26 @@ pip install mcp-windbg
 claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
 ```
 
-Needs Python 3.10 or higher. The tools are identical; the skills and the agent are not included.
+Needs Python 3.10 or higher. Add the optional skills plugin below for the guided workflows.
+
+### Skills for an existing server
+
+After installing and registering mcp-windbg yourself, add just the four skills:
+
+```text
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg-skills@mcp-windbg
+```
+
+Invoke `/mcp-windbg-skills:analyze-dump`, `/mcp-windbg-skills:debug-remote`,
+`/mcp-windbg-skills:kernel-debug`, or `/mcp-windbg-skills:windbg-doctor`.
+This plugin uses your configured MCP connection and adds no server, runtime,
+symbol settings, or `crash-analyst` agent. It works with a native executable,
+Python installation, or HTTP service exposing the mcp-windbg tools.
+Choose this plugin or the uvx bundle; installing both duplicates the skills.
+The server's [built-in MCP prompts](https://svnscha.github.io/mcp-windbg/reference/prompts/)
+remain available independently of either plugin. See the
+[plugin guide](https://svnscha.github.io/mcp-windbg/reference/plugin/) for updating or switching plugins.
 
 ## Install in another client
 
