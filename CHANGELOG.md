@@ -5,7 +5,7 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-09-10
 
 ### Added
 
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skills resolve tools from the configured server; setup diagnosis checks its
   actual launcher and host instead of requiring uv for every installation.
 - Release validation checks the version of every marketplace entry.
-- README and setup documentation explain both plugin choices, their skill names,
+- README and setup documentation explain all three plugins, their workflow names,
   switching and updating, and the separate built-in MCP prompts.
 
 ## [1.2.2] - 2026-09-05
