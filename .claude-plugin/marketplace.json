@@ -11,7 +11,7 @@
       "displayName": "MCP for WinDbg (uvx version)",
       "source": "./plugins/mcp-windbg",
       "description": "WinDbg/CDB MCP server for Windows crash dump analysis and live debugging, launched with uvx.",
-      "version": "1.3.0",
+      "version": "1.1.0",
       "author": {
         "name": "Sven Scharmentke",
         "url": "https://github.com/svnscha"
@@ -35,7 +35,7 @@
       "source": "./plugins/mcp-windbg-skills",
       "strict": false,
       "description": "WinDbg skills for crash dump analysis, remote debugging, kernel debugging, and setup diagnostics.",
-      "version": "1.3.0",
+      "version": "1.1.0",
       "skills": [
         "./skills/analyze-dump",
         "./skills/debug-remote",
@@ -55,7 +55,7 @@
       "source": "./plugins/mcp-windbg-agents",
       "strict": false,
       "description": "Crash-analyst agent for investigating Windows crash dumps and reporting findings.",
-      "version": "1.3.0",
+      "version": "1.1.0",
       "agents": [
         "./agents/crash-analyst.md"
       ],
