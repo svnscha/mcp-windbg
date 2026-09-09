@@ -2,6 +2,12 @@
 
 Windows crash dump analysis and live WinDbg debugging, inside Claude Code.
 
+> [!NOTE]
+> **Enterprise environments:** managed `allowedMcpServers` settings can cause Claude Code to
+> silently skip this plugin's MCP server ([issue #32882](https://github.com/anthropics/claude-code/issues/32882)).
+> We recommend [manual server installation and registration](#not-using-uv) plus the
+> [skills-only plugin](#skills-for-an-existing-server), subject to your organization's MCP policy.
+
 ```
 /plugin marketplace add svnscha/mcp-windbg
 /plugin install mcp-windbg-uvx@mcp-windbg

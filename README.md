@@ -61,8 +61,12 @@ Parameters, timeouts, and the built-in triage prompts are in the [tools referenc
 
 ## Quick start
 
-> [!TIP]
-> In enterprise environments, MCP server usage might be restricted by organizational policies. Check with your IT team about AI tool usage and ensure you have the necessary permissions before proceeding.
+> [!NOTE]
+> **Claude Code in enterprise environments:** when managed settings define `allowedMcpServers`,
+> plugin-bundled MCP servers may be silently skipped ([Claude Code issue #32882](https://github.com/anthropics/claude-code/issues/32882)).
+> We recommend [installing and registering the server manually](#registering-the-server-yourself),
+> then adding the [skills-only plugin](#skills-for-an-existing-server).
+> The server must still be permitted by your organization's MCP policy.
 
 **Prerequisites**
 
