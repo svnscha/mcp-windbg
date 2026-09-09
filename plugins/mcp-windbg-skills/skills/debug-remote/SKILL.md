@@ -5,8 +5,18 @@ description: Attach to a running Windows process through a WinDbg debug server a
 
 # Debug a live user-mode process
 
+## MCP connection
+
+Use the existing mcp-windbg MCP connection, whether it is launched by a plugin,
+a native executable, Python, or an HTTP service. Tool names below are base
+names; resolve them against the tools exposed by that connection rather than
+assuming a plugin-specific prefix. Keep each session on the server that opened
+it. If multiple servers match, use the user's selected server or ask which one.
+If the required tools are unavailable, report the missing connection or tool
+and help check its configuration; do not register a second server.
+
 Attach to an existing WinDbg/CDB **debug server** with the `mcp-windbg` tools.
-This is user-mode only - for a kernel target use `/mcp-windbg:kernel-debug`.
+This is user-mode only - for a kernel target use the available `kernel-debug` skill.
 
 ## The other end
 

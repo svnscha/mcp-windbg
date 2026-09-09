@@ -5,6 +5,16 @@ description: Triage a Windows crash dump - identify the exception, the faulting 
 
 # Analyze a Windows crash dump
 
+## MCP connection
+
+Use the existing mcp-windbg MCP connection, whether it is launched by a plugin,
+a native executable, Python, or an HTTP service. Tool names below are base
+names; resolve them against the tools exposed by that connection rather than
+assuming a plugin-specific prefix. Keep each session on the server that opened
+it. If multiple servers match, use the user's selected server or ask which one.
+If the required tools are unavailable, report the missing connection or tool
+and help check its configuration; do not register a second server.
+
 Work through a `.dmp` file with the `mcp-windbg` tools and report what actually
 crashed, not just what the debugger printed.
 

@@ -5,6 +5,10 @@ instructions your client can insert into the conversation; most clients surface 
 slash command or a prompt picker. Selecting one is optional, the [tools](tools.md) work
 without it.
 
+These prompts ship with the MCP server and require no Claude Code plugin. The
+[plugin skills](plugin.md#skills) are separate workflows installed in Claude Code;
+the skills-only plugin adds them to an existing server connection.
+
 In VS Code a prompt appears as a slash command (for example `/mcp.mcp-windbg.dump-triage`);
 other clients list them in a prompt menu. Each takes one optional argument: pass it and the
 model starts on that target, omit it and the model asks.

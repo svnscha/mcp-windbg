@@ -5,17 +5,25 @@ GitHub Copilot. Other clients work the same way once the server is configured, s
 [Client configuration](reference/clients.md).
 
 !!! tip "Using Claude Code?"
-    Skip the VS Code steps and install the [plugin](reference/plugin.md) instead. There is no
+    Skip the VS Code steps and install the [uvx plugin](reference/plugin.md#server-with-uvx). There is no
     `pip install` and nothing to configure - symbols included:
 
-    ```
+    ```text
     /plugin marketplace add svnscha/mcp-windbg
     /plugin install mcp-windbg-uvx@mcp-windbg
     ```
 
-    Then jump to [Analyze your first dump](#4-analyze-your-first-dump), or just run
-    `/mcp-windbg:analyze-dump`. You still need the prerequisites in step 1, plus
-    [uv](https://docs.astral.sh/uv/).
+    Then jump to [Analyze your first dump](#4-analyze-your-first-dump). This route needs Windows debugging tools and
+    [uv](https://docs.astral.sh/uv/); a separate Python installation is not required.
+
+    For guided workflows, optionally add the
+    [skills-only plugin](reference/plugin.md#skills-for-an-existing-server) and use
+    `/mcp-windbg-skills:analyze-dump`. It works with the uvx plugin or a server you
+    registered yourself.
+
+    For a delegated investigation, install the optional
+    [agents plugin](reference/plugin.md#agents-for-an-existing-server) and ask for
+    `mcp-windbg-agents:crash-analyst`. Skills are not required.
 
 ## 1. Check the prerequisites
 

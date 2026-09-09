@@ -13,20 +13,19 @@ server. Adjust the path or add more locations as needed. For running from a chec
 
 ## Claude Code
 
-### The plugin (recommended)
+### Server with uvx
 
-The [plugin](https://github.com/svnscha/mcp-windbg/tree/main/plugins/mcp-windbg) is the shortest
+The [uvx plugin](plugin.md#server-with-uvx) is the shortest
 path. It needs no `pip install` and no MCP configuration:
 
-```
+```text
 /plugin marketplace add svnscha/mcp-windbg
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
-Alongside the ten tools you get four skills - `/mcp-windbg:analyze-dump`,
-`/mcp-windbg:debug-remote`, `/mcp-windbg:kernel-debug`, and `/mcp-windbg:windbg-doctor` for
-diagnosing a setup that will not work - plus a `crash-analyst` agent that investigates a dump on
-its own and reports a verdict with its evidence. The plugin runs the server with `uvx`, so it needs
+This plugin provides the ten tools. [Skills](#skills-for-an-existing-server) and
+[agents](#agents-for-an-existing-server) are optional separate installs.
+The plugin runs the server with `uvx`, so it needs
 [uv](https://docs.astral.sh/uv/) on `PATH`; it pins the server version so the plugin and the
 server it drives stay in step.
 
@@ -64,6 +63,31 @@ Claude Code records the server in `.claude.json`:
 Add server options such as a [filter script](../scenarios/redaction.md) after the command,
 for example `-- python -m mcp_windbg --filter-script C:\filters\pii_redaction.py`. Run
 `claude mcp list` to confirm it connected.
+
+### Skills for an existing server
+
+After installing the uvx plugin or registering your server, optionally add the four workflows with the
+[skills-only plugin](plugin.md#skills-for-an-existing-server):
+
+```text
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg-skills@mcp-windbg
+```
+
+Use `/mcp-windbg-skills:analyze-dump` to start. The plugin uses your existing
+connection, including an HTTP service, and does not require uv or change the
+server's launch command, symbol settings, or version.
+
+### Agents for an existing server
+
+```text
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg-agents@mcp-windbg
+```
+
+Ask for `mcp-windbg-agents:crash-analyst` to investigate a dump through your
+existing connection. This [agents plugin](plugin.md#agents-for-an-existing-server)
+works independently of the skills plugin and does not install a server.
 
 ## Claude Desktop
 

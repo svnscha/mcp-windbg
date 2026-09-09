@@ -5,6 +5,27 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A `mcp-windbg-skills` Claude Code plugin with four optional debugging skills
+  for the uvx plugin or independently configured MCP servers, without a bundled server or agent.
+- A `mcp-windbg-agents` Claude Code plugin with the optional `crash-analyst`
+  agent, using an existing MCP connection without a bundled server or skills.
+
+### Changed
+
+- The uvx plugin now ships only the MCP server configuration. Install
+  `mcp-windbg-skills@mcp-windbg` and/or `mcp-windbg-agents@mcp-windbg` separately
+  to keep those workflows. Skills use `/mcp-windbg-skills:` instead of
+  `/mcp-windbg:`, and the agent is now `mcp-windbg-agents:crash-analyst`.
+- Skills resolve tools from the configured server; setup diagnosis checks its
+  actual launcher and host instead of requiring uv for every installation.
+- Release validation checks the version of every marketplace entry.
+- README and setup documentation explain both plugin choices, their skill names,
+  switching and updating, and the separate built-in MCP prompts.
+
 ## [1.2.2] - 2026-09-05
 
 ### Fixed

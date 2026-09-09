@@ -10,7 +10,7 @@
       "name": "mcp-windbg-uvx",
       "displayName": "MCP for WinDbg (uvx version)",
       "source": "./plugins/mcp-windbg",
-      "description": "Analyze Windows crash dumps and drive live user-mode or kernel debugging through WinDbg/CDB. Windows only; needs CDB and uv.",
+      "description": "WinDbg/CDB MCP server for Windows crash dump analysis and live debugging, launched with uvx.",
       "version": "1.2.2",
       "author": {
         "name": "Sven Scharmentke",
@@ -28,6 +28,32 @@
         "kernel",
         "windows"
       ],
+      "category": "development"
+    },
+    {
+      "name": "mcp-windbg-skills",
+      "source": "./plugins/mcp-windbg-skills",
+      "strict": false,
+      "description": "WinDbg skills for crash dump analysis, remote debugging, kernel debugging, and setup diagnostics.",
+      "version": "1.2.2",
+      "skills": ["./skills/analyze-dump", "./skills/debug-remote", "./skills/kernel-debug", "./skills/windbg-doctor"],
+      "author": { "name": "Sven Scharmentke" },
+      "homepage": "https://svnscha.github.io/mcp-windbg/reference/plugin/",
+      "repository": "https://github.com/svnscha/mcp-windbg",
+      "license": "MIT",
+      "category": "development"
+    },
+    {
+      "name": "mcp-windbg-agents",
+      "source": "./plugins/mcp-windbg-agents",
+      "strict": false,
+      "description": "Crash-analyst agent for investigating Windows crash dumps and reporting findings.",
+      "version": "1.2.2",
+      "agents": ["./agents/crash-analyst.md"],
+      "author": { "name": "Sven Scharmentke" },
+      "homepage": "https://svnscha.github.io/mcp-windbg/reference/plugin/",
+      "repository": "https://github.com/svnscha/mcp-windbg",
+      "license": "MIT",
       "category": "development"
     }
   ]
