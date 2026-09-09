@@ -77,17 +77,17 @@ Python is not a prerequisite in itself. Each route below states what it needs.
 
 ## Install in Claude Code
 
-Choose the plugin that matches your setup:
+Install the server plugin if needed, then optionally add the skills:
 
 | Plugin | Server | Included workflows |
 | --- | --- | --- |
-| `mcp-windbg-uvx` | Launched by the plugin with uvx | Four skills and the `crash-analyst` agent |
-| `mcp-windbg-skills` | Your existing MCP connection | The same four skills |
+| `mcp-windbg-uvx` | Launched by the plugin with uvx | `crash-analyst` agent; no skills |
+| `mcp-windbg-skills` | Uses the uvx plugin or your own MCP connection | Four optional skills |
 
-### Server and skills with uvx
+### Server with uvx
 
-The shortest path: two lines, no `pip install`, no MCP configuration to edit. Adds four
-skills and a `crash-analyst` agent on top of the ten tools, with symbols preconfigured.
+The shortest path: two lines, no `pip install`, no MCP configuration to edit. Adds the
+ten tools and a `crash-analyst` agent, with symbols preconfigured. Skills are installed separately.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
@@ -111,7 +111,7 @@ Needs Python 3.10 or higher. Add the optional skills plugin below for the guided
 
 ### Skills for an existing server
 
-After installing and registering mcp-windbg yourself, add just the four skills:
+After installing the uvx plugin or registering mcp-windbg yourself, optionally add the four skills:
 
 ```text
 /plugin marketplace add svnscha/mcp-windbg
@@ -123,7 +123,9 @@ Invoke `/mcp-windbg-skills:analyze-dump`, `/mcp-windbg-skills:debug-remote`,
 This plugin uses your configured MCP connection and adds no server, runtime,
 symbol settings, or `crash-analyst` agent. It works with a native executable,
 Python installation, or HTTP service exposing the mcp-windbg tools.
-Choose this plugin or the uvx bundle; installing both duplicates the skills.
+Install both plugins for the uvx server and skills together, or omit this plugin to use just the tools and agent.
+When upgrading from a version that bundled skills, install this plugin to keep the workflows;
+their invocation prefix changes from `/mcp-windbg:` to `/mcp-windbg-skills:`.
 The server's [built-in MCP prompts](https://svnscha.github.io/mcp-windbg/reference/prompts/)
 remain available independently of either plugin. See the
 [plugin guide](https://svnscha.github.io/mcp-windbg/reference/plugin/) for updating or switching plugins.

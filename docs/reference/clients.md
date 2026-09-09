@@ -13,9 +13,9 @@ server. Adjust the path or add more locations as needed. For running from a chec
 
 ## Claude Code
 
-### Server and skills with uvx
+### Server with uvx
 
-The [uvx plugin](plugin.md#server-and-skills-with-uvx) is the shortest
+The [uvx plugin](plugin.md#server-with-uvx) is the shortest
 path. It needs no `pip install` and no MCP configuration:
 
 ```text
@@ -23,10 +23,9 @@ path. It needs no `pip install` and no MCP configuration:
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
-Alongside the ten tools you get four skills - `/mcp-windbg:analyze-dump`,
-`/mcp-windbg:debug-remote`, `/mcp-windbg:kernel-debug`, and `/mcp-windbg:windbg-doctor` for
-diagnosing a setup that will not work - plus a `crash-analyst` agent that investigates a dump on
-its own and reports a verdict with its evidence. The plugin runs the server with `uvx`, so it needs
+Alongside the ten tools you get a `crash-analyst` agent that investigates a dump and
+reports a verdict with its evidence. Skills are an [optional separate install](#skills-for-an-existing-server).
+The plugin runs the server with `uvx`, so it needs
 [uv](https://docs.astral.sh/uv/) on `PATH`; it pins the server version so the plugin and the
 server it drives stay in step.
 
@@ -67,7 +66,7 @@ for example `-- python -m mcp_windbg --filter-script C:\filters\pii_redaction.py
 
 ### Skills for an existing server
 
-After registering your server, add the four workflows with the
+After installing the uvx plugin or registering your server, optionally add the four workflows with the
 [skills-only plugin](plugin.md#skills-for-an-existing-server):
 
 ```text

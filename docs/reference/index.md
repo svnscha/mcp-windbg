@@ -7,8 +7,8 @@ The precise, lookup-style reference for `mcp-windbg`.
 - **[Tools](tools.md)** - the MCP tools the server exposes, their parameters, and the
   WinDbg commands that come up most often.
 - **[Prompts](prompts.md)** - the built-in `dump-triage`, `remote-triage`, and `kernel-triage` prompts.
-- **[Claude Code plugins](plugin.md)** - the uvx bundle with skills and an agent, or
-  just the skills for an existing MCP server.
+- **[Claude Code plugins](plugin.md)** - the uvx server with an agent, plus an
+  optional skills plugin for either uvx or an independently registered server.
 - **[Client configuration](clients.md)** - configuration snippets for VS Code, Claude
   Desktop, and GitHub Copilot CLI, plus pip and from-source installs.
 

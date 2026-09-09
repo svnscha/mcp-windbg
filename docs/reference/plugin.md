@@ -1,11 +1,11 @@
 # Claude Code plugins
 
-Choose a plugin based on how you run the server:
+Install the server plugin if needed, then add the skills only if you want them:
 
 | Plugin | Server | Included workflows |
 | --- | --- | --- |
-| `mcp-windbg-uvx` | Launches the pinned server with uvx | Four skills and the `crash-analyst` agent |
-| `mcp-windbg-skills` | Uses your existing MCP connection | The same four skills |
+| `mcp-windbg-uvx` | Launches the pinned server with uvx | `crash-analyst` agent; no skills |
+| `mcp-windbg-skills` | Uses the uvx plugin or your own MCP connection | Four optional skills |
 
 !!! note "Enterprise environments"
     Managed `allowedMcpServers` settings can cause Claude Code to silently skip
@@ -16,17 +16,18 @@ Choose a plugin based on how you run the server:
 
 ## Install
 
-### Server and skills with uvx
+### Server with uvx
 
 ```text
 /plugin marketplace add svnscha/mcp-windbg
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
-This bundle supplies the ten [tools](tools.md), skills, an agent, and default symbol
+This plugin supplies the ten [tools](tools.md), an agent, and default symbol
 settings. It needs Windows with [Debugging Tools for Windows](https://aka.ms/windbg)
 and [uv](https://docs.astral.sh/uv/) on `PATH` (`winget install astral-sh.uv`).
-No separate Python or package installation is required.
+No separate Python or package installation is required. Skills are not included;
+install the skills plugin below if you want them.
 
 ### Skills for an existing server
 
@@ -35,7 +36,7 @@ No separate Python or package installation is required.
 /plugin install mcp-windbg-skills@mcp-windbg
 ```
 
-First [register mcp-windbg directly](clients.md#registering-the-server-directly),
+First install the uvx plugin above, [register mcp-windbg directly](clients.md#registering-the-server-directly),
 or use a connection you already configured. The skills work with a native executable,
 Python installation, or [HTTP service](../scenarios/http-service.md) exposing the
 mcp-windbg tools. Windows and CDB/KD are required on the server host; an HTTP client
@@ -45,19 +46,21 @@ The skills-only plugin adds no server, runtime, agent, or symbol settings. It re
 its tool calls through your existing MCP connection. If tools are missing, run
 `/mcp-windbg-skills:windbg-doctor` to check that connection and its actual launcher.
 
-Both plugins come from the same marketplace. Choose one to avoid duplicate skills.
+Both plugins come from the same marketplace and can be installed together.
+The uvx plugin works on its own; adding or removing skills does not affect its server.
 Restart Claude Code if newly installed skills or tools do not appear.
 
 ## Skills
 
-Both plugins use the same four skill files. Their invocation prefixes differ:
+Only `mcp-windbg-skills` provides these workflows, with the same invocation names
+regardless of how the server is installed:
 
-| Workflow | uvx bundle | Skills-only plugin |
-| --- | --- | --- |
-| Triage a crash dump | `/mcp-windbg:analyze-dump` | `/mcp-windbg-skills:analyze-dump` |
-| Debug a live user-mode process | `/mcp-windbg:debug-remote` | `/mcp-windbg-skills:debug-remote` |
-| Drive a live kernel target | `/mcp-windbg:kernel-debug` | `/mcp-windbg-skills:kernel-debug` |
-| Diagnose the debugging setup | `/mcp-windbg:windbg-doctor` | `/mcp-windbg-skills:windbg-doctor` |
+| Workflow | Skill |
+| --- | --- |
+| Triage a crash dump | `/mcp-windbg-skills:analyze-dump` |
+| Debug a live user-mode process | `/mcp-windbg-skills:debug-remote` |
+| Drive a live kernel target | `/mcp-windbg-skills:kernel-debug` |
+| Diagnose the debugging setup | `/mcp-windbg-skills:windbg-doctor` |
 
 For example, with an independently installed server:
 
@@ -88,8 +91,8 @@ setx _NT_SYMBOL_PATH "SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols
 
 Restart the terminal and Claude Code so new processes inherit the value.
 
-With the skills-only plugin, configure symbols and [command-line options](cli.md)
-in your own server registration. Updating skills does not update the server or its
+For an independently registered server, configure symbols and [command-line options](cli.md)
+in that registration. Updating skills does not update the server or its
 configuration. Use `--symbols-path` or `_NT_SYMBOL_PATH` on the server host; the
 client shell's value may differ, especially over HTTP.
 
@@ -97,7 +100,15 @@ For custom `--cdb-path`, `--kd-path`, `--filter-script`, or timeout settings,
 [register the server directly](clients.md#registering-the-server-directly) and add
 the skills-only plugin. Edits to the installed uvx bundle are overwritten on update.
 
-## Switch from the uvx bundle
+## Upgrade from bundled skills
+
+Earlier uvx plugin versions included the four skills. After updating the uvx plugin,
+install `mcp-windbg-skills@mcp-windbg` separately if you want to keep them. Change
+skill invocations from `/mcp-windbg:` to `/mcp-windbg-skills:`; for example,
+`/mcp-windbg:analyze-dump` becomes `/mcp-windbg-skills:analyze-dump`.
+Keep the uvx plugin installed to continue using its server and agent.
+
+## Switch to a manually registered server
 
 Finish open debugging sessions, then uninstall the bundle:
 
@@ -107,8 +118,8 @@ Finish open debugging sessions, then uninstall the bundle:
 
 [Register your server](clients.md#registering-the-server-directly), install
 `mcp-windbg-skills@mcp-windbg` as above, and restart Claude Code. Confirm the server
-connection with `/mcp`, then run `/mcp-windbg-skills:windbg-doctor`. Your skill
-invocations now use the `mcp-windbg-skills` prefix.
+connection with `/mcp`, then run `/mcp-windbg-skills:windbg-doctor` if you installed
+the skills plugin. An existing skills installation can stay in place.
 
 ## Updating and removing
 
@@ -127,7 +138,8 @@ To remove the skills-only plugin:
 /plugin uninstall mcp-windbg-skills@mcp-windbg
 ```
 
-Your independently registered MCP server remains configured. For the bundle,
+Your MCP server, whether supplied by the uvx plugin or registered independently,
+remains configured. For the uvx plugin,
 uninstall `mcp-windbg-uvx@mcp-windbg` instead; that also removes its server registration.
 Remove the marketplace with `/plugin marketplace remove mcp-windbg` when neither
 plugin is needed.

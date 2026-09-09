@@ -17,8 +17,8 @@ That is the whole installation. There is no `pip install` step and no MCP config
 to edit - the plugin launches the server with `uvx`, which fetches the pinned
 version from PyPI on first use.
 
-Already have an MCP server configured? Install the
-[skills-only plugin](#skills-for-an-existing-server) to use the same workflows with it.
+Skills are an [optional separate install](#skills-for-an-existing-server), for this
+plugin's server or an MCP connection you configured yourself.
 
 ## What you get
 
@@ -33,17 +33,6 @@ Ten tools for driving `cdb.exe` and `kd.exe`:
 | `run_cdb_command` / `run_kd_command` | run any debugger command |
 | `send_ctrl_break` / `wait_for_break` | halt a running target, or wait for it to stop |
 | `close_cdb_session` / `close_kd_session` | release the target |
-
-Four skills:
-
-- **`/mcp-windbg:analyze-dump`** - triage a crash dump: exception, faulting frame,
-  and what the evidence does and does not support.
-- **`/mcp-windbg:debug-remote`** - attach to a running process through a WinDbg
-  debug server and work out a hang or a live fault.
-- **`/mcp-windbg:kernel-debug`** - drive a live kernel target, including resuming
-  the machine and waiting for a bugcheck or breakpoint.
-- **`/mcp-windbg:windbg-doctor`** - check the MCP connection, server launcher,
-  debugger, and symbols. Start here when something fails.
 
 And an agent:
 
@@ -95,9 +84,9 @@ pip install mcp-windbg
 claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
 ```
 
-### Skills for an existing server
+## Skills for an existing server
 
-After installing and registering mcp-windbg yourself, add just the four skills:
+After installing this uvx plugin or registering mcp-windbg yourself, optionally add the four skills:
 
 ```text
 /plugin marketplace add svnscha/mcp-windbg
@@ -109,7 +98,10 @@ Invoke `/mcp-windbg-skills:analyze-dump`, `/mcp-windbg-skills:debug-remote`,
 This plugin uses your configured MCP connection and adds no server, runtime,
 symbol settings, or `crash-analyst` agent. It works with a native executable,
 Python installation, or HTTP service exposing the mcp-windbg tools.
-Choose this plugin or the uvx bundle; installing both duplicates the skills.
+Install both plugins for the uvx server and skills together. The uvx plugin works
+without skills, and uninstalling the skills plugin leaves its server and agent in place.
+When upgrading from bundled skills, install this plugin to keep the workflows;
+their invocation prefix changes from `/mcp-windbg:` to `/mcp-windbg-skills:`.
 The server's built-in MCP prompts remain available independently of either plugin.
 Updating this plugin updates only the skills; update your server separately.
 See the [plugin guide](https://svnscha.github.io/mcp-windbg/reference/plugin/)
