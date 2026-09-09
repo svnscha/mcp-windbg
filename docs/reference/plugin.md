@@ -10,7 +10,7 @@ Choose a plugin based on how you run the server:
 !!! note "Enterprise environments"
     Managed `allowedMcpServers` settings can cause Claude Code to silently skip
     plugin-bundled MCP servers ([issue #32882](https://github.com/anthropics/claude-code/issues/32882)).
-    We recommend [manual server installation and registration](clients.md#registering-the-server-directly)
+    I recommend [manual server installation and registration](clients.md#registering-the-server-directly)
     plus the [skills-only plugin](#skills-for-an-existing-server).
     The server must still be permitted by your organization's MCP policy.
 

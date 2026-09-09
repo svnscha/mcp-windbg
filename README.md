@@ -64,7 +64,7 @@ Parameters, timeouts, and the built-in triage prompts are in the [tools referenc
 > [!NOTE]
 > **Claude Code in enterprise environments:** when managed settings define `allowedMcpServers`,
 > plugin-bundled MCP servers may be silently skipped ([Claude Code issue #32882](https://github.com/anthropics/claude-code/issues/32882)).
-> We recommend [installing and registering the server manually](#registering-the-server-yourself),
+> I recommend [installing and registering the server manually](#registering-the-server-yourself),
 > then adding the [skills-only plugin](#skills-for-an-existing-server).
 > The server must still be permitted by your organization's MCP policy.
 
