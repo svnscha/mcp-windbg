@@ -6,7 +6,7 @@ Windows crash dump analysis and live WinDbg debugging, inside Claude Code.
 > **Enterprise environments:** managed `allowedMcpServers` settings can cause Claude Code to
 > silently skip this plugin's MCP server ([issue #32882](https://github.com/anthropics/claude-code/issues/32882)).
 > I recommend [manual server installation and registration](#not-using-uv) plus the
-> [skills-only plugin](#skills-for-an-existing-server), subject to your organization's MCP policy.
+> optional [skills](#skills-for-an-existing-server) or [agents](#agents-for-an-existing-server) plugin, subject to your organization's MCP policy.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
@@ -17,8 +17,8 @@ That is the whole installation. There is no `pip install` step and no MCP config
 to edit - the plugin launches the server with `uvx`, which fetches the pinned
 version from PyPI on first use.
 
-Skills are an [optional separate install](#skills-for-an-existing-server), for this
-plugin's server or an MCP connection you configured yourself.
+[Skills](#skills-for-an-existing-server) and [agents](#agents-for-an-existing-server)
+are optional separate installs, for this plugin's server or a connection you configured yourself.
 
 ## What you get
 
@@ -33,13 +33,6 @@ Ten tools for driving `cdb.exe` and `kd.exe`:
 | `run_cdb_command` / `run_kd_command` | run any debugger command |
 | `send_ctrl_break` / `wait_for_break` | halt a running target, or wait for it to stop |
 | `close_cdb_session` / `close_kd_session` | release the target |
-
-And an agent:
-
-- **`crash-analyst`** - hand it a dump and a question and it investigates on its
-  own, then reports a verdict with the evidence behind it, what it ruled out, and
-  what to do next. Worth using when a dump needs more than a first look, or when
-  you want the analysis kept out of your main conversation.
 
 ## Requirements
 
@@ -99,13 +92,25 @@ This plugin uses your configured MCP connection and adds no server, runtime,
 symbol settings, or `crash-analyst` agent. It works with a native executable,
 Python installation, or HTTP service exposing the mcp-windbg tools.
 Install both plugins for the uvx server and skills together. The uvx plugin works
-without skills, and uninstalling the skills plugin leaves its server and agent in place.
+without skills, and uninstalling the skills plugin leaves its server in place.
 When upgrading from bundled skills, install this plugin to keep the workflows;
 their invocation prefix changes from `/mcp-windbg:` to `/mcp-windbg-skills:`.
-The server's built-in MCP prompts remain available independently of either plugin.
+The server's built-in MCP prompts remain available independently of the optional plugins.
 Updating this plugin updates only the skills; update your server separately.
 See the [plugin guide](https://svnscha.github.io/mcp-windbg/reference/plugin/)
-for switching from the uvx bundle, updating, and removing either plugin.
+for switching from the uvx bundle, updating, and removing plugins.
+
+## Agents for an existing server
+
+```text
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg-agents@mcp-windbg
+```
+
+Ask: *"Use the mcp-windbg-agents:crash-analyst agent on C:\dumps\app.dmp"*.
+It investigates the dump through your existing MCP connection and reports its
+verdict, evidence, and next steps. The skills plugin is not required. Install
+this plugin separately when upgrading from a version that bundled the agent.
 
 ## Links
 

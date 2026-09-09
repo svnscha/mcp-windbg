@@ -103,21 +103,24 @@ Tool and CLI facts come from `src/mcp_windbg/server.py` (tool schemas) and
 `.claude-plugin/marketplace.json` is named `mcp-windbg-uvx` - that is the install identity, so
 the command is `/plugin install mcp-windbg-uvx@mcp-windbg`, and it is what the plugin cache
 directory is named after. The `name` in `plugins/mcp-windbg/.claude-plugin/plugin.json` stays
-`mcp-windbg`, and that is what its agent and MCP tools are scoped by:
+`mcp-windbg`, and that is what its MCP tools are scoped by:
 `mcp__plugin_mcp-windbg_mcp-windbg__<tool>`, whatever the entry is called.
 
 That split is deliberate. It lets a second entry ship the same plugin a different way -
 `mcp-windbg-native` for a bundled binary, `mcp-windbg-pipx` for `pipx run` - while every variant
 keeps identical tool names and one set of documentation. Change `plugin.json`'s name
-and you rename its agent and tools with it.
+and you rename its tools with it.
 
 The skills-only entry `mcp-windbg-skills` is different: its source is
 `plugins/mcp-windbg-skills`, and `strict: false` makes the marketplace entry its
 manifest. Its four skill directories live under that source's `skills/`, outside
-the uvx plugin's package. The uvx plugin contains no skills; users may install it
-alone or add the skills plugin. The skill namespace is `/mcp-windbg-skills:...`.
-Keep skills independent of launcher and tool namespace. The existing
-marketplace version wildcard updates both entries; the release check must check both.
+the uvx plugin's package. The skill namespace is `/mcp-windbg-skills:...`.
+The `mcp-windbg-agents` entry follows the same pattern at `plugins/mcp-windbg-agents`,
+declaring `agents/crash-analyst.md` with the name `mcp-windbg-agents:crash-analyst`.
+The uvx plugin contains only the MCP server configuration; users may add either
+optional plugin, both, or neither. Keep skills and agents independent of launcher
+and tool namespace. The existing marketplace version wildcard updates all entries;
+the release check must check every entry.
 
 ## Versioning and release
 

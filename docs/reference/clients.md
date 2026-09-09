@@ -23,8 +23,8 @@ path. It needs no `pip install` and no MCP configuration:
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
-Alongside the ten tools you get a `crash-analyst` agent that investigates a dump and
-reports a verdict with its evidence. Skills are an [optional separate install](#skills-for-an-existing-server).
+This plugin provides the ten tools. [Skills](#skills-for-an-existing-server) and
+[agents](#agents-for-an-existing-server) are optional separate installs.
 The plugin runs the server with `uvx`, so it needs
 [uv](https://docs.astral.sh/uv/) on `PATH`; it pins the server version so the plugin and the
 server it drives stay in step.
@@ -77,6 +77,17 @@ After installing the uvx plugin or registering your server, optionally add the f
 Use `/mcp-windbg-skills:analyze-dump` to start. The plugin uses your existing
 connection, including an HTTP service, and does not require uv or change the
 server's launch command, symbol settings, or version.
+
+### Agents for an existing server
+
+```text
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg-agents@mcp-windbg
+```
+
+Ask for `mcp-windbg-agents:crash-analyst` to investigate a dump through your
+existing connection. This [agents plugin](plugin.md#agents-for-an-existing-server)
+works independently of the skills plugin and does not install a server.
 
 ## Claude Desktop
 

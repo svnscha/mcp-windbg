@@ -10,7 +10,7 @@
       "name": "mcp-windbg-uvx",
       "displayName": "MCP for WinDbg (uvx version)",
       "source": "./plugins/mcp-windbg",
-      "description": "WinDbg/CDB MCP server and crash-analyst agent, launched with uvx. Install mcp-windbg-skills separately for guided workflows. Windows only; needs CDB and uv.",
+      "description": "WinDbg/CDB MCP server launched with uvx. Skills and agents are optional separate plugins. Windows only; needs CDB and uv.",
       "version": "1.2.2",
       "author": {
         "name": "Sven Scharmentke",
@@ -37,6 +37,19 @@
       "description": "Four optional WinDbg debugging skills for the uvx plugin or an independently configured mcp-windbg server. No bundled server, launcher, or agent.",
       "version": "1.2.2",
       "skills": ["./skills/analyze-dump", "./skills/debug-remote", "./skills/kernel-debug", "./skills/windbg-doctor"],
+      "author": { "name": "Sven Scharmentke" },
+      "homepage": "https://svnscha.github.io/mcp-windbg/reference/plugin/",
+      "repository": "https://github.com/svnscha/mcp-windbg",
+      "license": "MIT",
+      "category": "development"
+    },
+    {
+      "name": "mcp-windbg-agents",
+      "source": "./plugins/mcp-windbg-agents",
+      "strict": false,
+      "description": "Optional crash-analyst agent for the uvx plugin or an independently configured mcp-windbg server. No bundled server, launcher, or skills.",
+      "version": "1.2.2",
+      "agents": ["./agents/crash-analyst.md"],
       "author": { "name": "Sven Scharmentke" },
       "homepage": "https://svnscha.github.io/mcp-windbg/reference/plugin/",
       "repository": "https://github.com/svnscha/mcp-windbg",

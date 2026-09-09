@@ -65,7 +65,7 @@ Parameters, timeouts, and the built-in triage prompts are in the [tools referenc
 > **Claude Code in enterprise environments:** when managed settings define `allowedMcpServers`,
 > plugin-bundled MCP servers may be silently skipped ([Claude Code issue #32882](https://github.com/anthropics/claude-code/issues/32882)).
 > I recommend [installing and registering the server manually](#registering-the-server-yourself),
-> then adding the [skills-only plugin](#skills-for-an-existing-server).
+> then optionally adding the [skills](#skills-for-an-existing-server) or [agents](#agents-for-an-existing-server) plugin.
 > The server must still be permitted by your organization's MCP policy.
 
 **Prerequisites**
@@ -77,17 +77,18 @@ Python is not a prerequisite in itself. Each route below states what it needs.
 
 ## Install in Claude Code
 
-Install the server plugin if needed, then optionally add the skills:
+Install the server plugin if needed, then optionally add skills, agents, or both:
 
 | Plugin | Server | Included workflows |
 | --- | --- | --- |
-| `mcp-windbg-uvx` | Launched by the plugin with uvx | `crash-analyst` agent; no skills |
+| `mcp-windbg-uvx` | Launched by the plugin with uvx | MCP tools only |
 | `mcp-windbg-skills` | Uses the uvx plugin or your own MCP connection | Four optional skills |
+| `mcp-windbg-agents` | Uses the uvx plugin or your own MCP connection | Optional `crash-analyst` agent |
 
 ### Server with uvx
 
 The shortest path: two lines, no `pip install`, no MCP configuration to edit. Adds the
-ten tools and a `crash-analyst` agent, with symbols preconfigured. Skills are installed separately.
+ten tools, with symbols preconfigured. Skills and agents are installed separately.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg
@@ -107,7 +108,7 @@ pip install mcp-windbg
 claude mcp add mcp-windbg -s user -e _NT_SYMBOL_PATH="SRV*C:\Symbols*https://msdl.microsoft.com/download/symbols" -- python -m mcp_windbg
 ```
 
-Needs Python 3.10 or higher. Add the optional skills plugin below for the guided workflows.
+Needs Python 3.10 or higher. Add either optional plugin below for guided workflows or an agent.
 
 ### Skills for an existing server
 
@@ -123,12 +124,24 @@ Invoke `/mcp-windbg-skills:analyze-dump`, `/mcp-windbg-skills:debug-remote`,
 This plugin uses your configured MCP connection and adds no server, runtime,
 symbol settings, or `crash-analyst` agent. It works with a native executable,
 Python installation, or HTTP service exposing the mcp-windbg tools.
-Install both plugins for the uvx server and skills together, or omit this plugin to use just the tools and agent.
+Install this plugin alongside uvx for the server and skills together, or omit it to use just the tools.
 When upgrading from a version that bundled skills, install this plugin to keep the workflows;
 their invocation prefix changes from `/mcp-windbg:` to `/mcp-windbg-skills:`.
 The server's [built-in MCP prompts](https://svnscha.github.io/mcp-windbg/reference/prompts/)
-remain available independently of either plugin. See the
+remain available independently of these plugins. See the
 [plugin guide](https://svnscha.github.io/mcp-windbg/reference/plugin/) for updating or switching plugins.
+
+### Agents for an existing server
+
+```text
+/plugin marketplace add svnscha/mcp-windbg
+/plugin install mcp-windbg-agents@mcp-windbg
+```
+
+Ask: *"Use the mcp-windbg-agents:crash-analyst agent on C:\dumps\app.dmp"*.
+It investigates the dump and returns a verdict, evidence, and next steps through
+your existing MCP connection. It requires neither uvx nor the skills plugin.
+When upgrading from a version that bundled the agent, install this plugin to keep it.
 
 ## Install in another client
 

@@ -11,11 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A `mcp-windbg-skills` Claude Code plugin with four optional debugging skills
   for the uvx plugin or independently configured MCP servers, without a bundled server or agent.
+- A `mcp-windbg-agents` Claude Code plugin with the optional `crash-analyst`
+  agent, using an existing MCP connection without a bundled server or skills.
 
 ### Changed
 
-- The uvx plugin no longer ships skills. Install `mcp-windbg-skills@mcp-windbg`
-  separately to keep the workflows, using `/mcp-windbg-skills:` instead of `/mcp-windbg:`.
+- The uvx plugin now ships only the MCP server configuration. Install
+  `mcp-windbg-skills@mcp-windbg` and/or `mcp-windbg-agents@mcp-windbg` separately
+  to keep those workflows. Skills use `/mcp-windbg-skills:` instead of
+  `/mcp-windbg:`, and the agent is now `mcp-windbg-agents:crash-analyst`.
 - Skills resolve tools from the configured server; setup diagnosis checks its
   actual launcher and host instead of requiring uv for every installation.
 - Release validation checks the version of every marketplace entry.

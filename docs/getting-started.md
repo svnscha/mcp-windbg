@@ -21,6 +21,10 @@ GitHub Copilot. Other clients work the same way once the server is configured, s
     `/mcp-windbg-skills:analyze-dump`. It works with the uvx plugin or a server you
     registered yourself.
 
+    For a delegated investigation, install the optional
+    [agents plugin](reference/plugin.md#agents-for-an-existing-server) and ask for
+    `mcp-windbg-agents:crash-analyst`. Skills are not required.
+
 ## 1. Check the prerequisites
 
 You need a 64-bit Windows machine with:
