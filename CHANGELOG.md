@@ -5,6 +5,15 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Debugger startup, commands, and shutdown run on worker threads so slow I/O
+  does not block other MCP calls. Break-in remains available even when the
+  debugger worker pool is full. Concurrent close calls claim a session once
+  and preserve the closing caller's kernel resume policy.
+
 ## [1.3.0] - 2026-09-10
 
 ### Added

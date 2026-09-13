@@ -116,17 +116,22 @@ def _require_live_session(session_id: str, what: str):
     return session
 
 
-def _close_session(session_id: str, kind: str) -> bool:
+def _close_session(session_id: str, kind: str, resume: Optional[bool] = None) -> bool:
     """Shut down and forget a session; returns False if id/kind did not match."""
     record = _sessions.get(session_id)
     if record is None or record["kind"] != kind:
         return False
+    # Claim the session before blocking in shutdown. Concurrent close calls must
+    # not shut down the same debugger twice or overwrite its resume policy.
+    record = _sessions.pop(session_id, None)
+    if record is None:
+        return False
+    if resume is not None:
+        record["session"].resume_on_close = resume
     try:
         record["session"].shutdown()
     except Exception:
         pass
-    finally:
-        _sessions.pop(session_id, None)
     return True
 
 
@@ -452,6 +457,11 @@ def _create_server(
         content = await _dispatch_tool(params.name, params.arguments or {})
         return CallToolResult(content=content)
 
+    async def _run_debugger_handler(handler, *args):
+        # Debugger startup, commands, and shutdown can wait for seconds or minutes.
+        # Keep the event loop available for other tools, especially break-in.
+        return await anyio.to_thread.run_sync(functools.partial(handler, *args))
+
     async def _dispatch_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
             call_id = uuid.uuid4().hex
@@ -461,41 +471,43 @@ def _create_server(
                 return filter_tool_content(name, _handle_list_dumps(arguments), call_id)
 
             if name == "open_cdb_dump":
-                return filter_tool_content(name, _handle_open_cdb_dump(
+                return filter_tool_content(name, await _run_debugger_handler(_handle_open_cdb_dump,
                     arguments, cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols
                 ), call_id)
 
             if name == "open_cdb_remote":
-                return filter_tool_content(name, _handle_open_cdb_remote(
+                return filter_tool_content(name, await _run_debugger_handler(_handle_open_cdb_remote,
                     arguments, cdb_path, symbols_path, timeout, verbose
                 ), call_id)
 
             if name == "open_kd_session":
-                return filter_tool_content(name, _handle_open_kd_session(
+                return filter_tool_content(name, await _run_debugger_handler(_handle_open_kd_session,
                     arguments, kd_path, symbols_path, timeout, verbose
                 ), call_id)
 
             if name == "run_cdb_command":
-                return filter_tool_content(name, _handle_run_command(
+                return filter_tool_content(name, await _run_debugger_handler(_handle_run_command,
                     RunCdbCommand(**arguments), "cdb", CDB_COMMAND_TIMEOUT, timeout
                 ), call_id)
 
             if name == "run_kd_command":
-                return filter_tool_content(name, _handle_run_command(
+                return filter_tool_content(name, await _run_debugger_handler(_handle_run_command,
                     RunKdCommand(**arguments), "kd", KD_COMMAND_TIMEOUT, timeout
                 ), call_id)
 
             if name == "close_cdb_session":
-                return filter_tool_content(name, _handle_close(CloseCdbSession(**arguments).session_id, "cdb"), call_id)
+                return filter_tool_content(name, await _run_debugger_handler(
+                    _handle_close, CloseCdbSession(**arguments).session_id, "cdb"
+                ), call_id)
 
             if name == "close_kd_session":
                 close_args = CloseKdSession(**arguments)
-                record = _sessions.get(close_args.session_id)
-                if record and record["kind"] == "kd":
-                    record["session"].resume_on_close = close_args.resume
-                return filter_tool_content(name, _handle_close(close_args.session_id, "kd"), call_id)
+                return filter_tool_content(name, await _run_debugger_handler(
+                    _handle_close, close_args.session_id, "kd", close_args.resume
+                ), call_id)
 
             if name == "send_ctrl_break":
+                # This escape hatch must not queue behind blocked debugger workers.
                 return filter_tool_content(name, _handle_send_ctrl_break(SendCtrlBreak(**arguments).session_id), call_id)
 
             if name == "wait_for_break":
@@ -611,8 +623,8 @@ def _create_server(
         text = f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
         return [TextContent(type="text", text=text)]
 
-    def _handle_close(session_id, kind) -> list[TextContent]:
-        if _close_session(session_id, kind):
+    def _handle_close(session_id, kind, resume=None) -> list[TextContent]:
+        if _close_session(session_id, kind, resume):
             return [TextContent(type="text", text=f"Successfully closed {kind} session {session_id}")]
         return [TextContent(type="text", text=f"No active {kind} session found for session_id {session_id}")]
 
