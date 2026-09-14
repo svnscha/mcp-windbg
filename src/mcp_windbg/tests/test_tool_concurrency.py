@@ -243,3 +243,38 @@ async def test_concurrent_close_claims_session_once(tool_handler, kind):
     assert calls[0][1] != threading.get_ident()
     assert "Successfully closed" in results[0].content[0].text
     assert not server_module._sessions
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("kind", ["cdb", "kd"])
+async def test_break_in_racing_with_close_reports_debugger_error(tool_handler, kind):
+    class ClosingSession:
+        @property
+        def is_live_session(self):
+            # Force shutdown between validating the session and signalling it.
+            closer = threading.Thread(
+                target=server_module._close_session, args=("test-session", kind)
+            )
+            closer.start()
+            closer.join(2)
+            assert not closer.is_alive()
+            return True
+
+        def shutdown(self):
+            pass
+
+        def send_ctrl_break(self):
+            raise RuntimeError("Debugger process is not running")
+
+    server_module._sessions["test-session"] = {
+        "session": ClosingSession(),
+        "kind": kind,
+        "label": "test target",
+    }
+    with pytest.raises(server_module.MCPError, match="Debugger process is not running"):
+        await tool_handler(
+            None,
+            CallToolRequestParams(
+                name="send_ctrl_break", arguments={"session_id": "test-session"}
+            ),
+        )

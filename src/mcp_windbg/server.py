@@ -98,7 +98,7 @@ def _require_session(session_id: str, kind: str):
 
 
 def _require_live_session(session_id: str, what: str):
-    """Return the session for ``session_id``, requiring a live (non-dump) target.
+    """Return the record for ``session_id``, requiring a live (non-dump) target.
 
     Shared by the tools that only make sense against something that runs -
     ``send_ctrl_break`` and ``wait_for_break`` - and accepts either kind, since a
@@ -113,7 +113,7 @@ def _require_live_session(session_id: str, what: str):
                 f"session_id {session_id!r} is a dump session; there is no "
                 f"running target to {what}."
             ))
-    return session
+    return record
 
 
 def _close_session(session_id: str, kind: str, resume: Optional[bool] = None) -> bool:
@@ -629,13 +629,13 @@ def _create_server(
         return [TextContent(type="text", text=f"No active {kind} session found for session_id {session_id}")]
 
     def _handle_send_ctrl_break(session_id) -> list[TextContent]:
-        session = _require_live_session(session_id, "break into")
-        label = _sessions[session_id]["label"]
-        session.send_ctrl_break()
+        record = _require_live_session(session_id, "break into")
+        label = record["label"]
+        record["session"].send_ctrl_break()
         return [TextContent(type="text", text=f"Sent CTRL+BREAK to session {session_id} ({label}).")]
 
     async def _handle_wait_for_break(args: WaitForBreak) -> list[TextContent]:
-        session = _require_live_session(args.session_id, "wait on")
+        session = _require_live_session(args.session_id, "wait on")["session"]
         # Deliberately not _effective_timeout: the --timeout floor is about how
         # long a *command* may take, and has nothing to say about how long you
         # are willing to sit on a target waiting for it to bugcheck.

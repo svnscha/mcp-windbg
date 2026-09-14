@@ -366,9 +366,9 @@ class DebuggerSession:
     def _exclusive(self):
         """Acquire the session's I/O lock, or explain why the session is busy.
 
-        Never waits. The server calls most tools straight from its event loop,
-        so blocking here would stall every other session too - and would stall
-        the very ``send_ctrl_break`` the failure message points at.
+        Never waits: queued operations on a busy session would occupy debugger
+        workers needed by other sessions. ``send_ctrl_break`` remains available
+        without acquiring this lock.
         """
         if not self._io_lock.acquire(blocking=False):
             raise DebuggerError(
