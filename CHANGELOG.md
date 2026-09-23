@@ -5,6 +5,12 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Partial output on command timeout** ([#112](https://github.com/svnscha/mcp-windbg/issues/112)) - retain the output already read when a CDB command does not reach its completion marker, so timeout errors still include useful diagnostics from commands such as SOS `!clrstack`.
+
 ## [1.3.0] - 2026-09-10
 
 ### Added

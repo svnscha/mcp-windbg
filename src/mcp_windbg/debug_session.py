@@ -45,6 +45,12 @@ PROMPT_REGEX = re.compile(r"^\d+:.*>\s*$")
 # appended so each command waits for its own, distinct marker.
 MARKER_BASE = "COMMAND_COMPLETED_MARKER"
 
+# A runaway debugger command can produce output indefinitely. Keep timeout
+# diagnostics useful without turning the error itself into another unbounded
+# response.
+MAX_PARTIAL_OUTPUT_LINES = 2000
+MAX_PARTIAL_OUTPUT_CHARS = 64 * 1024
+
 # How long ``wait_for_break`` blocks by default. Waiting on a resumed target is
 # open-ended by nature - you are waiting for a bugcheck or a breakpoint - so this
 # is deliberately unrelated to the per-command timeout.
@@ -68,6 +74,10 @@ RESUME_CONFIRM_TIMEOUT = 0.5
 
 class DebuggerError(Exception):
     """Raised for any debugger session failure (launch, timeout, I/O)."""
+
+    def __init__(self, message: str, *, partial_output: Optional[List[str]] = None):
+        super().__init__(message)
+        self.partial_output = list(partial_output or [])
 
 
 class _ReleaseOnExit:
@@ -230,6 +240,10 @@ class DebuggerSession:
         self.verbose = verbose
 
         self.output_lines: List[str] = []
+        #: The reader's current command buffer. It is published under the same
+        #: lock as marker state so a timeout can retain output before the marker
+        #: arrives, even though the reader owns the list itself.
+        self._reader_buffer: Optional[List[str]] = None
         self.lock = threading.Lock()
         #: Serializes whole operations on the debugger's stdin. ``self.lock``
         #: only guards individual field writes; it cannot make "install a
@@ -302,6 +316,8 @@ class DebuggerSession:
             return
 
         buffer: List[str] = []
+        with self.lock:
+            self._reader_buffer = buffer
         try:
             for line in self.process.stdout:
                 line = line.rstrip()
@@ -318,6 +334,7 @@ class DebuggerSession:
                         if self._expected_marker and self._expected_marker in line:
                             self.output_lines = buffer
                             buffer = []
+                            self._reader_buffer = buffer
                             self._expected_marker = None
                             self.ready_event.set()
                         continue
@@ -339,6 +356,35 @@ class DebuggerSession:
             result = self.output_lines.copy()
             self.output_lines = []
         return result
+
+    def _snapshot_partial_output(self) -> List[str]:
+        """Return bounded output read before the current marker arrived."""
+        with self.lock:
+            lines = list(self._reader_buffer or [])
+
+        bounded: List[str] = []
+        char_count = 0
+        truncated = False
+        for line in lines:
+            if len(bounded) >= MAX_PARTIAL_OUTPUT_LINES:
+                truncated = True
+                break
+            remaining = MAX_PARTIAL_OUTPUT_CHARS - char_count
+            if remaining <= 0:
+                truncated = True
+                break
+            if len(line) + 1 > remaining:
+                bounded.append(line[: max(0, remaining - 1)])
+                truncated = True
+                break
+            bounded.append(line)
+            char_count += len(line) + 1
+
+        if truncated:
+            bounded.append(
+                "[partial output truncated; increase the command timeout or inspect the target directly]"
+            )
+        return bounded
 
     def _abandon_marker(self) -> bool:
         """Give up on the marker currently being waited for.
@@ -510,6 +556,7 @@ class DebuggerSession:
         if self._closing:
             raise DebuggerError("Session was closed while the command was running")
         if not landed and not self._marker_landed():
+            partial_output = self._snapshot_partial_output()
             resynced = self._abort_running_command()
             detail = "" if resynced else " (session may need a manual break-in)"
             # The break-in output is the only record of why the target stopped
@@ -519,8 +566,14 @@ class DebuggerSession:
                 if preamble
                 else ""
             )
+            partial = (
+                "\nPartial output before timeout:\n" + "\n".join(partial_output)
+                if partial_output
+                else ""
+            )
             raise DebuggerError(
-                f"Command timed out after {cmd_timeout} seconds: {command}{detail}{lost}"
+                f"Command timed out after {cmd_timeout} seconds: {command}{detail}{lost}{partial}",
+                partial_output=partial_output,
             )
 
         pipe_output = self._take_output()
