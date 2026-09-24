@@ -25,6 +25,7 @@ from typing import Optional
 
 from .debug_session import (
     DebuggerError,
+    DebuggerExitedError,
     DebuggerSession,
     build_debugger_args,
     find_executable,
@@ -122,6 +123,9 @@ class KDSession(DebuggerSession):
         if any(banner in line for banner in KERNEL_CONNECTED_BANNERS):
             self._connected_event.set()
 
+    def _on_debugger_exit(self) -> None:
+        self._connected_event.set()
+
     def _startup(self) -> None:
         """Wait for the target to connect, break in, then reach the prompt."""
         if not self._connected_event.wait(self.timeout):
@@ -131,6 +135,12 @@ class KDSession(DebuggerSession):
                 "Is the target booted with debugging enabled and transmitting "
                 "on this transport? (kd reports 'no_debuggee' until it is.)"
             )
+        if self._debugger_exited:
+            message = self._exited_message(
+                "before the kernel target connected", self._take_output()
+            )
+            self.shutdown()
+            raise DebuggerExitedError(message)
         # Target is connected but running; break in to reach a prompt.
         try:
             self.process.send_signal(signal.CTRL_BREAK_EVENT)
@@ -139,6 +149,9 @@ class KDSession(DebuggerSession):
             raise KDError(f"Failed to break into the kernel target: {e}")
         try:
             self._wait_for_prompt(self.timeout)
+        except DebuggerExitedError:
+            self.shutdown()
+            raise
         except DebuggerError:
             self.shutdown()
             raise KDError("Kernel debugger did not reach a prompt after break-in")

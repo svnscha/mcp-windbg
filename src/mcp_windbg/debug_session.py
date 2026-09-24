@@ -24,6 +24,10 @@ Two robustness properties this base guarantees:
   cannot answer, so the command would "time out" and the resulting CTRL+BREAK
   would halt the target we just released. They are written bare instead, and
   ``wait_for_break`` picks up whatever the target prints when it does stop.
+- **Exit is noticed, not timed out.** When the debugger process exits (``q``, a
+  failed ``-remote``/``-k`` connect, cdb itself crashing), the reader sees EOF
+  and wakes whoever is waiting, who reports the exit status and the debugger's
+  last output instead of sitting out the timeout and blaming the command.
 """
 
 from __future__ import annotations
@@ -65,9 +69,16 @@ BREAK_IN_PROBE_TIMEOUT = 2
 # headroom for a loaded link.
 RESUME_CONFIRM_TIMEOUT = 0.5
 
+# How many of the debugger's final output lines an exit error carries.
+_EXIT_TAIL_LINES = 20
+
 
 class DebuggerError(Exception):
     """Raised for any debugger session failure (launch, timeout, I/O)."""
+
+
+class DebuggerExitedError(DebuggerError):
+    """The debugger process exited; the session cannot be used again."""
 
 
 class _ReleaseOnExit:
@@ -246,6 +257,8 @@ class DebuggerSession:
         self._target_running = False
         #: Set by shutdown so a parked wait stops rather than outliving the session.
         self._closing = False
+        #: Set by the reader at EOF: the debugger is gone and no marker can land.
+        self._debugger_exited = False
 
         try:
             creationflags = 0
@@ -287,6 +300,9 @@ class DebuggerSession:
         """Reach the first usable prompt. Overridden by kernel sessions."""
         try:
             self._wait_for_prompt(self.timeout)
+        except DebuggerExitedError:
+            self.shutdown()
+            raise
         except DebuggerError:
             self.shutdown()
             raise DebuggerError("Debugger initialization timed out")
@@ -294,6 +310,10 @@ class DebuggerSession:
     def _on_output_line(self, line: str) -> None:
         """Called (under ``self.lock``) for every output line. Kernel uses it
         to notice the ``Connected to target`` banner."""
+
+    def _on_debugger_exit(self) -> None:
+        """Called by the reader once the debugger's output ends. Kernel uses it
+        to stop waiting for a connect banner that can no longer come."""
 
     # -- Reader thread ----------------------------------------------------
 
@@ -326,6 +346,55 @@ class DebuggerSession:
         except (IOError, ValueError, AttributeError) as e:
             if self.verbose:
                 print(f"Debugger output reader error: {e}")
+        finally:
+            # Publish what the debugger printed last - often the only record of
+            # why it exited - and wake any waiter rather than let it time out.
+            with self.lock:
+                self._debugger_exited = True
+                self.output_lines = buffer
+            self._on_debugger_exit()
+            self.ready_event.set()
+
+    def _exited_message(self, doing: str, tail: List[str]) -> str:
+        process = self.process
+        code = None
+        if process is not None:
+            try:
+                code = process.wait(timeout=2)
+            except Exception:
+                code = process.poll()
+        if code is None:
+            status = ""
+        elif code == 0:
+            status = " (exit code 0)"
+        else:
+            # Windows exit codes are often NTSTATUS values, e.g. 0xC0000005.
+            status = f" (exit code 0x{code & 0xFFFFFFFF:08X})"
+        message = f"Debugger process exited{status} {doing}."
+        if tail:
+            message += "\nLast debugger output:\n" + "\n".join(tail[-_EXIT_TAIL_LINES:])
+        return message
+
+    def _raise_if_exited(self, doing: str) -> None:
+        """Raise DebuggerExitedError if the debugger exited with the current
+        marker still pending - i.e. it can never land."""
+        with self.lock:
+            if not self._debugger_exited or self._expected_marker is None:
+                return
+            self._expected_marker = None
+            tail, self.output_lines = self.output_lines, []
+        raise DebuggerExitedError(self._exited_message(doing, tail))
+
+    def _write_input(self, text: str, doing: str, failure: str) -> None:
+        """Write to the debugger's stdin, reporting an exit rather than a bare
+        I/O error when the write failed because the process is gone."""
+        try:
+            self.process.stdin.write(text)
+            self.process.stdin.flush()
+        except (IOError, ValueError, AttributeError) as e:
+            self.reader_thread.join(timeout=1)  # let the reader observe EOF
+            self._raise_if_exited(doing)
+            raise DebuggerError(f"{failure}: {e}")
 
     # -- Command protocol -------------------------------------------------
 
@@ -384,13 +453,13 @@ class DebuggerSession:
         self.ready_event.clear()
         with self.lock:
             self._expected_marker = marker
-        try:
-            self.process.stdin.write(f".echo {marker}\n")
-            self.process.stdin.flush()
-        except (IOError, ValueError, AttributeError) as e:
-            raise DebuggerError(f"Failed to communicate with debugger: {e}")
+        doing = "before reaching a prompt"
+        self._raise_if_exited(doing)
+        self._write_input(f".echo {marker}\n", doing, "Failed to communicate with debugger")
 
-        if not self.ready_event.wait(timeout or self.timeout):
+        landed = self.ready_event.wait(timeout or self.timeout)
+        self._raise_if_exited(doing)
+        if not landed:
             raise DebuggerError("Timed out waiting for debugger prompt")
 
     #: Commands that hand the target back its CPU and do not return to a prompt
@@ -475,6 +544,11 @@ class DebuggerSession:
         """
         if not self.process:
             raise DebuggerError("Debugger process is not running")
+        if self._debugger_exited:
+            raise DebuggerExitedError(
+                "Debugger process has exited; this session can no longer be used. "
+                "Close it and open a new one."
+            )
 
         cmd_timeout = timeout or self.timeout
 
@@ -499,16 +573,14 @@ class DebuggerSession:
         with self.lock:
             self.output_lines = []
             self._expected_marker = marker
-
-        try:
-            self.process.stdin.write(f"{command}\n.echo {marker}\n")
-            self.process.stdin.flush()
-        except (IOError, ValueError, AttributeError) as e:
-            raise DebuggerError(f"Failed to send command: {e}")
+        doing = f"while running '{command}'"
+        self._raise_if_exited(doing)
+        self._write_input(f"{command}\n.echo {marker}\n", doing, "Failed to send command")
 
         landed = self.ready_event.wait(cmd_timeout)
         if self._closing:
             raise DebuggerError("Session was closed while the command was running")
+        self._raise_if_exited(doing)
         if not landed and not self._marker_landed():
             resynced = self._abort_running_command()
             detail = "" if resynced else " (session may need a manual break-in)"
@@ -711,6 +783,8 @@ class DebuggerSession:
         """
         try:
             self._wait_for_prompt(RESUME_CONFIRM_TIMEOUT)
+        except DebuggerExitedError:
+            raise
         except DebuggerError:
             return not self._abandon_marker()
         return False
@@ -739,6 +813,8 @@ class DebuggerSession:
             raise DebuggerError(f"Failed to break into the running target: {e}")
         try:
             self._wait_for_prompt(min(10, max(3, self.timeout)))
+        except DebuggerExitedError:
+            raise
         except DebuggerError:
             if not self._abandon_marker():
                 raise DebuggerError(
@@ -759,6 +835,8 @@ class DebuggerSession:
         """
         try:
             self._wait_for_prompt(BREAK_IN_PROBE_TIMEOUT)
+        except DebuggerExitedError:
+            raise
         except DebuggerError:
             return not self._abandon_marker()
         return False
@@ -798,17 +876,15 @@ class DebuggerSession:
         with self.lock:
             self.output_lines = []
             self._expected_marker = marker
-
-        try:
-            self.process.stdin.write(f".echo {marker}\n")
-            self.process.stdin.flush()
-        except (IOError, ValueError, AttributeError) as e:
-            raise DebuggerError(f"Failed to communicate with debugger: {e}")
+        doing = "while waiting for the target to stop"
+        self._raise_if_exited(doing)
+        self._write_input(f".echo {marker}\n", doing, "Failed to communicate with debugger")
 
         wait = timeout or DEFAULT_WAIT_FOR_BREAK_TIMEOUT
         landed = self.ready_event.wait(wait)
         if self._closing:
             raise DebuggerError("Session was closed while waiting for the target to stop")
+        self._raise_if_exited(doing)
         if not landed and not self._abandon_marker():
             raise DebuggerError(
                 f"Target did not stop within {wait} seconds and is still running. "
