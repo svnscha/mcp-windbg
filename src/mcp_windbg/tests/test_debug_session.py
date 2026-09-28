@@ -19,7 +19,7 @@ import time
 import pytest
 
 from mcp_windbg import debug_session
-from mcp_windbg.debug_session import DebuggerError, DebuggerSession
+from mcp_windbg.debug_session import DebuggerError, DebuggerExitedError, DebuggerSession
 
 _STOP = object()
 
@@ -82,6 +82,7 @@ class _FakeProc:
         self.stdout = _FakeStdout(self)
         self._alive = True
         self.pid = 4321
+        self.returncode = 0
         self.signals: list = []
         self.running = False
         self._queued: list = []
@@ -149,8 +150,17 @@ class _FakeProc:
         for line in queued:
             self._handle(line)
 
+    def exit_with(self, *lines: str, code: int = 0):
+        """The debugger prints *lines* and exits on its own - a failed -remote
+        connect, a bad -k string, or cdb itself crashing."""
+        for line in lines:
+            self._out.put(line)
+        self.returncode = code
+        self._alive = False
+        self._out.put(_STOP)
+
     def poll(self):
-        return None if self._alive else 0
+        return None if self._alive else self.returncode
 
     def send_signal(self, sig):
         self.signals.append(sig)
@@ -162,7 +172,7 @@ class _FakeProc:
         self._out.put(_STOP)
 
     def wait(self, timeout=None):
-        return 0
+        return self.returncode
 
 
 class _Session(DebuggerSession):
@@ -256,6 +266,77 @@ def test_partial_timeout_output_has_line_and_size_limits(make_session):
         session._reader_buffer = ["x" * debug_session.MAX_PARTIAL_OUTPUT_CHARS]
     lines = session._snapshot_partial_output()
     assert lines[-1].startswith("[partial output truncated;")
+
+
+# -- debugger process exit ------------------------------------------------
+#
+# Once cdb/kd exits, no marker can ever arrive. Every waiter used to sit out its
+# full timeout and then blame the command ("timed out"), hiding the real cause.
+
+
+def test_a_command_that_ends_the_debugger_fails_fast_not_on_timeout(make_session):
+    session, _ = make_session(timeout=30)
+    began = time.monotonic()
+    with pytest.raises(DebuggerExitedError) as exc:
+        session.send_command("q")
+    assert time.monotonic() - began < 5
+    assert "exited" in str(exc.value)
+    assert "timed out" not in str(exc.value).lower()
+
+    with pytest.raises(DebuggerExitedError, match="open a new one"):
+        session.send_command("k")
+
+
+def test_a_debugger_crash_mid_command_reports_the_exit_status(make_session):
+    session, proc = make_session(timeout=30)
+    proc._swallow = True  # the command never completes on its own
+    timer = threading.Timer(
+        0.1, lambda: proc.exit_with("[ComMethodFrame: 000000c0]", code=0xC0000005)
+    )
+    timer.start()
+    began = time.monotonic()
+    try:
+        with pytest.raises(DebuggerExitedError) as exc:
+            session.send_command("!clrstack")
+    finally:
+        timer.cancel()
+    assert time.monotonic() - began < 5
+    assert "0xC0000005" in str(exc.value)
+    # What it printed last is often the only clue to why it died.
+    assert "[ComMethodFrame: 000000c0]" in str(exc.value)
+
+
+def test_a_debugger_that_exits_during_startup_reports_its_last_words(monkeypatch):
+    """A mistyped -remote string makes cdb print why and exit at once; the
+    caller should see that, not 'initialization timed out' a minute later."""
+    proc = _FakeProc()
+    proc.exit_with(
+        "Unable to connect to server 'tcp:Port=5005,Server=nohost'",
+        "Win32 error 0n10061",
+        code=1,
+    )
+    monkeypatch.setattr(debug_session.subprocess, "Popen", lambda *a, **k: proc)
+    began = time.monotonic()
+    with pytest.raises(DebuggerExitedError) as exc:
+        _LiveSession(debugger_path="fake", launch_args=["fake"], timeout=30, verbose=False)
+    assert time.monotonic() - began < 5
+    assert "Unable to connect to server" in str(exc.value)
+    assert "initialization timed out" not in str(exc.value)
+
+
+def test_wait_for_break_ends_when_the_debugger_exits(make_session):
+    session, proc = make_session(live=True)
+    session.send_command("g")
+    timer = threading.Timer(0.1, lambda: proc.exit_with("Server went away", code=1))
+    timer.start()
+    began = time.monotonic()
+    try:
+        with pytest.raises(DebuggerExitedError) as exc:
+            session.wait_for_break(timeout=30)
+    finally:
+        timer.cancel()
+    assert time.monotonic() - began < 5
+    assert "Server went away" in str(exc.value)
 
 
 # -- go-class commands ----------------------------------------------------

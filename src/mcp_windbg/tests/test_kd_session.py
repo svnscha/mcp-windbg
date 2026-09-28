@@ -16,10 +16,12 @@ from __future__ import annotations
 import os
 import queue
 import signal
+import time
 
 import pytest
 
 from mcp_windbg import debug_session, kd_session
+from mcp_windbg.debug_session import DebuggerExitedError
 from mcp_windbg.kd_session import KDError, KDSession
 
 _STOP = object()
@@ -67,9 +69,10 @@ class _FakeKd:
     Args:
         connect: emit the ``Connected to target`` banner (as a live target does).
         answer_markers: echo ``.echo <marker>`` back, i.e. reach a prompt.
+        exit_lines: print these and exit at once, as kd does on a bad ``-k``.
     """
 
-    def __init__(self, *, connect: bool = True, answer_markers: bool = True):
+    def __init__(self, *, connect: bool = True, answer_markers: bool = True, exit_lines=None):
         self._out: "queue.Queue" = queue.Queue()
         self._answer_markers = answer_markers
         self.stdin = _FakeStdin(self)
@@ -81,6 +84,10 @@ class _FakeKd:
             self._out.put(
                 "Connected to target 172.16.2.189 on port 50005 on local IP 172.16.2.183."
             )
+        if exit_lines:
+            for line in exit_lines:
+                self._out.put(line)
+            self.terminate()
 
     def _feed(self, text: str):
         for line in text.splitlines():
@@ -113,8 +120,8 @@ def launch(monkeypatch):
     procs: list[_FakeKd] = []
     launched: list[list[str]] = []
 
-    def _factory(*, connect=True, answer_markers=True, **kwargs):
-        proc = _FakeKd(connect=connect, answer_markers=answer_markers)
+    def _factory(*, connect=True, answer_markers=True, exit_lines=None, **kwargs):
+        proc = _FakeKd(connect=connect, answer_markers=answer_markers, exit_lines=exit_lines)
         procs.append(proc)
 
         def _popen(args, **_):
@@ -174,6 +181,22 @@ def test_startup_raises_when_prompt_never_arrives_after_break_in(launch):
     with pytest.raises(KDError) as exc:
         factory(answer_markers=False, timeout=1)
     assert "did not reach a prompt" in str(exc.value).lower()
+
+
+def test_startup_fails_fast_when_kd_exits_before_connecting(launch):
+    """A bad -k string or a busy KDNET port makes kd print why and exit. That
+    must surface at once, not as a connect timeout that hides kd's message."""
+    factory, _, _ = launch
+    began = time.monotonic()
+    with pytest.raises(DebuggerExitedError) as exc:
+        factory(
+            connect=False,
+            exit_lines=["KDNET: failed to bind to port 50005 - address already in use"],
+            timeout=30,
+        )
+    assert time.monotonic() - began < 5
+    assert "before the kernel target connected" in str(exc.value)
+    assert "failed to bind to port 50005" in str(exc.value)
 
 
 def test_init_without_connection_string_raises():

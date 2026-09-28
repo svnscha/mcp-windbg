@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   output already read, so the timeout error still shows useful diagnostics from
   runaway commands such as SOS `!clrstack`. The retained output is capped at
   2,000 lines and 64 KiB (#112, #114). Thanks to @Oscar-Williams for the fix.
+- A debugger process that exits (`q`, a failed `-remote` or `-k` connect, or
+  cdb/kd crashing) is now reported at once with its exit code and last output,
+  instead of every pending command, `wait_for_break`, or session open sitting out
+  its full timeout and then misreporting a timeout (#115). Thanks to
+  @RamanaIntel for the fix.
 
 ## [1.3.0] - 2026-09-10
 
