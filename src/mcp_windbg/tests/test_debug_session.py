@@ -241,6 +241,33 @@ def test_timeout_raises_when_marker_never_arrives(make_session):
     assert "timed out" in str(exc.value).lower()
 
 
+def test_timeout_error_preserves_output_seen_before_marker(make_session):
+    """A command that never reaches its marker must retain useful output."""
+    session, proc = make_session(timeout=1)
+    proc._swallow = True
+    with pytest.raises(DebuggerError) as exc:
+        session.send_command("!clrstack", timeout=1)
+
+    message = str(exc.value)
+    assert "timed out" in message.lower()
+    assert "OUT:!clrstack" in message
+    assert exc.value.partial_output == ["OUT:!clrstack"]
+
+
+def test_partial_timeout_output_has_line_and_size_limits(make_session):
+    session, _ = make_session(timeout=1)
+    with session.lock:
+        session._reader_buffer = ["frame"] * (debug_session.MAX_PARTIAL_OUTPUT_LINES + 1)
+    lines = session._snapshot_partial_output()
+    assert len(lines) == debug_session.MAX_PARTIAL_OUTPUT_LINES + 1
+    assert lines[-1].startswith("[partial output truncated;")
+
+    with session.lock:
+        session._reader_buffer = ["x" * debug_session.MAX_PARTIAL_OUTPUT_CHARS]
+    lines = session._snapshot_partial_output()
+    assert lines[-1].startswith("[partial output truncated;")
+
+
 # -- debugger process exit ------------------------------------------------
 #
 # Once cdb/kd exits, no marker can ever arrive. Every waiter used to sit out its

@@ -50,6 +50,9 @@ A command that exceeds the per-command limit reports a timeout.
 
 - Raise it with [`--timeout`](reference/cli.md#general), for example `--timeout 120`.
 - On large dumps, prefer targeted commands over broad analysis.
+- The timeout error includes the output read before CDB stopped responding. If the command
+  produces more than the diagnostic limit, the response ends with a truncation note; increase
+  the timeout or inspect the target directly for the complete output.
 
 ## Module not found (pip installs)
 
