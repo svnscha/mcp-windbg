@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not block other MCP calls. Break-in remains available even when the
   debugger worker pool is full. Concurrent close calls claim a session once
   and preserve the closing caller's kernel resume policy. Break-in keeps the
-  validated session record so a concurrent close cannot cause a registry error.
+  validated session record so a concurrent close cannot cause a registry error
+  (#109, #110). Thanks to @adity982 for the fix.
 
 ## [1.3.0] - 2026-09-10
 
