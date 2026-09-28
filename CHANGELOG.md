@@ -9,7 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Partial output on command timeout** ([#112](https://github.com/svnscha/mcp-windbg/issues/112)) - retain the output already read when a CDB command does not reach its completion marker, so timeout errors still include useful diagnostics from commands such as SOS `!clrstack`.
+- Debugger startup, commands, and shutdown run on worker threads so slow I/O
+  does not block other MCP calls. Break-in remains available even when the
+  debugger worker pool is full. Concurrent close calls claim a session once
+  and preserve the closing caller's kernel resume policy. Break-in keeps the
+  validated session record so a concurrent close cannot cause a registry error
+  (#109, #110). Thanks to @adity982 for the fix.
+- A command that times out before reaching its completion marker keeps the
+  output already read, so the timeout error still shows useful diagnostics from
+  runaway commands such as SOS `!clrstack`. The retained output is capped at
+  2,000 lines and 64 KiB (#112, #114). Thanks to @Oscar-Williams for the fix.
 
 ## [1.3.0] - 2026-09-10
 
