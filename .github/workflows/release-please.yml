@@ -12,7 +12,7 @@ name: Release Please
 # 2. Merging that PR pushes to develop, which runs this workflow again. This
 #    time release-please sees a merged release PR and creates the tag and the
 #    GitHub release. The jobs below then fast-forward main onto that commit,
-#    ship to PyPI, and publish the docs.
+#    ship to PyPI, list the release in the MCP registry, and publish the docs.
 #
 # Everything downstream lives in this same workflow on purpose. A release - or a
 # push - made with the default GITHUB_TOKEN does not trigger other workflows, so
@@ -188,6 +188,15 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     uses: ./.github/workflows/publish-mcp.yml
     secrets: inherit
+
+  # The MCP registry checks the package on PyPI before it lists a version, so
+  # this waits for publish. Skipped whenever publish is.
+  registry:
+    needs: publish
+    permissions:
+      contents: read
+      id-token: write   # mcp-publisher logs in with GitHub OIDC
+    uses: ./.github/workflows/publish-mcp-registry.yml
 
   # main is a pointer to the last released commit, moved only from here. This is
   # a plain fast-forward, so it fails loudly rather than rewriting anything if
