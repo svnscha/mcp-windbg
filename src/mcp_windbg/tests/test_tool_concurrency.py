@@ -9,6 +9,7 @@ import pytest
 from mcp.types import CallToolRequestParams
 
 from mcp_windbg import server as server_module
+from mcp_windbg.debug_session import DebuggerError
 
 
 @pytest.fixture
@@ -278,3 +279,38 @@ async def test_break_in_racing_with_close_reports_debugger_error(tool_handler, k
                 name="send_ctrl_break", arguments={"session_id": "test-session"}
             ),
         )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("kind", ["cdb", "kd"])
+async def test_debugger_error_reaches_caller_without_traceback(tool_handler, kind):
+    class TimingOutSession:
+        is_live_session = True
+
+        def send_command(self, command, timeout):
+            raise DebuggerError(
+                "Command timed out after 8 seconds: !process 0 7\n"
+                "Partial output before timeout:\nPROCESS ffffc48d14520040",
+                partial_output=["PROCESS ffffc48d14520040"],
+            )
+
+    server_module._sessions["test-session"] = {
+        "session": TimingOutSession(),
+        "kind": kind,
+        "label": "test target",
+    }
+    with pytest.raises(server_module.MCPError) as exc:
+        await tool_handler(
+            None,
+            CallToolRequestParams(
+                name=f"run_{kind}_command",
+                arguments={"session_id": "test-session", "command": "!process 0 7"},
+            ),
+        )
+
+    # The message is for the model: a stack trace adds nothing, and its last
+    # line would repeat the (possibly 64 KiB of) partial output a second time.
+    message = exc.value.message
+    assert "Command timed out" in message
+    assert "Traceback" not in message
+    assert message.count("PROCESS ffffc48d14520040") == 1

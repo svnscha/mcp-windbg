@@ -9,7 +9,7 @@ from typing import Dict, Optional
 from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession
-from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT
+from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT, DebuggerError
 from .kd_session import KDSession
 from .filter_script import FilterScript, load_filter_script
 from .prompts import load_prompt
@@ -517,6 +517,10 @@ def _create_server(
 
         except MCPError:
             raise
+        except DebuggerError as e:
+            # An expected debugger failure: its message is the whole story, and a
+            # stack trace would repeat it (partial output included) a second time.
+            raise MCPError(INTERNAL_ERROR, f"Error executing tool {name}: {e}")
         except Exception as e:
             traceback_str = traceback.format_exc()
             raise MCPError(INTERNAL_ERROR, f"Error executing tool {name}: {str(e)}\n{traceback_str}")
