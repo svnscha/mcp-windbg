@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of every pending command, `wait_for_break`, or session open sitting out
   its full timeout and then misreporting a timeout (#115). Thanks to
   @RamanaIntel for the fix.
+- Debugger errors (timeouts, a debugger that exited, failed connects) reach the
+  caller as their message alone, without a Python stack trace. The trace
+  repeated the message, so a timeout with partial output returned that output
+  twice.
 
 ## [1.3.0] - 2026-09-10
 
