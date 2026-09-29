@@ -22,7 +22,7 @@ are optional separate installs, for this plugin's server or a connection you con
 
 ## What you get
 
-Ten tools for driving `cdb.exe` and `kd.exe`:
+Eleven tools for driving `cdb.exe` and `kd.exe`:
 
 | | |
 | :-- | :-- |
@@ -30,6 +30,7 @@ Ten tools for driving `cdb.exe` and `kd.exe`:
 | `open_cdb_dump` | open a `.dmp` and triage it |
 | `open_cdb_remote` | attach to a user-mode debug server |
 | `open_kd_session` | attach to a kernel target (KDNET, pipe, serial) |
+| `open_kd_dump` | open a kernel crash dump and triage it |
 | `run_cdb_command` / `run_kd_command` | run any debugger command |
 | `send_ctrl_break` / `wait_for_break` | halt a running target, or wait for it to stop |
 | `close_cdb_session` / `close_kd_session` | release the target |

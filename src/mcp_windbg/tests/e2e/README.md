@@ -75,6 +75,7 @@ transport: stdio                    # optional: stdio (default) or streamable-ht
 
 requires:                           # all optional
   cdb: true                         # skip if no cdb.exe is installed
+  kd: true                          # skip if no kd.exe is installed (no target needed)
   dump: DemoCrash1.exe.7088.dmp     # mandatory LFS dump; missing it hard-fails
   remote: true                      # start a local cdb .server; bind {remote}
   # remote can also be a mapping to pick the debugged target:

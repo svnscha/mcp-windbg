@@ -85,7 +85,8 @@ def scenario_markers(scenario: dict[str, Any]) -> set[str]:
     """Pytest markers implied by a scenario's requirements (for conftest)."""
     requires = _requires(scenario)
     markers: set[str] = set()
-    if requires.get("cdb") or _remote_spec(scenario) is not None or requires.get("kernel"):
+    if (requires.get("cdb") or requires.get("kd") or _remote_spec(scenario) is not None
+            or requires.get("kernel")):
         markers.add("live")
     if _remote_spec(scenario) is not None:
         markers.add("remote")
@@ -106,6 +107,8 @@ def skip_reason(scenario: dict[str, Any]) -> Optional[str]:
     needs_cdb = bool(requires.get("cdb")) or _remote_spec(scenario) is not None
     if needs_cdb and not harness.cdb_available():
         return "cdb.exe not found"
+    if requires.get("kd") and harness.find_kd() is None:
+        return "kd.exe not found"
     if requires.get("kernel"):
         if harness.find_kd() is None:
             return "kd.exe not found"

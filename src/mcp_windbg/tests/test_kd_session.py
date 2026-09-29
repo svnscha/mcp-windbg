@@ -27,6 +27,7 @@ from mcp_windbg.kd_session import KDError, KDSession
 _STOP = object()
 
 _FAKE_KD = r"C:\fake\kd.exe"
+_FAKE_DUMP = r"C:\fake\dumps\MEMORY.DMP"
 
 # _startup breaks in with CTRL_BREAK_EVENT, which only exists on Windows.
 windows_only = pytest.mark.skipif(
@@ -128,8 +129,8 @@ def launch(monkeypatch):
             launched.append(args)
             return proc
 
-        # Pretend the fake kd.exe is on disk so find_executable resolves it.
-        monkeypatch.setattr(debug_session.os.path, "isfile", lambda p: p == _FAKE_KD)
+        # Pretend the fake kd.exe (and dump) are on disk so the lookups resolve.
+        monkeypatch.setattr(debug_session.os.path, "isfile", lambda p: p in (_FAKE_KD, _FAKE_DUMP))
         monkeypatch.setattr(debug_session.subprocess, "Popen", _popen)
         kwargs.setdefault("kernel_connection", "net:port=50005,key=1.2.3.4")
         kwargs.setdefault("kd_path", _FAKE_KD)
@@ -200,8 +201,55 @@ def test_startup_fails_fast_when_kd_exits_before_connecting(launch):
 
 
 def test_init_without_connection_string_raises():
-    with pytest.raises(ValueError, match="kernel_connection must be provided"):
+    with pytest.raises(ValueError, match="Either kernel_connection or dump_path must be provided"):
         KDSession(kernel_connection="")
+
+
+# -- kernel dump (-z) -------------------------------------------------------
+#
+# A kernel crash dump is a static target: no connect banner to wait for, no
+# break-in, and it quits with 'q' rather than resuming a machine with 'g' (#111).
+
+
+def _open_dump(factory):
+    # connect=False: kd prints no "Connected to target" banner for a dump.
+    return factory(kernel_connection=None, dump_path=_FAKE_DUMP, connect=False)
+
+
+def test_dump_launches_kd_with_dash_z_and_dump_dir_symbols(launch):
+    factory, _, launched = launch
+    session = _open_dump(factory)
+    assert launched[0] == [_FAKE_KD, "-z", _FAKE_DUMP, "-y", r"C:\fake\dumps"]
+    session.shutdown()
+
+
+def test_dump_reaches_prompt_without_banner_or_break_in(launch):
+    factory, procs, _ = launch
+    session = _open_dump(factory)
+    assert not session.is_live_session
+    assert not session._connected_event.is_set()
+    assert procs[0].signals == []  # nothing to break into
+    session.shutdown()
+
+
+def test_dump_close_quits_instead_of_resuming(launch):
+    factory, procs, _ = launch
+    session = _open_dump(factory)
+    session.shutdown()
+    writes = procs[0].stdin.writes
+    assert "q\n" in writes
+    assert "g\n" not in writes
+
+
+def test_dump_and_connection_are_mutually_exclusive():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        KDSession(kernel_connection="net:port=50005,key=1.2.3.4", dump_path=_FAKE_DUMP)
+
+
+def test_dump_that_does_not_exist_raises(monkeypatch):
+    monkeypatch.setattr(debug_session.os.path, "isfile", lambda p: False)
+    with pytest.raises(FileNotFoundError, match="Dump file not found"):
+        KDSession(dump_path=r"C:\no\such\MEMORY.DMP")
 
 
 def test_init_raises_when_kd_not_found(monkeypatch):

@@ -5,6 +5,16 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- An `open_kd_dump` tool that opens a kernel crash dump with `kd.exe` (`-z`): a
+  complete or kernel memory dump (`MEMORY.DMP`) or a small memory dump from
+  `C:\Windows\Minidump`. It runs `vertarget` and `!analyze -v` and returns a
+  `kd` session id for `run_kd_command` and `close_kd_session` (#111). Thanks to
+  @robster7674 for the proposal and the analysis behind it.
+
 ## [1.3.1] - 2026-09-29
 
 ### Fixed

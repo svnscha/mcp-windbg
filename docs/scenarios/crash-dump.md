@@ -32,6 +32,21 @@ You do not have to memorize commands, describe what you want and let the model c
 [Tools reference](../reference/tools.md#common-windbg-commands) lists the commands that come
 up most often if you want to be specific.
 
+## Kernel dumps
+
+A blue screen leaves a kernel dump instead: `C:\Windows\MEMORY.DMP`, or a small dump in
+`C:\Windows\Minidump`. Ask the same way:
+
+```text
+Analyze the kernel dump at C:\dumps\MEMORY.DMP and tell me which driver bugchecked
+```
+
+This calls [`open_kd_dump`](../reference/tools.md#open_kd_dump), which opens the dump in
+`kd.exe` and runs `vertarget` and `!analyze -v`. Follow-up questions become
+[`run_kd_command`](../reference/tools.md#run_kd_command) calls, for example `!process 0 0` or
+`!thread`. A small memory dump only holds the registers and stack of the crash; a
+`MEMORY.DMP` has the kernel memory for the rest.
+
 ## Symbols make or break this
 
 Readable stack traces need symbols. The Microsoft symbol server is configured through

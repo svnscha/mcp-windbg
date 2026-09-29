@@ -64,7 +64,8 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
 
 - **`--cdb-path`** - the server auto-detects `cdb.exe` in the common Windows Kits and
   Microsoft Store locations. Set this when yours is installed elsewhere.
-- **`--kd-path`** - the same, for the `kd.exe` used by [`open_kd_session`](tools.md#open_kd_session).
+- **`--kd-path`** - the same, for the `kd.exe` used by [`open_kd_session`](tools.md#open_kd_session)
+  and [`open_kd_dump`](tools.md#open_kd_dump).
   Kernel debugging needs `kd.exe`; `cdb.exe` cannot drive a kernel connection, so this is a
   separate option from `--cdb-path`.
 - **`--symbols-path`** - sets the symbol search path for new sessions. If omitted, the
@@ -75,7 +76,8 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
   with **`--no-dump-dir-symbols`**.
 
 Per-call symbol paths are also available on the `open_*` tools, see
-[`open_cdb_dump`](tools.md#open_cdb_dump) and [`open_cdb_remote`](tools.md#open_cdb_remote).
+[`open_cdb_dump`](tools.md#open_cdb_dump), [`open_cdb_remote`](tools.md#open_cdb_remote), and
+[`open_kd_dump`](tools.md#open_kd_dump).
 
 ## Filter script hooks
 

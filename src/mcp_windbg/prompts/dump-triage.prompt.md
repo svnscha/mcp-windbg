@@ -19,6 +19,10 @@ Perform comprehensive analysis of a single Windows crash dump with detailed meta
 The `open_cdb_dump` tool automatically runs `!analyze -v` and provides initial analysis output. It returns a
 `session_id` (like `cdb-1a2b3c4d`) on its first line - keep it; every follow-up command needs it.
 
+**Kernel dump?** A blue-screen dump (`MEMORY.DMP`, or a file under `C:\Windows\Minidump`) opens with
+`open_kd_dump` instead, with the same parameters. Use `run_kd_command` for the commands below, skip
+`!peb` (a kernel dump has no single process), and report the bugcheck code in place of the exception.
+
 If the dump is very large (>5GB) or analysis takes too long we eventually timeout. In that case, inform the user about the timeout
 and tell him to wait since the analysis keeps running in the background and will complete. The most obvious reason is downloading symbols for running into a timeout here.
 

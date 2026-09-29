@@ -42,7 +42,7 @@ It is not a magical auto-fix. It is a Python wrapper around `cdb.exe` / `kd.exe`
 
 ## Tools
 
-Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pass it to the matching `run_*`, `close_*`, `send_ctrl_break`, and `wait_for_break` calls. User-mode targets (dumps and `-remote`) run under `cdb.exe`; kernel targets run under `kd.exe`.
+Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pass it to the matching `run_*`, `close_*`, `send_ctrl_break`, and `wait_for_break` calls. User-mode targets (dumps and `-remote`) run under `cdb.exe`; kernel targets and kernel dumps run under `kd.exe`.
 
 | Tool | Purpose |
 |------|---------|
@@ -50,6 +50,7 @@ Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pa
 | `open_cdb_dump` | Open and triage a crash dump |
 | `open_cdb_remote` | Attach to a user-mode remote debug server (`-remote`) |
 | `open_kd_session` | Attach to a kernel target (`-k`, KDNET / named pipe / serial) |
+| `open_kd_dump` | Open and triage a kernel crash dump (`MEMORY.DMP`, minidump) |
 | `run_cdb_command` | Run a command on a user-mode session |
 | `run_kd_command` | Run a command on a kernel session |
 | `close_cdb_session` | Close a user-mode session |
@@ -88,7 +89,7 @@ Install the server plugin if needed, then optionally add skills, agents, or both
 ### Server with uvx
 
 The shortest path: two lines, no `pip install`, no MCP configuration to edit. Adds the
-ten tools, with symbols preconfigured. Skills and agents are installed separately.
+eleven tools, with symbols preconfigured. Skills and agents are installed separately.
 
 ```
 /plugin marketplace add svnscha/mcp-windbg

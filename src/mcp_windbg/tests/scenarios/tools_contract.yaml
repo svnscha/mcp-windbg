@@ -1,5 +1,5 @@
 name: Tools contract
-description: The server advertises exactly the ten harmonized, session-id tools.
+description: The server advertises exactly the eleven harmonized, session-id tools.
 steps:
   - list_tools: true
     expect:
@@ -8,6 +8,7 @@ steps:
         - open_cdb_dump
         - open_cdb_remote
         - open_kd_session
+        - open_kd_dump
         - run_cdb_command
         - run_kd_command
         - close_cdb_session

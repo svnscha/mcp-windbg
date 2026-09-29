@@ -13,6 +13,10 @@ Connection strings (passed to ``-k`` verbatim):
 - KDNET (network):   ``net:port=50000,key=1.2.3.4``
 - Named pipe (VM):   ``com:pipe,port=\\\\.\\pipe\\com_1,baud=115200,reconnect,resets=0``
 - Serial:            ``com:port=COM1,baud=115200``
+
+A kernel crash dump (``MEMORY.DMP``, a ``Minidump\\*.dmp``) opens with ``-z``
+instead. It is a static target like a user-mode dump, so it skips the connect
+handshake and simply waits for the first prompt.
 """
 
 from __future__ import annotations
@@ -60,7 +64,7 @@ DEFAULT_KD_PATHS = [
 
 
 class KDSession(DebuggerSession):
-    """A kernel ``kd.exe`` session attached with ``-k``."""
+    """A kernel ``kd.exe`` session attached with ``-k``, or over a dump with ``-z``."""
 
     is_live_session = True
 
@@ -71,29 +75,44 @@ class KDSession(DebuggerSession):
 
     def __init__(
         self,
-        kernel_connection: str,
+        kernel_connection: Optional[str] = None,
         kd_path: Optional[str] = None,
         symbols_path: Optional[str] = None,
         timeout: int = 60,
         verbose: bool = False,
+        dump_path: Optional[str] = None,
+        auto_dump_dir_symbols: bool = True,
     ):
-        """Attach to a kernel target.
+        """Attach to a kernel target, or open a kernel crash dump.
 
         Args:
             kernel_connection: The ``-k`` connection string (KDNET/pipe/serial).
             kd_path: Custom kd.exe path; auto-discovered when None.
             symbols_path: Extra symbol search path.
-            timeout: Seconds to wait for the target to connect and break in.
+            timeout: Seconds to wait for the target to connect and break in, or
+                for a dump to load.
             verbose: Echo debugger output for debugging.
+            dump_path: Kernel crash dump to open (``-z``), mutually exclusive
+                with ``kernel_connection``.
+            auto_dump_dir_symbols: Prepend the dump's directory to the symbol path.
 
         Raises:
             KDError: kd.exe not found, or the target never connected / broke in.
-            ValueError: no connection string provided.
+            FileNotFoundError: the dump file does not exist.
+            ValueError: neither or both of kernel_connection and dump_path provided.
         """
-        if not kernel_connection:
-            raise ValueError("kernel_connection must be provided")
+        if not kernel_connection and not dump_path:
+            raise ValueError("Either kernel_connection or dump_path must be provided")
+        if kernel_connection and dump_path:
+            raise ValueError("kernel_connection and dump_path are mutually exclusive")
+        if dump_path and not os.path.isfile(dump_path):
+            raise FileNotFoundError(f"Dump file not found: {dump_path}")
 
         self.kernel_connection = kernel_connection
+        self.dump_path = dump_path
+        # A dump has no running machine: no process group for CTRL+BREAK, no
+        # break-in on startup, and it quits with 'q' instead of resuming with 'g'.
+        self.is_live_session = not dump_path
         # Set before super().__init__ starts the reader thread, which references it.
         self._connected_event = threading.Event()
 
@@ -105,8 +124,14 @@ class KDSession(DebuggerSession):
             )
         self.kd_path = kd_path
 
+        # Auto-include the dump's own directory in the symbol search path.
+        if auto_dump_dir_symbols and dump_path:
+            dump_dir = os.path.dirname(os.path.abspath(dump_path))
+            symbols_path = f"{dump_dir};{symbols_path}" if symbols_path else dump_dir
+
         launch_args = build_debugger_args(
             kd_path,
+            dump_path=dump_path,
             kernel_connection=kernel_connection,
             symbols_path=symbols_path,
         )
@@ -128,6 +153,10 @@ class KDSession(DebuggerSession):
 
     def _startup(self) -> None:
         """Wait for the target to connect, break in, then reach the prompt."""
+        if not self.is_live_session:
+            # A dump is usable the moment kd prints its first prompt.
+            super()._startup()
+            return
         if not self._connected_event.wait(self.timeout):
             self.shutdown()
             raise KDError(
@@ -165,7 +194,11 @@ class KDSession(DebuggerSession):
         ``g`` drains any queued break requests so a single stuck break does not
         immediately re-halt it. When ``resume_on_close`` is False we send nothing
         and let the process terminate with the target still halted at the break.
+        A dump has no target to resume and quits like any other dump session.
         """
+        if not self.is_live_session:
+            super()._release_target()
+            return
         if not self.resume_on_close:
             return
         for _ in range(3):

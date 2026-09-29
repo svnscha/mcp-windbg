@@ -1,6 +1,6 @@
 ---
 name: kernel-debug
-description: Attach to a live Windows kernel target over KDNET, a named pipe, or serial and drive it. Use when the user wants to debug a kernel, a driver, or a bugchecking VM.
+description: Attach to a live Windows kernel target over KDNET, a named pipe, or serial and drive it. Use when the user wants to debug a kernel, a driver, or a bugchecking VM. For a kernel crash dump file (MEMORY.DMP, a minidump) use analyze-dump instead.
 ---
 
 # Debug a live Windows kernel target
