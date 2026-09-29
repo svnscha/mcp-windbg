@@ -183,9 +183,11 @@ and then, in the same run:
 - `release-notes` replaces the generated notes with your CHANGELOG entry.
 - `fast-forward-main` pushes `main` to the released commit.
 - `publish` calls `publish-mcp.yml` to run the full test matrix and ship to PyPI.
+- `registry` calls `publish-mcp-registry.yml` once `publish` is done, to list the version in
+  the MCP registry (which verifies the package on PyPI, so it has to wait).
 - `docs` calls `pages.yml` to deploy the documentation site.
 
-The last two are chained through `needs` rather than triggered, for the `GITHUB_TOKEN` reason
+The last three are chained through `needs` rather than triggered, for the `GITHUB_TOKEN` reason
 below: neither the tag nor the `main` fast-forward starts a workflow on its own.
 
 Forgetting the CHANGELOG entry fails the release before it happens. The `preflight` job runs

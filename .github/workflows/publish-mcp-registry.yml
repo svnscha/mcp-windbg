@@ -1,7 +1,11 @@
 name: Publish to MCP Registry
 
+# Called by release-please.yml after the PyPI publish: the registry verifies the
+# package on PyPI, so the version has to be there first. workflow_dispatch stays
+# for re-publishing by hand.
 on:
-  workflow_dispatch:  # Manual triggering only
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
   publish-mcp-registry:
