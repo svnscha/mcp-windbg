@@ -23,7 +23,8 @@ model starts on that target, omit it and the model asks.
 
 A comprehensive single-dump triage workflow. It walks the model through opening a
 dump, extracting metadata (`vertarget`, `lm`, `k`, `.time`, `!peb`, `r`), closing
-the session, and writing a structured crash report.
+the session, and writing a structured crash report. A kernel dump from a blue screen
+opens with [`open_kd_dump`](tools.md#open_kd_dump) and is reported by its bugcheck code.
 
 | Argument | Required | Description |
 | --- | --- | --- |
