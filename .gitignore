@@ -179,3 +179,9 @@ mcp-publisher.exe
 
 # MkDocs build output
 /site/
+
+# Crash dumps can hold sensitive memory. Only vetted test fixtures are committed;
+# add a new one here deliberately, after checking it for sensitive data.
+*.dmp
+!src/mcp_windbg/tests/dumps/DemoCrash1.exe.7088.dmp
+!src/mcp_windbg/tests/dumps/KernelMiniDump.0xE2.dmp
