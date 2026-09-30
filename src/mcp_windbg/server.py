@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 CDB_DUMP_OPEN_TIMEOUT = 180
 CDB_REMOTE_OPEN_TIMEOUT = 60
 KD_OPEN_TIMEOUT = 60
+KD_DUMP_OPEN_TIMEOUT = 180
 CDB_COMMAND_TIMEOUT = 60
 KD_COMMAND_TIMEOUT = 120
 # wait_for_break is not a command timeout: it is how long we are willing to sit
@@ -198,6 +199,16 @@ class OpenKdSession(BaseModel):
     timeout_seconds: Optional[int] = Field(default=None, description="Override the connect/break-in timeout (seconds).")
 
 
+class OpenKdDump(BaseModel):
+    """Parameters for opening a kernel crash dump (kd.exe)."""
+    dump_path: str = Field(description="Path to the kernel-mode crash dump, e.g. C:\\Windows\\MEMORY.DMP or a file in C:\\Windows\\Minidump")
+    symbols_path: Optional[str] = Field(default=None, description="Additional symbol search path for PDB resolution.")
+    include_stack_trace: bool = Field(default=False, description="Include a stack trace (kb) in the initial analysis.")
+    include_modules: bool = Field(default=False, description="Include loaded modules (lm) in the initial analysis.")
+    include_threads: bool = Field(default=False, description="Include threads (~) in the initial analysis.")
+    timeout_seconds: Optional[int] = Field(default=None, description="Override the timeout (seconds) for opening/analyzing this dump.")
+
+
 class RunCdbCommand(BaseModel):
     """Parameters for running a command on a user-mode (cdb) session."""
     session_id: str = Field(description="A cdb session_id returned by open_cdb_dump or open_cdb_remote.")
@@ -207,7 +218,7 @@ class RunCdbCommand(BaseModel):
 
 class RunKdCommand(BaseModel):
     """Parameters for running a command on a kernel (kd) session."""
-    session_id: str = Field(description="A kd session_id returned by open_kd_session.")
+    session_id: str = Field(description="A kd session_id returned by open_kd_session or open_kd_dump.")
     command: str = Field(description="Kernel debugger command to execute (e.g. '!process 0 0', 'vertarget', '!analyze -v').")
     timeout_seconds: Optional[int] = Field(default=None, description="Override the command timeout (seconds).")
 
@@ -220,7 +231,7 @@ class CloseCdbSession(BaseModel):
 class CloseKdSession(BaseModel):
     """Parameters for closing a kernel (kd) session."""
     session_id: str = Field(description="The kd session_id to close.")
-    resume: bool = Field(default=True, description="Resume the target machine on close (send 'g' so it runs again). Set false to intentionally leave it halted at the break - note that freezes the whole machine until a debugger resumes it.")
+    resume: bool = Field(default=True, description="Resume the target machine on close (send 'g' so it runs again); ignored for a dump. Set false to intentionally leave it halted at the break - note that freezes the whole machine until a debugger resumes it.")
 
 
 class SendCtrlBreak(BaseModel):
@@ -401,7 +412,7 @@ def _create_server(
                 name="list_dumps",
                 description="""
                 List Windows crash dump files in a directory.
-                Helps discover dumps to analyze with open_cdb_dump.
+                Helps discover dumps to analyze with open_cdb_dump (or open_kd_dump for kernel dumps).
                 """,
                 inputSchema=ListDumps.model_json_schema(),
             ),
@@ -411,6 +422,7 @@ def _create_server(
                 Open and triage a Windows crash dump with cdb.exe (user mode).
                 Runs .lastevent and !analyze -v (optionally kb/lm/~) and returns a session_id.
                 Use that session_id with run_cdb_command and close_cdb_session.
+                For a kernel dump from a bugcheck (MEMORY.DMP, Minidump\\*.dmp) use open_kd_dump.
                 """,
                 inputSchema=OpenCdbDump.model_json_schema(),
             ),
@@ -434,6 +446,16 @@ def _create_server(
                 inputSchema=OpenKdSession.model_json_schema(),
             ),
             Tool(
+                name="open_kd_dump",
+                description="""
+                Open and triage a kernel-mode crash dump with kd.exe: a complete, kernel, or bitmap
+                memory dump (MEMORY.DMP) or a small memory dump (Minidump\\*.dmp) written by a bugcheck.
+                Runs vertarget and !analyze -v (optionally kb/lm/~) and returns a session_id
+                for run_kd_command and close_kd_session. For user-mode dumps use open_cdb_dump.
+                """,
+                inputSchema=OpenKdDump.model_json_schema(),
+            ),
+            Tool(
                 name="run_cdb_command",
                 description="""
                 Run a WinDbg/CDB command on a user-mode session (from open_cdb_dump or open_cdb_remote),
@@ -444,7 +466,7 @@ def _create_server(
             Tool(
                 name="run_kd_command",
                 description="""
-                Run a command on a kernel session (from open_kd_session), addressed by session_id.
+                Run a command on a kernel session (from open_kd_session or open_kd_dump), addressed by session_id.
                 Optional timeout_seconds overrides the default (kernel memory reads can be slow).
                 """,
                 inputSchema=RunKdCommand.model_json_schema(),
@@ -520,6 +542,11 @@ def _create_server(
             if name == "open_kd_session":
                 return filter_tool_content(name, await _run_debugger_handler(_handle_open_kd_session,
                     arguments, kd_path, symbols_path, timeout, verbose
+                ), call_id)
+
+            if name == "open_kd_dump":
+                return filter_tool_content(name, await _run_debugger_handler(_handle_open_kd_dump,
+                    arguments, kd_path, symbols_path, timeout, verbose, auto_dump_dir_symbols
                 ), call_id)
 
             if name == "run_cdb_command":
@@ -657,6 +684,29 @@ def _create_server(
         results.append("### Kernel Target Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
         registers = session.send_command("r", timeout=effective)
         results.append("### Current Registers\n```\n" + "\n".join(registers) + "\n```\n\n")
+        results.extend(_optional_sections(session, args, effective))
+        return [TextContent(type="text", text="".join(results))]
+
+    def _handle_open_kd_dump(arguments, kd_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols):
+        args = OpenKdDump(**arguments)
+        effective = _effective_timeout(args.timeout_seconds, KD_DUMP_OPEN_TIMEOUT, server_timeout)
+        effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        try:
+            session = KDSession(
+                dump_path=args.dump_path, kd_path=kd_path, symbols_path=effective_symbols,
+                timeout=effective, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols,
+            )
+        except Exception as e:
+            raise MCPError(INTERNAL_ERROR, f"Failed to open kd dump session: {e}")
+
+        session_id = _register_session(session, "kd", f"kernel dump {args.dump_path}")
+        results = [_session_header(session_id, "kd", f"kernel dump {args.dump_path}")]
+        results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
+
+        target_info = session.send_command("vertarget", timeout=effective)
+        results.append("### Kernel Target Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
+        analysis = session.send_command("!analyze -v", timeout=effective)
+        results.append("### Crash Analysis\n```\n" + "\n".join(analysis) + "\n```\n\n")
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 

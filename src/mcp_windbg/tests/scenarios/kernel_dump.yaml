@@ -1,0 +1,78 @@
+name: Analyze a kernel crash dump
+description: >
+  Open a real kernel minidump (a manual bugcheck 0xE2 forced with .crash) with
+  kd.exe, triage it, run kernel commands on the kd session, confirm the live-only
+  tools refuse it, then close by id (#111). Needs kd.exe, not a kernel target.
+requires:
+  kd: true
+  dump: KernelMiniDump.0xE2.dmp
+server:
+  args: ["--kd-path", "{kd}", "--timeout", "180"]
+steps:
+  - call: open_kd_dump
+    arguments:
+      dump_path: "{dump}"
+      include_stack_trace: true
+    capture:
+      sid: 'session_id:\s*(kd-[0-9a-f]+)'
+    expect:
+      isError: false
+      contains:
+        - "session_id: kd-"
+        - "Kernel Target Information"
+        - "Kernel Version"
+        - "Crash Analysis"
+        - "MANUALLY_INITIATED_CRASH (e2)"
+        - "Stack Trace"
+
+  - call: run_kd_command
+    arguments:
+      session_id: "{sid}"
+      command: "lm m nt"
+    expect:
+      isError: false
+      contains:
+        - "nt"
+
+  # A dump has no running target to break into or wait on.
+  - call: send_ctrl_break
+    arguments:
+      session_id: "{sid}"
+    expect:
+      isError: true
+      contains:
+        - "dump session"
+
+  - call: wait_for_break
+    arguments:
+      session_id: "{sid}"
+      timeout_seconds: 5
+    expect:
+      isError: true
+      contains:
+        - "dump session"
+
+  # It is a kd session: the cdb tools refuse it and point at the kd ones.
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
+      command: "k"
+    expect:
+      isError: true
+      contains:
+        - "run_kd_command"
+
+  - call: close_kd_session
+    arguments:
+      session_id: "{sid}"
+    expect:
+      contains:
+        - "Successfully closed kd session"
+
+  - call: open_kd_dump
+    arguments:
+      dump_path: "C:/does/not/exist/MEMORY.DMP"
+    expect:
+      isError: true
+      contains:
+        - "Dump file not found"

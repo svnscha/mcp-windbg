@@ -36,6 +36,12 @@ lines of enquiry:
 
 Close the session with `close_cdb_session` when you are done.
 
+A kernel dump from a blue screen (`MEMORY.DMP`, or a file under
+`C:\Windows\Minidump`) opens with `open_kd_dump` instead, and uses
+`run_kd_command` and `close_kd_session`. Lead with the bugcheck code and its
+parameters from `!analyze -v`, then the faulting driver: `!thread`,
+`lmvm <driver>`, `!irql`, and `!process 0 0` on a dump that holds kernel memory.
+
 ## Standards
 
 **Distinguish what the dump proves from what you infer.** "RCX is null at the

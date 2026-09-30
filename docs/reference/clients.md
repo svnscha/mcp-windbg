@@ -23,7 +23,7 @@ path. It needs no `pip install` and no MCP configuration:
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
-This plugin provides the ten tools. [Skills](#skills-for-an-existing-server) and
+This plugin provides the eleven tools. [Skills](#skills-for-an-existing-server) and
 [agents](#agents-for-an-existing-server) are optional separate installs.
 The plugin runs the server with `uvx`, so it needs
 [uv](https://docs.astral.sh/uv/) on `PATH`; it pins the server version so the plugin and the

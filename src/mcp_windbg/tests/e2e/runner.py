@@ -85,7 +85,8 @@ def scenario_markers(scenario: dict[str, Any]) -> set[str]:
     """Pytest markers implied by a scenario's requirements (for conftest)."""
     requires = _requires(scenario)
     markers: set[str] = set()
-    if requires.get("cdb") or _remote_spec(scenario) is not None or requires.get("kernel"):
+    if (requires.get("cdb") or requires.get("kd") or _remote_spec(scenario) is not None
+            or requires.get("kernel")):
         markers.add("live")
     if _remote_spec(scenario) is not None:
         markers.add("remote")
@@ -98,14 +99,16 @@ def skip_reason(scenario: dict[str, Any]) -> Optional[str]:
     """Why this scenario should be skipped on this machine, or None to run.
 
     Only a missing debugger or an unconfigured kernel target causes a skip. The
-    Git LFS dumps are mandatory - a scenario that needs one hard-fails (see
-    run_scenario) rather than skipping, so a repo without `git lfs pull` is a
-    loud error, not silent green.
+    committed dumps are mandatory - a scenario that needs one hard-fails (see
+    run_scenario) rather than skipping, so a broken checkout is a loud error,
+    not silent green.
     """
     requires = _requires(scenario)
     needs_cdb = bool(requires.get("cdb")) or _remote_spec(scenario) is not None
     if needs_cdb and not harness.cdb_available():
         return "cdb.exe not found"
+    if requires.get("kd") and harness.find_kd() is None:
+        return "kd.exe not found"
     if requires.get("kernel"):
         if harness.find_kd() is None:
             return "kd.exe not found"
@@ -133,8 +136,8 @@ async def run_scenario(scenario: dict[str, Any]) -> None:
     if dump:
         dump_path = harness.dump_file(dump)
         assert dump_path.exists(), (
-            f"required dump '{dump}' is missing at {dump_path}; the LFS dumps are "
-            f"mandatory - run `git lfs pull`"
+            f"required dump '{dump}' is missing at {dump_path}; the test dumps are "
+            f"committed to the repository, so the checkout is incomplete"
         )
         mapping["dump"] = str(dump_path)
     cdb = harness.find_cdb()

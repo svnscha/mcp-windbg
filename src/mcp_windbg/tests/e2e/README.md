@@ -17,9 +17,9 @@ uv run pytest src/mcp_windbg/tests/ -v -m "not live"   # hermetic subset, no deb
 ```
 
 A scenario that needs a debugger is skipped (never failed) when `cdb.exe` is
-missing. The Git LFS dumps are mandatory: a scenario whose `requires.dump` file
-is absent hard-fails (run `git lfs pull`), so a half-set-up checkout is a loud
-error rather than silent green.
+missing. The dumps are committed and mandatory: a scenario whose `requires.dump`
+file is absent hard-fails, so a broken checkout is a loud error rather than
+silent green.
 
 Kernel scenarios (`requires.kernel`) drive a real kernel target, which CI does not
 have, so they skip unless one is configured:
@@ -75,7 +75,8 @@ transport: stdio                    # optional: stdio (default) or streamable-ht
 
 requires:                           # all optional
   cdb: true                         # skip if no cdb.exe is installed
-  dump: DemoCrash1.exe.7088.dmp     # mandatory LFS dump; missing it hard-fails
+  kd: true                          # skip if no kd.exe is installed (no target needed)
+  dump: DemoCrash1.exe.7088.dmp     # a committed dump; missing it hard-fails
   remote: true                      # start a local cdb .server; bind {remote}
   # remote can also be a mapping to pick the debugged target:
   # remote: { target: ["waitfor.exe", "NoSuchSignal"] }

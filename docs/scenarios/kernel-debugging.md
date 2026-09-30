@@ -3,7 +3,8 @@
 Kernel debugging attaches to a whole machine (usually a VM) rather than a single process. It
 uses a different debugger mode from user-mode remote debugging: the target is reached over a
 `-k` cable (KDNET, a named pipe, or a serial line), not a `cdb -server`. This is what you want
-for driver bugs, bugchecks, and boot-time issues.
+for driver bugs, bugchecks, and boot-time issues. If you only have the dump a blue screen left
+behind, you do not need a live target, see [Kernel dumps](crash-dump.md#kernel-dumps).
 
 ## Prepare the target
 
@@ -97,3 +98,4 @@ it stopped.
 
 - [Tools reference](../reference/tools.md) - `open_kd_session`, `send_ctrl_break`, `run_kd_command`.
 - [Debug a remote target](remote-debugging.md) - user-mode remote debugging (`-remote`).
+- [Analyze a crash dump](crash-dump.md#kernel-dumps) - a kernel dump from a blue screen, no live target.

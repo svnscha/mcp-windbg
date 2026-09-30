@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MCP_WINDBG_KERNEL_INIT_COMMANDS` do the same for kernel targets only: kd
   sessions and kernel dumps, which are recognized by their file header even when
   opened with `open_cdb_dump` (#121). Thanks to @RamanaIntel for the feature.
+- An `open_kd_dump` tool that opens a kernel crash dump with `kd.exe` (`-z`): a
+  complete, kernel, or bitmap memory dump (`MEMORY.DMP`) or a small memory dump
+  from `C:\Windows\Minidump`. It runs the init commands, then `vertarget` and
+  `!analyze -v`, and returns a `kd` session id for `run_kd_command` and
+  `close_kd_session` (#111). Thanks to @robster7674 for the proposal and the
+  analysis behind it, and to @RamanaIntel for testing it on a 66 GB dump.
 
 ## [1.3.1] - 2026-09-29
 

@@ -50,12 +50,15 @@ target rather than a fake process.
 The suite is a declarative end-to-end harness: each `tests/scenarios/*.yaml` file is run
 against a real `python -m mcp_windbg` server hosted over stdio and driven by a real MCP client
 (only the LLM is faked, by the scripted tool calls). Scenarios that need a debugger carry the
-`live` (and `remote` / `kernel`) marker and `pytest.skip` cleanly when `cdb.exe` or the Git LFS
-dump is absent, so `-m "not live"` always runs and stays green off-Windows. See
-`src/mcp_windbg/tests/e2e/README.md` for the scenario format. Test dumps live in
-`src/mcp_windbg/tests/dumps/` via Git LFS (`git lfs pull`).
+`live` (and `remote` / `kernel`) marker and `pytest.skip` cleanly when `cdb.exe` or `kd.exe` is
+absent, so `-m "not live"` always runs and stays green off-Windows. See
+`src/mcp_windbg/tests/e2e/README.md` for the scenario format. Test dumps are ordinary files in
+`src/mcp_windbg/tests/dumps/` (Git LFS was removed in #20). `.gitignore` excludes every other
+`*.dmp`, so a new fixture is added deliberately: check it for sensitive data first, then list it
+there.
 
-**Kernel scenarios.** `kernel_session.yaml` drives a real kernel target through `kd.exe`. CI has
+**Kernel scenarios.** `kernel_dump.yaml` opens a committed kernel minidump and needs only
+`kd.exe`, so it runs in CI. `kernel_session.yaml` drives a real kernel target through `kd.exe`. CI has
 no target machine, so it skips there; locally, point it at a debuggable VM or box and it runs:
 
 ```powershell
@@ -77,7 +80,7 @@ src/mcp_windbg/
   cdb_session.py     CDBSession: spawns cdb.exe, sends commands, reads output
   filter_script.py   --filter-script loader and tool content hooks
   prompts/           prompt templates (dump-triage.prompt.md)
-  tests/             e2e harness: e2e/ (runner + harness), scenarios/*.yaml, dumps/ (Git LFS)
+  tests/             e2e harness: e2e/ (runner + harness), scenarios/*.yaml, dumps/
 scripts/             check-version-consistency.ps1, validate-server-schema.py, Format-Docs.ps1
 examples/            small C++ programs that crash, for generating test dumps
 docs/                MkDocs user guide (Material), deployed to GitHub Pages

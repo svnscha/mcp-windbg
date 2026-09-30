@@ -53,6 +53,7 @@ OPEN_CALLS = [
     ("open_cdb_dump", {"dump_path": r"C:\dumps\app.dmp"}, ".lastevent"),
     ("open_cdb_remote", {"connection_string": "tcp:Port=5005,Server=host"}, "!peb"),
     ("open_kd_session", {"connection_string": "net:port=50000,key=1.2.3.4"}, "vertarget"),
+    ("open_kd_dump", {"dump_path": r"C:\dumps\MEMORY.DMP"}, "vertarget"),
 ]
 
 
@@ -95,6 +96,8 @@ def _dump(tmp_path, header: bytes) -> str:
         ("open_cdb_dump", {"dump_path": b"PAGEDU64"}, True),   # MEMORY.DMP opened with cdb
         ("open_cdb_dump", {"dump_path": b"PAGEDUMP"}, True),   # 32-bit kernel dump
         ("open_cdb_dump", {"dump_path": b"MDMP"}, False),      # user-mode minidump
+        ("open_kd_dump", {"dump_path": b"PAGEDU64"}, True),    # the kernel dump tool
+        ("open_kd_dump", {"dump_path": b"MDMP"}, False),       # the header decides, not the tool
         ("open_cdb_remote", {"connection_string": "tcp:Port=5005,Server=host"}, False),
     ],
 )

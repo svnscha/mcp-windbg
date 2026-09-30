@@ -9,6 +9,7 @@ one from your request, but this is the precise contract for each.
 | [`open_cdb_dump`](#open_cdb_dump) | Open a dump and run the standard triage commands (`cdb.exe`). |
 | [`open_cdb_remote`](#open_cdb_remote) | Attach to a user-mode remote debug server (`-remote`). |
 | [`open_kd_session`](#open_kd_session) | Attach to a kernel debugging target (`-k`, `kd.exe`). |
+| [`open_kd_dump`](#open_kd_dump) | Open a kernel crash dump and run the standard triage commands (`kd.exe`). |
 | [`run_cdb_command`](#run_cdb_command) | Run a command on a user-mode (cdb) session. |
 | [`run_kd_command`](#run_kd_command) | Run a command on a kernel (kd) session. |
 | [`close_cdb_session`](#close_cdb_session) | Close a user-mode session. |
@@ -31,14 +32,14 @@ calls), and several can be open at once, so you can compare dumps side by side. 
 when you finish to free resources.
 
 User-mode targets (dumps and `-remote`) run under **`cdb.exe`** and use the `cdb` tools; kernel
-targets run under **`kd.exe`** and use the `kd` tools. The id itself is prefixed (`cdb-…` /
+targets and kernel dumps run under **`kd.exe`** and use the `kd` tools. The id itself is prefixed (`cdb-…` /
 `kd-…`), and the server rejects a mismatch - calling [`run_kd_command`](#run_kd_command) with a
 `cdb` id returns a tool error telling you which tool to use.
 
 ## Timeouts
 
 Each `open_*` / `run_*` call accepts an optional `timeout_seconds` to override the default for
-that call. Defaults: `open_cdb_dump` 180s (it runs `!analyze -v`), connects 60s,
+that call. Defaults: `open_cdb_dump` and `open_kd_dump` 180s (they run `!analyze -v`), connects 60s,
 `run_cdb_command` 60s, `run_kd_command` 120s (kernel memory reads over KDNET can be slow). The
 server-wide [`--timeout`](cli.md) is a floor for these. On a **live** session (remote or
 kernel) a command that outruns its timeout is broken into with CTRL+BREAK and the session is
@@ -61,8 +62,9 @@ Used by [Triage multiple dumps](../scenarios/triage.md).
 
 ## open_cdb_dump
 
-Open a crash dump and run the common analysis commands (`.lastevent`, `!analyze -v`, and
-optionally stack, modules, threads). Returns a `session_id`.
+Open a user-mode crash dump and run the common analysis commands (`.lastevent`, `!analyze -v`,
+and optionally stack, modules, threads). Returns a `session_id`. For a kernel dump from a
+bugcheck use [`open_kd_dump`](#open_kd_dump).
 
 | Parameter | Required | Description |
 | --- | --- | --- |
@@ -139,6 +141,28 @@ Used by [Debug a kernel target](../scenarios/kernel-debugging.md).
 
 ---
 
+## open_kd_dump
+
+Open a kernel-mode crash dump with `kd.exe` (`-z`) and run the common analysis commands
+(`vertarget`, `!analyze -v`, and optionally stack, modules, threads), after any
+[init commands](cli.md#init-commands). Returns a `kd` session id. It takes a complete, kernel, or
+bitmap memory dump (`C:\Windows\MEMORY.DMP`) or a small memory dump
+(`C:\Windows\Minidump\*.dmp`). A dump is static: there is nothing to break into or resume, so
+[`send_ctrl_break`](#send_ctrl_break) and [`wait_for_break`](#wait_for_break) do not apply.
+
+| Parameter | Required | Description |
+| --- | --- | --- |
+| `dump_path` | yes | Path to the kernel dump file. |
+| `include_stack_trace` | no | Include the stack trace (`kb`). Defaults to `false`. |
+| `include_modules` | no | Include loaded module information (`lm`). Defaults to `false`. |
+| `include_threads` | no | Include thread information (`~`). Defaults to `false`. |
+| `symbols_path` | no | Extra symbol search path. |
+| `timeout_seconds` | no | Override the open/analysis timeout (default 180s). |
+
+Used by [Analyze a crash dump](../scenarios/crash-dump.md#kernel-dumps).
+
+---
+
 ## run_cdb_command
 
 Run any WinDbg command on an open user-mode (cdb) session and return its output.
@@ -157,7 +181,7 @@ Run any command on an open kernel (kd) session and return its output.
 
 | Parameter | Required | Description |
 | --- | --- | --- |
-| `session_id` | yes | A `kd` session id from [`open_kd_session`](#open_kd_session). |
+| `session_id` | yes | A `kd` session id from [`open_kd_session`](#open_kd_session) or [`open_kd_dump`](#open_kd_dump). |
 | `command` | yes | The command to run, for example `!process 0 0` or `vertarget`. |
 | `timeout_seconds` | no | Override the command timeout (default 120s). |
 
@@ -182,7 +206,7 @@ whole machine. Always close a kernel session when done.
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `session_id` | yes | The `kd` session id to close. |
-| `resume` | no | Resume the machine on close. Defaults to `true`. Set `false` to intentionally leave it halted at the break (it stays frozen until a debugger resumes it). |
+| `resume` | no | Resume the machine on close. Defaults to `true`. Set `false` to intentionally leave it halted at the break (it stays frozen until a debugger resumes it). Ignored for a dump. |
 
 ---
 

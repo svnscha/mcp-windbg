@@ -25,6 +25,13 @@ steps:
       contains:
         - "Unknown session_id"
 
+  - call: open_kd_dump         # missing dump_path -> schema validation error
+    arguments: {}
+    expect:
+      isError: true
+      contains:
+        - "dump_path"
+
   - call: send_ctrl_break      # missing session_id -> schema validation error
     arguments: {}
     expect:

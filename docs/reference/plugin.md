@@ -24,7 +24,7 @@ Install the server plugin if needed, then optionally add skills, agents, or both
 /plugin install mcp-windbg-uvx@mcp-windbg
 ```
 
-This plugin supplies the ten [tools](tools.md) and default symbol
+This plugin supplies the eleven [tools](tools.md) and default symbol
 settings. It needs Windows with [Debugging Tools for Windows](https://aka.ms/windbg)
 and [uv](https://docs.astral.sh/uv/) on `PATH` (`winget install astral-sh.uv`).
 No separate Python or package installation is required. Skills and agents are not

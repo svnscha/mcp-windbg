@@ -66,7 +66,8 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
 
 - **`--cdb-path`** - the server auto-detects `cdb.exe` in the common Windows Kits and
   Microsoft Store locations. Set this when yours is installed elsewhere.
-- **`--kd-path`** - the same, for the `kd.exe` used by [`open_kd_session`](tools.md#open_kd_session).
+- **`--kd-path`** - the same, for the `kd.exe` used by [`open_kd_session`](tools.md#open_kd_session)
+  and [`open_kd_dump`](tools.md#open_kd_dump).
   Kernel debugging needs `kd.exe`; `cdb.exe` cannot drive a kernel connection, so this is a
   separate option from `--cdb-path`.
 - **`--symbols-path`** - sets the symbol search path for new sessions. If omitted, the
@@ -77,7 +78,8 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
   with **`--no-dump-dir-symbols`**.
 
 Per-call symbol paths are also available on the `open_*` tools, see
-[`open_cdb_dump`](tools.md#open_cdb_dump) and [`open_cdb_remote`](tools.md#open_cdb_remote).
+[`open_cdb_dump`](tools.md#open_cdb_dump), [`open_cdb_remote`](tools.md#open_cdb_remote), and
+[`open_kd_dump`](tools.md#open_kd_dump).
 
 ## Init commands
 
@@ -105,8 +107,9 @@ The commands run on every `open_*` tool, dump and live alike, so keep them targe
 
 For commands that only make sense on a kernel target, such as reading the OS version from the
 kernel, use `--kernel-init-command` or `MCP_WINDBG_KERNEL_INIT_COMMANDS` instead. These run after
-the shared ones, on `open_kd_session` and on kernel dumps (`MEMORY.DMP`, kernel minidumps), even
-when opened with `open_cdb_dump`. User-mode dumps and `open_cdb_remote` skip them.
+the shared ones, on `open_kd_session` and on kernel dumps (`MEMORY.DMP`, kernel minidumps), whether
+opened with `open_kd_dump` or `open_cdb_dump`. The dump's file header decides, not the tool.
+User-mode dumps and `open_cdb_remote` skip them.
 
 ## Filter script hooks
 

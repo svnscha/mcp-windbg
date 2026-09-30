@@ -1,6 +1,6 @@
 ---
 name: analyze-dump
-description: Triage a Windows crash dump - identify the exception, the faulting frame, and what to look at next. Use when the user points at a .dmp file or asks why a Windows process crashed.
+description: Triage a Windows crash dump - identify the exception, the faulting frame, and what to look at next. Use when the user points at a .dmp file, asks why a Windows process crashed, or asks why a machine blue-screened.
 ---
 
 # Analyze a Windows crash dump
@@ -22,6 +22,14 @@ crashed, not just what the debugger printed.
 
 If the user gave a path, use it. If not, call `list_dumps` to show what is in
 the local crash dump directory and ask which one. Do not guess.
+
+## Kernel dumps
+
+A blue screen leaves a kernel dump: `MEMORY.DMP`, or a file under
+`C:\Windows\Minidump`. Open it with `open_kd_dump` instead of `open_cdb_dump`,
+and use `run_kd_command` and `close_kd_session` in place of the cdb tools below.
+The triage is the same, led by `!analyze -v` and the bugcheck code; kernel
+follow-ups include `!thread`, `!process 0 0`, `lmvm <driver>`, and `!irql`.
 
 ## Triage
 
