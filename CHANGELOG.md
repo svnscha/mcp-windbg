@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `Initialization`. `--kernel-init-command` /
   `MCP_WINDBG_KERNEL_INIT_COMMANDS` do the same for kernel targets only: kd
   sessions and kernel dumps, which are recognized by their file header even when
-  opened with `open_cdb_dump`.
+  opened with `open_cdb_dump` (#121). Thanks to @RamanaIntel for the feature.
 
 ## [1.3.1] - 2026-09-29
 
