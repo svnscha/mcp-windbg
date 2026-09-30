@@ -5,6 +5,18 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `--init-command` (repeatable), or `MCP_WINDBG_INIT_COMMANDS` with one command
+  per line, runs debugger commands on every new session before triage - for
+  example `.load` for a debugger extension. Their output leads the open result
+  under `Initialization`. `--kernel-init-command` /
+  `MCP_WINDBG_KERNEL_INIT_COMMANDS` do the same for kernel targets only: kd
+  sessions and kernel dumps, which are recognized by their file header even when
+  opened with `open_cdb_dump` (#121). Thanks to @RamanaIntel for the feature.
+
 ## [1.3.1] - 2026-09-29
 
 ### Fixed

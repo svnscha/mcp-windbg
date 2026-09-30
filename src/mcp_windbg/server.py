@@ -5,7 +5,7 @@ import glob
 import winreg
 import logging
 import uuid
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 
 from .cdb_session import CDBSession
@@ -256,6 +256,27 @@ def _optional_sections(session, args, timeout: int) -> list[str]:
     return sections
 
 
+def _init_sections(session, init_commands: Optional[List[str]], timeout: int) -> list[str]:
+    """Run the server's init commands on a new session, before any triage."""
+    if not init_commands:
+        return []
+    lines = []
+    for command in init_commands:
+        lines.append(f"> {command}")
+        lines.extend(session.send_command(command, timeout=timeout))
+    return ["### Initialization\n```\n" + "\n".join(lines) + "\n```\n\n"]
+
+
+def _is_kernel_dump(dump_path: str) -> bool:
+    """True for a kernel crash dump, whatever debugger opens it."""
+    try:
+        with open(dump_path, "rb") as handle:
+            # Kernel dumps start PAGEDUMP/PAGEDU64; user-mode minidumps start MDMP.
+            return handle.read(4) == b"PAGE"
+    except OSError:
+        return False
+
+
 async def serve(
     cdb_path: Optional[str] = None,
     kd_path: Optional[str] = None,
@@ -264,10 +285,15 @@ async def serve(
     timeout: int = 60,
     verbose: bool = False,
     auto_dump_dir_symbols: bool = True,
+    init_commands: Optional[List[str]] = None,
+    kernel_init_commands: Optional[List[str]] = None,
 ) -> None:
     """Run the WinDbg MCP server with stdio transport."""
     content_filter = load_filter_script(filter_script) if filter_script else None
-    server = _create_server(cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "stdio", auto_dump_dir_symbols)
+    server = _create_server(
+        cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "stdio",
+        auto_dump_dir_symbols, init_commands, kernel_init_commands,
+    )
 
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
@@ -287,6 +313,8 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     timeout: int = 60,
     verbose: bool = False,
     auto_dump_dir_symbols: bool = True,
+    init_commands: Optional[List[str]] = None,
+    kernel_init_commands: Optional[List[str]] = None,
 ) -> None:
     """Run the WinDbg MCP server with Streamable HTTP transport."""
     from starlette.applications import Starlette
@@ -295,7 +323,10 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     import uvicorn
 
     content_filter = load_filter_script(filter_script) if filter_script else None
-    server = _create_server(cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "streamable-http", auto_dump_dir_symbols)
+    server = _create_server(
+        cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "streamable-http",
+        auto_dump_dir_symbols, init_commands, kernel_init_commands,
+    )
 
     # Create the session manager
     session_manager = StreamableHTTPSessionManager(
@@ -338,6 +369,8 @@ def _create_server(
     content_filter: Optional[FilterScript] = None,
     transport: str = "stdio",
     auto_dump_dir_symbols: bool = True,
+    init_commands: Optional[List[str]] = None,
+    kernel_init_commands: Optional[List[str]] = None,
 ) -> Server:
     """Create and configure the MCP server with all tools and prompts.
 
@@ -345,6 +378,10 @@ def _create_server(
     ``@server.<method>()`` decorators, so the server itself is built at the end
     of this function, once the handlers below exist.
     """
+
+    def _init_for(kernel: bool) -> list[str]:
+        """Init commands for a new session: the shared ones, then the kernel-only ones."""
+        return list(init_commands or []) + (list(kernel_init_commands or []) if kernel else [])
 
     def filter_tool_arguments(tool_name: str, arguments: dict | None, call_id: str) -> dict:
         if arguments is None:
@@ -568,6 +605,7 @@ def _create_server(
 
         session_id = _register_session(session, "cdb", f"dump {args.dump_path}")
         results = [_session_header(session_id, "cdb", f"crash dump {args.dump_path}")]
+        results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
 
         crash_info = session.send_command(".lastevent", timeout=effective)
         results.append("### Crash Information\n```\n" + "\n".join(crash_info) + "\n```\n\n")
@@ -590,6 +628,7 @@ def _create_server(
 
         session_id = _register_session(session, "cdb", f"remote {args.connection_string}")
         results = [_session_header(session_id, "cdb", f"remote target {args.connection_string}")]
+        results.extend(_init_sections(session, _init_for(kernel=False), effective))
 
         target_info = session.send_command("!peb", timeout=effective)
         results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
@@ -612,6 +651,7 @@ def _create_server(
 
         session_id = _register_session(session, "kd", f"kernel {args.connection_string}")
         results = [_session_header(session_id, "kd", f"kernel target {args.connection_string}")]
+        results.extend(_init_sections(session, _init_for(kernel=True), effective))
 
         target_info = session.send_command("vertarget", timeout=effective)
         results.append("### Kernel Target Information\n```\n" + "\n".join(target_info) + "\n```\n\n")

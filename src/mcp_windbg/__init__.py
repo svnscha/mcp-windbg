@@ -1,4 +1,18 @@
+import os
+
 from .server import serve, serve_http
+
+INIT_COMMANDS_ENV = "MCP_WINDBG_INIT_COMMANDS"
+KERNEL_INIT_COMMANDS_ENV = "MCP_WINDBG_KERNEL_INIT_COMMANDS"
+
+
+def _resolve_init_commands(cli_commands, env_name=INIT_COMMANDS_ENV, environ=os.environ):
+    """CLI flags win; otherwise the environment variable, one command per line."""
+    if cli_commands:
+        return cli_commands
+    lines = environ.get(env_name, "").splitlines()
+    return [line.strip() for line in lines if line.strip()]
+
 
 def main():
     """MCP WinDbg Server - Windows crash dump analysis functionality for MCP"""
@@ -16,6 +30,14 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--no-dump-dir-symbols", action="store_true",
                         help="Disable automatic inclusion of the dump file's directory in the symbol search path")
+    parser.add_argument("--init-command", action="append", metavar="COMMAND",
+                        help="Debugger command to run on every new session before triage, e.g. "
+                             "'.load C:\\ext\\my.dll'. Repeatable. Defaults to the lines of "
+                             f"{INIT_COMMANDS_ENV}")
+    parser.add_argument("--kernel-init-command", action="append", metavar="COMMAND",
+                        help="Like --init-command, but only for kernel targets (kd sessions and "
+                             "kernel dumps). Repeatable. Defaults to the lines of "
+                             f"{KERNEL_INIT_COMMANDS_ENV}")
 
     # Transport options
     parser.add_argument(
@@ -31,6 +53,8 @@ def main():
     args = parser.parse_args()
 
     auto_dump_dir_symbols = not args.no_dump_dir_symbols
+    init_commands = _resolve_init_commands(args.init_command)
+    kernel_init_commands = _resolve_init_commands(args.kernel_init_command, KERNEL_INIT_COMMANDS_ENV)
 
     if args.transport == "stdio":
         asyncio.run(serve(
@@ -40,7 +64,9 @@ def main():
             filter_script=args.filter_script,
             timeout=args.timeout,
             verbose=args.verbose,
-            auto_dump_dir_symbols=auto_dump_dir_symbols
+            auto_dump_dir_symbols=auto_dump_dir_symbols,
+            init_commands=init_commands,
+            kernel_init_commands=kernel_init_commands,
         ))
     else:  # pragma: no cover - HTTP transport is verified behaviorally (http_transport.yaml), not line-counted
         asyncio.run(serve_http(
@@ -52,7 +78,9 @@ def main():
             filter_script=args.filter_script,
             timeout=args.timeout,
             verbose=args.verbose,
-            auto_dump_dir_symbols=auto_dump_dir_symbols
+            auto_dump_dir_symbols=auto_dump_dir_symbols,
+            init_commands=init_commands,
+            kernel_init_commands=kernel_init_commands,
         ))
 
 
