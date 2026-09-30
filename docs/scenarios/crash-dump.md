@@ -79,8 +79,10 @@ Close the crash dump session for C:\dumps\app.dmp
 
 !!! tip "Large dumps and timeouts"
     Opening a dump allows 180s for `!analyze -v` and follow-up `run_cdb_command` calls default
-    to 60s. For a heavier command, pass `timeout_seconds` on that call, or raise the floor for
-    everything with [`--timeout`](../reference/cli.md#general), for example `--timeout 120`.
+    to 60s (`run_kd_command` 120s). For a heavier command, pass `timeout_seconds` on that call,
+    or raise the floor for everything with [`--timeout`](../reference/cli.md#general), for
+    example `--timeout 120`. On a multi-GB kernel dump, a command like `!process 0 0` can take a
+    few minutes, longer with several symbol servers in the path.
 
 ## Related
 
