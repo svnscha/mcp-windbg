@@ -20,6 +20,7 @@ The `mcp-windbg` entry point is equivalent, if its scripts directory is on your 
 | `--symbols-path PATH` | `_NT_SYMBOL_PATH` | Symbol search path used when opening a session. |
 | `--no-dump-dir-symbols` | off | Do not auto-add a dump's own directory to the symbol path. |
 | `--init-command COMMAND` | `MCP_WINDBG_INIT_COMMANDS` | Debugger command to run on every new session, before triage. Repeatable. See [Init commands](#init-commands). |
+| `--kernel-init-command COMMAND` | `MCP_WINDBG_KERNEL_INIT_COMMANDS` | Like `--init-command`, but only for kernel targets. Repeatable. See [Init commands](#init-commands). |
 | `--filter-script PATH` | none | Python script with tool-text hooks. See [Filter script hooks](#filter-script-hooks). |
 | `--timeout SECONDS` | `60` | Baseline command/connect timeout; a floor for the per-tool defaults. |
 | `--verbose` | off | Verbose logging to stderr. |
@@ -101,6 +102,11 @@ command per line:
 ```
 
 The commands run on every `open_*` tool, dump and live alike, so keep them target-safe.
+
+For commands that only make sense on a kernel target, such as reading the OS version from the
+kernel, use `--kernel-init-command` or `MCP_WINDBG_KERNEL_INIT_COMMANDS` instead. These run after
+the shared ones, on `open_kd_session` and on kernel dumps (`MEMORY.DMP`, kernel minidumps), even
+when opened with `open_cdb_dump`. User-mode dumps and `open_cdb_remote` skip them.
 
 ## Filter script hooks
 

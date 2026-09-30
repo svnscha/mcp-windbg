@@ -32,7 +32,7 @@ def make_handler(monkeypatch):
     monkeypatch.setattr(server_module, "CDBSession", _RecordingSession)
     monkeypatch.setattr(server_module, "KDSession", _RecordingSession)
 
-    def _factory(init_commands):
+    def _factory(init_commands, kernel_init_commands=None):
         captured = {}
         real_server = server_module.Server
 
@@ -41,7 +41,9 @@ def make_handler(monkeypatch):
             return real_server(*args, **kwargs)
 
         monkeypatch.setattr(server_module, "Server", record_handlers)
-        server_module._create_server(init_commands=init_commands)
+        server_module._create_server(
+            init_commands=init_commands, kernel_init_commands=kernel_init_commands
+        )
         return captured["on_call_tool"]
 
     return _factory
@@ -79,15 +81,59 @@ async def test_no_init_commands_means_no_initialization_section(make_handler):
     assert "### Initialization" not in result.content[0].text
 
 
+def _dump(tmp_path, header: bytes) -> str:
+    path = tmp_path / "test.dmp"
+    path.write_bytes(header + b"\0" * 64)
+    return str(path)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "tool, arguments, kernel",
+    [
+        ("open_kd_session", {"connection_string": "net:port=50000,key=1.2.3.4"}, True),
+        ("open_cdb_dump", {"dump_path": b"PAGEDU64"}, True),   # MEMORY.DMP opened with cdb
+        ("open_cdb_dump", {"dump_path": b"PAGEDUMP"}, True),   # 32-bit kernel dump
+        ("open_cdb_dump", {"dump_path": b"MDMP"}, False),      # user-mode minidump
+        ("open_cdb_remote", {"connection_string": "tcp:Port=5005,Server=host"}, False),
+    ],
+)
+async def test_kernel_init_commands_run_only_on_kernel_targets(make_handler, tmp_path, tool, arguments, kernel):
+    if isinstance(arguments.get("dump_path"), bytes):
+        arguments = {"dump_path": _dump(tmp_path, arguments["dump_path"])}
+    handler = make_handler([r".load D:\ext\extension.dll"], ["!winver"])
+    await handler(None, CallToolRequestParams(name=tool, arguments=arguments))
+
+    commands = _RecordingSession.last.commands
+    assert commands[0] == r".load D:\ext\extension.dll"
+    assert ("!winver" in commands) is kernel
+    if kernel:
+        assert commands[1] == "!winver"  # after the shared ones, before triage
+
+
+def test_an_unreadable_dump_is_not_treated_as_kernel():
+    assert server_module._is_kernel_dump(r"C:\no\such\dump.dmp") is False
+
+
 def test_init_commands_come_from_the_environment_one_per_line():
     environ = {"MCP_WINDBG_INIT_COMMANDS": ".load D:\\ext\\extension.dll\n\n  !winver  \n"}
-    assert mcp_windbg._resolve_init_commands(None, environ) == [".load D:\\ext\\extension.dll", "!winver"]
+    assert mcp_windbg._resolve_init_commands(None, environ=environ) == [
+        ".load D:\\ext\\extension.dll",
+        "!winver",
+    ]
+
+
+def test_kernel_init_commands_come_from_their_own_variable():
+    environ = {"MCP_WINDBG_INIT_COMMANDS": "!shared", "MCP_WINDBG_KERNEL_INIT_COMMANDS": "!winver"}
+    assert mcp_windbg._resolve_init_commands(
+        None, mcp_windbg.KERNEL_INIT_COMMANDS_ENV, environ
+    ) == ["!winver"]
 
 
 def test_init_command_flags_take_precedence_over_the_environment():
     environ = {"MCP_WINDBG_INIT_COMMANDS": "!from_env"}
-    assert mcp_windbg._resolve_init_commands(["!from_cli"], environ) == ["!from_cli"]
+    assert mcp_windbg._resolve_init_commands(["!from_cli"], environ=environ) == ["!from_cli"]
 
 
 def test_no_init_commands_configured():
-    assert mcp_windbg._resolve_init_commands(None, {}) == []
+    assert mcp_windbg._resolve_init_commands(None, environ={}) == []

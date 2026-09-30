@@ -1,10 +1,10 @@
 name: Init commands run when a session opens
-description: --init-command runs on every new session, before the triage commands, and its output is reported first.
+description: --init-command runs on every new session, before the triage commands, and its output is reported first. --kernel-init-command is skipped for a user-mode dump.
 requires:
   cdb: true
   dump: DemoCrash1.exe.7088.dmp
 server:
-  args: ["--timeout", "120", "--init-command", ".echo MCP_INIT_ONE", "--init-command", ".echo MCP_INIT_TWO"]
+  args: ["--timeout", "120", "--init-command", ".echo MCP_INIT_ONE", "--init-command", ".echo MCP_INIT_TWO", "--kernel-init-command", ".echo MCP_KERNEL_ONLY"]
 steps:
   - call: open_cdb_dump
     arguments:
@@ -16,6 +16,8 @@ steps:
       contains:
         - "### Initialization"
         - "> .echo MCP_INIT_ONE"
+      not_contains:
+        - "MCP_KERNEL_ONLY"
       regex:
         - '(?s)### Initialization.*MCP_INIT_ONE.*MCP_INIT_TWO.*### Crash Information'
 
