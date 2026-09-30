@@ -19,6 +19,8 @@ The `mcp-windbg` entry point is equivalent, if its scripts directory is on your 
 | `--kd-path PATH` | auto-detect | Full path to `kd.exe`, used for kernel debugging. See [Symbols and CDB](#symbols-and-cdb). |
 | `--symbols-path PATH` | `_NT_SYMBOL_PATH` | Symbol search path used when opening a session. |
 | `--no-dump-dir-symbols` | off | Do not auto-add a dump's own directory to the symbol path. |
+| `--init-command COMMAND` | `MCP_WINDBG_INIT_COMMANDS` | Debugger command to run on every new session, before triage. Repeatable. See [Init commands](#init-commands). |
+| `--kernel-init-command COMMAND` | `MCP_WINDBG_KERNEL_INIT_COMMANDS` | Like `--init-command`, but only for kernel targets. Repeatable. See [Init commands](#init-commands). |
 | `--filter-script PATH` | none | Python script with tool-text hooks. See [Filter script hooks](#filter-script-hooks). |
 | `--timeout SECONDS` | `60` | Baseline command/connect timeout; a floor for the per-tool defaults. |
 | `--verbose` | off | Verbose logging to stderr. |
@@ -78,6 +80,36 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
 Per-call symbol paths are also available on the `open_*` tools, see
 [`open_cdb_dump`](tools.md#open_cdb_dump), [`open_cdb_remote`](tools.md#open_cdb_remote), and
 [`open_kd_dump`](tools.md#open_kd_dump).
+
+## Init commands
+
+Use `--init-command` to run your own debugger commands on every session, for example to load a
+debugger extension. They run right after the session opens, before the triage commands, so
+triage can already use the extension. Their output leads the result under `Initialization`.
+
+```json
+"args": [
+  "--init-command", ".load C:\\Extensions\\myext.dll",
+  "--init-command", "!myext.version"
+]
+```
+
+Without `--init-command`, the server reads `MCP_WINDBG_INIT_COMMANDS` from its environment, one
+command per line:
+
+```json
+"env": {
+  "MCP_WINDBG_INIT_COMMANDS": ".load C:\\Extensions\\myext.dll\n!myext.version"
+}
+```
+
+The commands run on every `open_*` tool, dump and live alike, so keep them target-safe.
+
+For commands that only make sense on a kernel target, such as reading the OS version from the
+kernel, use `--kernel-init-command` or `MCP_WINDBG_KERNEL_INIT_COMMANDS` instead. These run after
+the shared ones, on `open_kd_session` and on kernel dumps (`MEMORY.DMP`, kernel minidumps), whether
+opened with `open_kd_dump` or `open_cdb_dump`. The dump's file header decides, not the tool.
+User-mode dumps and `open_cdb_remote` skip them.
 
 ## Filter script hooks
 

@@ -1,0 +1,142 @@
+"""Init commands (--init-command / MCP_WINDBG_INIT_COMMANDS) run on every new session."""
+
+from __future__ import annotations
+
+import pytest
+from mcp.types import CallToolRequestParams
+
+import mcp_windbg
+from mcp_windbg import server as server_module
+
+
+class _RecordingSession:
+    is_live_session = False
+
+    def __init__(self, **kwargs):
+        self.commands: list[str] = []
+        _RecordingSession.last = self
+
+    def send_command(self, command, timeout=None):
+        self.commands.append(command)
+        return [f"OUT:{command}"]
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.fixture
+def make_handler(monkeypatch):
+    monkeypatch.setattr(server_module, "_sessions", {})
+    monkeypatch.setattr(server_module, "CDBSession", _RecordingSession)
+    monkeypatch.setattr(server_module, "KDSession", _RecordingSession)
+
+    def _factory(init_commands, kernel_init_commands=None):
+        captured = {}
+        real_server = server_module.Server
+
+        def record_handlers(*args, **kwargs):
+            captured.update(kwargs)
+            return real_server(*args, **kwargs)
+
+        monkeypatch.setattr(server_module, "Server", record_handlers)
+        server_module._create_server(
+            init_commands=init_commands, kernel_init_commands=kernel_init_commands
+        )
+        return captured["on_call_tool"]
+
+    return _factory
+
+
+OPEN_CALLS = [
+    ("open_cdb_dump", {"dump_path": r"C:\dumps\app.dmp"}, ".lastevent"),
+    ("open_cdb_remote", {"connection_string": "tcp:Port=5005,Server=host"}, "!peb"),
+    ("open_kd_session", {"connection_string": "net:port=50000,key=1.2.3.4"}, "vertarget"),
+    ("open_kd_dump", {"dump_path": r"C:\dumps\MEMORY.DMP"}, "vertarget"),
+]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("tool, arguments, first_triage", OPEN_CALLS)
+async def test_init_commands_run_before_triage_on_every_open(make_handler, tool, arguments, first_triage):
+    handler = make_handler([r".load D:\ext\extension.dll", "!winver"])
+    result = await handler(None, CallToolRequestParams(name=tool, arguments=arguments))
+
+    commands = _RecordingSession.last.commands
+    # The extension must be loaded before triage so triage can use it.
+    assert commands[:3] == [r".load D:\ext\extension.dll", "!winver", first_triage]
+    text = result.content[0].text
+    assert "### Initialization" in text
+    assert "> !winver\nOUT:!winver" in text
+    assert text.index("### Initialization") < text.index("OUT:" + first_triage)
+
+
+@pytest.mark.anyio
+async def test_no_init_commands_means_no_initialization_section(make_handler):
+    handler = make_handler(None)
+    result = await handler(
+        None, CallToolRequestParams(name="open_cdb_dump", arguments={"dump_path": r"C:\dumps\app.dmp"})
+    )
+    assert _RecordingSession.last.commands[0] == ".lastevent"
+    assert "### Initialization" not in result.content[0].text
+
+
+def _dump(tmp_path, header: bytes) -> str:
+    path = tmp_path / "test.dmp"
+    path.write_bytes(header + b"\0" * 64)
+    return str(path)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "tool, arguments, kernel",
+    [
+        ("open_kd_session", {"connection_string": "net:port=50000,key=1.2.3.4"}, True),
+        ("open_cdb_dump", {"dump_path": b"PAGEDU64"}, True),   # MEMORY.DMP opened with cdb
+        ("open_cdb_dump", {"dump_path": b"PAGEDUMP"}, True),   # 32-bit kernel dump
+        ("open_cdb_dump", {"dump_path": b"MDMP"}, False),      # user-mode minidump
+        ("open_kd_dump", {"dump_path": b"PAGEDU64"}, True),    # the kernel dump tool
+        ("open_kd_dump", {"dump_path": b"MDMP"}, False),       # the header decides, not the tool
+        ("open_cdb_remote", {"connection_string": "tcp:Port=5005,Server=host"}, False),
+    ],
+)
+async def test_kernel_init_commands_run_only_on_kernel_targets(make_handler, tmp_path, tool, arguments, kernel):
+    if isinstance(arguments.get("dump_path"), bytes):
+        arguments = {"dump_path": _dump(tmp_path, arguments["dump_path"])}
+    handler = make_handler([r".load D:\ext\extension.dll"], ["!winver"])
+    await handler(None, CallToolRequestParams(name=tool, arguments=arguments))
+
+    commands = _RecordingSession.last.commands
+    assert commands[0] == r".load D:\ext\extension.dll"
+    assert ("!winver" in commands) is kernel
+    if kernel:
+        assert commands[1] == "!winver"  # after the shared ones, before triage
+
+
+def test_an_unreadable_dump_is_not_treated_as_kernel():
+    assert server_module._is_kernel_dump(r"C:\no\such\dump.dmp") is False
+
+
+def test_init_commands_come_from_the_environment_one_per_line():
+    environ = {"MCP_WINDBG_INIT_COMMANDS": ".load D:\\ext\\extension.dll\n\n  !winver  \n"}
+    assert mcp_windbg._resolve_init_commands(None, environ=environ) == [
+        ".load D:\\ext\\extension.dll",
+        "!winver",
+    ]
+
+
+def test_kernel_init_commands_come_from_their_own_variable():
+    environ = {"MCP_WINDBG_INIT_COMMANDS": "!shared", "MCP_WINDBG_KERNEL_INIT_COMMANDS": "!winver"}
+    assert mcp_windbg._resolve_init_commands(
+        None, mcp_windbg.KERNEL_INIT_COMMANDS_ENV, environ
+    ) == ["!winver"]
+
+
+def test_init_command_flags_take_precedence_over_the_environment():
+    environ = {"MCP_WINDBG_INIT_COMMANDS": "!from_env"}
+    assert mcp_windbg._resolve_init_commands(["!from_cli"], environ=environ) == ["!from_cli"]
+
+
+def test_no_init_commands_configured():
+    assert mcp_windbg._resolve_init_commands(None, environ={}) == []

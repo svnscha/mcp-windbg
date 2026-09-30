@@ -144,8 +144,9 @@ Used by [Debug a kernel target](../scenarios/kernel-debugging.md).
 ## open_kd_dump
 
 Open a kernel-mode crash dump with `kd.exe` (`-z`) and run the common analysis commands
-(`vertarget`, `!analyze -v`, and optionally stack, modules, threads). Returns a `kd` session id.
-It takes a complete or kernel memory dump (`C:\Windows\MEMORY.DMP`) or a small memory dump
+(`vertarget`, `!analyze -v`, and optionally stack, modules, threads), after any
+[init commands](cli.md#init-commands). Returns a `kd` session id. It takes a complete, kernel, or
+bitmap memory dump (`C:\Windows\MEMORY.DMP`) or a small memory dump
 (`C:\Windows\Minidump\*.dmp`). A dump is static: there is nothing to break into or resume, so
 [`send_ctrl_break`](#send_ctrl_break) and [`wait_for_break`](#wait_for_break) do not apply.
 

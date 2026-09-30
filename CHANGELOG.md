@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--init-command` (repeatable), or `MCP_WINDBG_INIT_COMMANDS` with one command
+  per line, runs debugger commands on every new session before triage - for
+  example `.load` for a debugger extension. Their output leads the open result
+  under `Initialization`. `--kernel-init-command` /
+  `MCP_WINDBG_KERNEL_INIT_COMMANDS` do the same for kernel targets only: kd
+  sessions and kernel dumps, which are recognized by their file header even when
+  opened with `open_cdb_dump` (#121). Thanks to @RamanaIntel for the feature.
 - An `open_kd_dump` tool that opens a kernel crash dump with `kd.exe` (`-z`): a
-  complete or kernel memory dump (`MEMORY.DMP`) or a small memory dump from
-  `C:\Windows\Minidump`. It runs `vertarget` and `!analyze -v` and returns a
-  `kd` session id for `run_kd_command` and `close_kd_session` (#111). Thanks to
-  @robster7674 for the proposal and the analysis behind it.
+  complete, kernel, or bitmap memory dump (`MEMORY.DMP`) or a small memory dump
+  from `C:\Windows\Minidump`. It runs the init commands, then `vertarget` and
+  `!analyze -v`, and returns a `kd` session id for `run_kd_command` and
+  `close_kd_session` (#111). Thanks to @robster7674 for the proposal and the
+  analysis behind it.
 
 ## [1.3.1] - 2026-09-29
 
