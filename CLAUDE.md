@@ -17,6 +17,8 @@ uv run pytest src/mcp_windbg/tests/ -v                             # full test s
 uv run pytest src/mcp_windbg/tests/ -v -m "not live"              # hermetic subset (no CDB)
 uv run python -m mcp_windbg --verbose                              # run the server (stdio)
 uv run python -m mcp_windbg --transport streamable-http --port 8000   # HTTP transport
+pwsh scripts/Switch-McpWindbg.ps1 Local       # Claude Code in this checkout: use the working copy
+pwsh scripts/Switch-McpWindbg.ps1 Released    # back to the published plugins, updated
 ```
 
 ### Coverage
@@ -81,7 +83,8 @@ src/mcp_windbg/
   filter_script.py   --filter-script loader and tool content hooks
   prompts/           prompt templates (dump-triage.prompt.md)
   tests/             e2e harness: e2e/ (runner + harness), scenarios/*.yaml, dumps/
-scripts/             check-version-consistency.ps1, validate-server-schema.py, Format-Docs.ps1
+scripts/             check-version-consistency.ps1, validate-server-schema.py, Format-Docs.ps1,
+                     Switch-McpWindbg.ps1
 examples/            small C++ programs that crash, for generating test dumps
 docs/                MkDocs user guide (Material), deployed to GitHub Pages
 .github/workflows/   ci.yml -> build-and-test.yml (tests), publish-mcp.yml (PyPI on v* tags),
