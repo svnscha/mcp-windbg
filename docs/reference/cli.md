@@ -19,6 +19,7 @@ The `mcp-windbg` entry point is equivalent, if its scripts directory is on your 
 | `--kd-path PATH` | auto-detect | Full path to `kd.exe`, used for kernel debugging. See [Symbols and CDB](#symbols-and-cdb). |
 | `--symbols-path PATH` | `_NT_SYMBOL_PATH` | Symbol search path used when opening a session. |
 | `--no-dump-dir-symbols` | off | Do not auto-add a dump's own directory to the symbol path. |
+| `--init-command COMMAND` | `MCP_WINDBG_INIT_COMMANDS` | Debugger command to run on every new session, before triage. Repeatable. See [Init commands](#init-commands). |
 | `--filter-script PATH` | none | Python script with tool-text hooks. See [Filter script hooks](#filter-script-hooks). |
 | `--timeout SECONDS` | `60` | Baseline command/connect timeout; a floor for the per-tool defaults. |
 | `--verbose` | off | Verbose logging to stderr. |
@@ -76,6 +77,30 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
 
 Per-call symbol paths are also available on the `open_*` tools, see
 [`open_cdb_dump`](tools.md#open_cdb_dump) and [`open_cdb_remote`](tools.md#open_cdb_remote).
+
+## Init commands
+
+Use `--init-command` to run your own debugger commands on every session, for example to load a
+debugger extension. They run right after the session opens, before the triage commands, so
+triage can already use the extension. Their output leads the result under `Initialization`.
+
+```json
+"args": [
+  "--init-command", ".load C:\\Extensions\\myext.dll",
+  "--init-command", "!myext.version"
+]
+```
+
+Without `--init-command`, the server reads `MCP_WINDBG_INIT_COMMANDS` from its environment, one
+command per line:
+
+```json
+"env": {
+  "MCP_WINDBG_INIT_COMMANDS": ".load C:\\Extensions\\myext.dll\n!myext.version"
+}
+```
+
+The commands run on every `open_*` tool, dump and live alike, so keep them target-safe.
 
 ## Filter script hooks
 
