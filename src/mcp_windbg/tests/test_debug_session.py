@@ -94,6 +94,11 @@ class _FakeProc:
         #: transcript to this file the way cdb/kd do, so the log-content channel
         #: can be exercised without a real multibyte debugger.
         self._log_path = None
+        #: Commands that keep the debugger busy (a long ``!process 0 7`` on a
+        #: dump): they print a first line, then stdin queues behind them until
+        #: CTRL+BREAK cancels them or :meth:`finish_busy` lets them complete.
+        self.busy_commands: set = set()
+        self._busy = False
 
     def _feed(self, text: str):
         for line in text.splitlines():
@@ -132,6 +137,12 @@ class _FakeProc:
             # quit / detach: the real process exits, ending the reader loop
             self._alive = False
             self._out.put(_STOP)
+        elif line in self.busy_commands:
+            self._out.put(f"PARTIAL:{line}")
+            if logging:
+                self._log_write(f"PARTIAL:{line}\r\n")
+            self.running = True
+            self._busy = True
         elif self._resumes_on_go and line.split()[:1] and line.split()[0] in _GO:
             self.running = True
         else:
@@ -164,8 +175,18 @@ class _FakeProc:
 
     def send_signal(self, sig):
         self.signals.append(sig)
-        if self._breaks_on_signal:
+        if not self._breaks_on_signal:
+            return
+        if self._busy:
+            self._busy = False
+            self.target_stops()  # a cancelled command just stops; no banner
+        else:
             self.target_stops("Break instruction exception - code 80000003 (first chance)")
+
+    def finish_busy(self):
+        """The busy command completes on its own, late."""
+        self._busy = False
+        self.target_stops("LATE:output of the slow command")
 
     def terminate(self):
         self._alive = False
@@ -239,6 +260,63 @@ def test_timeout_raises_when_marker_never_arrives(make_session):
     with pytest.raises(DebuggerError) as exc:
         session.send_command("hangs")
     assert "timed out" in str(exc.value).lower()
+
+
+def test_a_dump_command_that_times_out_is_cancelled_and_the_next_one_runs(make_session):
+    """#449: on a kernel dump, `!process 0 7` outruns any sane timeout. Before,
+    only live sessions were broken into, so kd kept running it and every later
+    command - the retry, `!irql`, even `.echo` - queued behind it and timed out."""
+    session, proc = make_session(timeout=1)
+    proc.busy_commands = {"!process 0 7"}
+    with pytest.raises(DebuggerError) as exc:
+        session.send_command("!process 0 7")
+    assert "timed out" in str(exc.value).lower()
+    assert "manual break-in" not in str(exc.value)  # it resynced
+    assert debug_session.signal.CTRL_BREAK_EVENT in proc.signals
+    assert session.send_command("!irql") == ["OUT:!irql"]
+
+
+def test_a_timed_out_command_is_followed_by_a_noop_before_the_next_one(make_session):
+    """#468: if the slow command finished just before the CTRL+BREAK, the break
+    can stay pending on an idle debugger and abort the next real command early.
+    A `.echo` goes in first, so it takes the hit."""
+    session, proc = make_session(timeout=1)
+    proc.busy_commands = {"!process 0 7"}
+    written = []
+    real_write = proc.stdin.write
+    proc.stdin.write = lambda text: (written.append(text), real_write(text))[1]
+    with pytest.raises(DebuggerError):
+        session.send_command("!process 0 7")
+    assert written[-1].startswith(".echo ") and proc.signals
+    written.clear()
+    assert session.send_command("!process 0 0") == ["OUT:!process 0 0"]
+    assert written[0].startswith("!process 0 0")  # nothing else queued ahead of it
+
+
+def test_late_output_of_an_abandoned_dump_command_does_not_lead_the_next_reply(make_session):
+    """If the break-in does not land, the runaway command finishes later. Its
+    output arrives ahead of its own (abandoned) marker and must be dropped, not
+    handed to whichever command waits next."""
+    session, proc = make_session(timeout=1, breaks_on_signal=False)
+    proc.busy_commands = {"!process 0 7"}
+    with pytest.raises(DebuggerError):
+        session.send_command("!process 0 7")
+    threading.Timer(0.2, proc.finish_busy).start()
+    assert session.send_command("!irql", timeout=5) == ["OUT:!irql"]
+
+
+def test_a_cancelled_dump_command_does_not_lead_the_next_reply_from_the_log(make_session, monkeypatch):
+    """#449 on a multibyte code page: replies come from the Unicode log, where
+    the cancelled command's partial output and marker sit ahead of the next
+    command's segment. The next reply must hold only its own output."""
+    monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: True)
+    session, proc = make_session(timeout=1)
+    assert session._log_active is True
+    proc.busy_commands = {"!process 0 7"}
+    with pytest.raises(DebuggerError):
+        session.send_command("!process 0 7")
+    assert session.send_command("!irql") == ["OUT:!irql"]
+    assert session.send_command("k") == ["OUT:k"]
 
 
 def test_timeout_error_preserves_output_seen_before_marker(make_session):
