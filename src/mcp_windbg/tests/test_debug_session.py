@@ -332,6 +332,19 @@ def test_timeout_error_preserves_output_seen_before_marker(make_session):
     assert exc.value.partial_output == ["OUT:!clrstack"]
 
 
+def test_timeout_after_an_abandoned_marker_still_reports_partial_output(make_session):
+    """A late marker from an abandoned command is discarded along with what
+    preceded it. The command that times out after that must still report its
+    own partial output, not an empty or stale list."""
+    session, proc = make_session(timeout=1)
+    proc._out.put(f"{debug_session.MARKER_BASE}_stale")
+    proc._swallow = True
+    with pytest.raises(DebuggerError) as exc:
+        session.send_command("!clrstack", timeout=1)
+
+    assert exc.value.partial_output == ["OUT:!clrstack"]
+
+
 def test_partial_timeout_output_has_line_and_size_limits(make_session):
     session, _ = make_session(timeout=1)
     with session.lock:

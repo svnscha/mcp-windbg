@@ -372,6 +372,7 @@ class DebuggerSession:
                             # stop banner can precede a stray probe marker and
                             # must survive, so this is dump-only.)
                             buffer = []
+                            self._reader_buffer = buffer
                         continue
                     buffer.append(line)
                     self._on_output_line(line)
