@@ -7,9 +7,11 @@ import re
 import subprocess
 import threading
 import time
+import uuid
 from typing import List, Optional
 
 MARKER_BASE = "COMMAND_COMPLETED_MARKER"
+_MARKER_LINE = re.compile(rf"{MARKER_BASE}_(?:[0-9a-f]{{32}}_)?\d+")
 _EXIT_TAIL_LINES = 20
 _LOGGED_PROMPT = re.compile(r"^(?:\[.*\]\s*)?(?:\d+:[^>]*|l?kd)>")
 
@@ -132,6 +134,7 @@ class DebuggerProcess:
         self._io_lock = threading.RLock()
         self.ready_event = threading.Event()
         self._marker_seq = 0
+        self._marker_nonce = uuid.uuid4().hex
         self._expected_marker: Optional[str] = None
         #: True between a go-class command and the next break-in. While set, the
         #: debugger is not reading its input, so the marker protocol is unusable.
@@ -201,13 +204,16 @@ class DebuggerProcess:
                     print(f"DBG > {line}")
 
                 with self.lock:
-                    if MARKER_BASE in line:
-                        # A marker line is ours, never the target's. Either it is
-                        # the one being waited on, or it is an earlier marker we
-                        # abandoned on a timeout - which must not be published as
-                        # if the debugger had printed it.
+                    if MARKER_BASE in line and _LOGGED_PROMPT.match(line):
+                        # Remote transcripts echo another client's command too;
+                        # an echoed command is not its completion output.
                         self._on_output_line(line)
-                        if self._expected_marker and self._expected_marker in line:
+                        continue
+                    if _MARKER_LINE.fullmatch(line):
+                        # Drop abandoned/foreign markers, but only the exact
+                        # standalone output of our pending marker completes it.
+                        self._on_output_line(line)
+                        if self._expected_marker == line:
                             self.output_lines = buffer
                             buffer = []
                             self._reader_buffer = buffer
@@ -396,14 +402,18 @@ class DebuggerProcess:
                     text = handle.read().decode("utf-16-le", errors="replace")
             except OSError:
                 return None
-            first = text.find(marker)
-            second = text.find(marker, first + len(marker)) if first != -1 else -1
-            if first != -1 and second != -1:
-                line_start = text.rfind("\n", 0, first) + 1
-                end_nl = text.find("\n", second)
-                end = len(text) if end_nl == -1 else end_nl + 1
-                self._log_offset += len(text[:end].encode("utf-16-le"))
-                return _extract_log_output(text[:line_start])
+            offset = 0
+            command_start = None
+            for line in text.splitlines(keepends=True):
+                content = line.rstrip("\r\n")
+                prompt = _LOGGED_PROMPT.match(content)
+                if prompt and content[prompt.end():].strip() == f".echo {marker}":
+                    command_start = offset
+                elif content == marker and line.endswith("\n") and command_start is not None:
+                    end = offset + len(line)
+                    self._log_offset += len(text[:end].encode("utf-16-le"))
+                    return _extract_log_output(text[:command_start])
+                offset += len(line)
             if time.time() >= deadline:
                 return None
             time.sleep(0.02)

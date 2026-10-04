@@ -7,12 +7,12 @@ command has finished by echoing a unique marker after it. That protocol lives
 here once; the two session types only differ in how they are launched and how
 they reach their first prompt.
 
-Two robustness properties this base guarantees:
+Robustness properties of this shared implementation:
 
-- **Per-command markers.** Every command echoes ``COMMAND_COMPLETED_MARKER_<n>``
-  with a monotonic ``<n>``. The reader only completes on the marker the current
-  command is waiting for, so a slow command whose output arrives late can never
-  be mistaken for the next command's completion.
+- **Session-unique per-command markers.** Every command echoes
+  ``COMMAND_COMPLETED_MARKER_<nonce>_<n>`` with a random session nonce and a
+  monotonic counter. Only the exact standalone output completes the command;
+  delayed markers, another client's markers and echoed commands cannot do so.
 - **Cancel-on-timeout for live targets.** When a command on a live session
   (user-mode remote or kernel) outruns its timeout, the debugger is still busy
   executing it. We send CTRL+BREAK to break back in, drain to the pending
@@ -139,7 +139,7 @@ class DebuggerSession(DebuggerProcess):
 
     def _next_marker(self) -> str:
         self._marker_seq += 1
-        return f"{MARKER_BASE}_{self._marker_seq}"
+        return f"{MARKER_BASE}_{self._marker_nonce}_{self._marker_seq}"
 
     def _exclusive(self):
         """Acquire the session's I/O lock, or explain why the session is busy.
