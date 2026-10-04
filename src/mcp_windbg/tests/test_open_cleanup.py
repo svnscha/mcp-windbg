@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+
+import anyio
 import pytest
 from mcp.types import CallToolRequestParams
 
@@ -43,6 +46,7 @@ def open_handler(monkeypatch):
             return [f"output: {command}"]
 
         def shutdown(self):
+            self.shutdown_thread = threading.get_ident()
             self.shutdown_calls += 1
             if self.shutdown_failure:
                 raise RuntimeError("cleanup failure")
@@ -82,6 +86,7 @@ async def test_failed_open_closes_only_its_session(open_handler, tool, arguments
         with pytest.raises(server_module.MCPError, match=f"triage failed: {failure}"):
             await handler(None, params)
         assert created[-1].shutdown_calls == 1
+        assert created[-1].shutdown_thread != threading.get_ident()
         assert server_module._sessions == {"existing": unrelated}
 
     session_type.failure = None
@@ -105,6 +110,61 @@ async def test_cleanup_failure_does_not_hide_open_failure(open_handler):
     with pytest.raises(server_module.MCPError, match="triage failed: !peb"):
         await make_handler()(None, CallToolRequestParams(name="open_cdb_remote", arguments={"connection_string": "test remote"}))
     assert created[0].shutdown_calls == 1
+    assert not server_module._sessions
+
+
+@pytest.mark.anyio
+async def test_output_filter_keeps_event_loop_thread(open_handler):
+    event_thread = threading.get_ident()
+
+    class CheckingFilter:
+        def process_input(self, tool_name, arguments, transport, call_id):
+            assert threading.get_ident() == event_thread
+            return arguments
+
+        def process_output(self, tool_name, content, transport, call_id):
+            assert threading.get_ident() == event_thread
+            return content
+
+    make_handler, _, created = open_handler
+    result = await make_handler(CheckingFilter())(None, CallToolRequestParams(name="open_cdb_remote", arguments={"connection_string": "test remote"}))
+    assert "session_id:" in result.content[0].text
+    assert created[0].shutdown_calls == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("tool,arguments,first,second,kind", OPEN_CALLS)
+async def test_cancelled_open_rolls_back_after_worker_finishes(open_handler, monkeypatch, tool, arguments, first, second, kind):
+    make_handler, session_type, created = open_handler
+    started = threading.Event()
+    release = threading.Event()
+    send_command = session_type.send_command
+
+    def blocking_command(self, command, timeout):
+        if command == "!init":
+            started.set()
+            if not release.wait(2):
+                raise RuntimeError("test failed to release open worker")
+        return send_command(self, command, timeout)
+
+    monkeypatch.setattr(session_type, "send_command", blocking_command)
+    handler = make_handler()
+
+    async def open_session():
+        await handler(None, CallToolRequestParams(name=tool, arguments=arguments))
+
+    with anyio.fail_after(5):
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(open_session)
+            try:
+                while not started.is_set():
+                    await anyio.sleep(0)
+                tasks.cancel_scope.cancel()
+            finally:
+                release.set()
+
+    assert created[0].shutdown_calls == 1
+    assert created[0].shutdown_thread != threading.get_ident()
     assert not server_module._sessions
 
 
