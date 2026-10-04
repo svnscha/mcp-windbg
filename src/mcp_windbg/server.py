@@ -22,6 +22,7 @@ from mcp.types import (
     INVALID_PARAMS,
     INTERNAL_ERROR,
 )
+import anyio.lowlevel
 import anyio.to_thread
 from .server_support import (
     CDB_COMMAND_TIMEOUT, CDB_DUMP_OPEN_TIMEOUT, CDB_REMOTE_OPEN_TIMEOUT,
@@ -247,16 +248,20 @@ def _create_server(
         return await anyio.to_thread.run_sync(functools.partial(handler, *args))
 
     async def _run_open_handler(handler, name, arguments, call_id, *settings):
-        def open_and_filter():
-            # An open owns its debugger until triage AND output filtering succeed.
-            # Roll back only this call's session; unrelated sessions may be busy.
-            with ExitStack() as cleanup:
-                content = handler(arguments, *settings, cleanup)
-                result = filter_tool_content(name, content, call_id)
-                cleanup.pop_all()
-                return result
-
-        return await _run_debugger_handler(open_and_filter)
+        # An open owns its debugger until triage AND output filtering succeed.
+        # Roll back only this call's session; unrelated sessions may be busy.
+        cleanup = ExitStack()
+        try:
+            content = await _run_debugger_handler(handler, arguments, *settings, cleanup)
+            result = filter_tool_content(name, content, call_id)
+            await anyio.lowlevel.checkpoint_if_cancelled()
+            cleanup.pop_all()
+            return result
+        finally:
+            # Keep hooks on the event loop, but never block it on shutdown.
+            # Cancellation must not skip the rollback of an undisclosed open.
+            with anyio.CancelScope(shield=True):
+                await _run_debugger_handler(cleanup.close)
 
     async def _dispatch_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
