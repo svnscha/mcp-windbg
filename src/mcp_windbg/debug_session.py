@@ -41,7 +41,8 @@ import time
 from typing import List, Optional
 
 from .debug_process import (
-    DebuggerError, DebuggerExitedError, DebuggerProcess, MARKER_BASE,
+    DebuggerError, DebuggerExitedError, DebuggerPromptTimeoutError,
+    DebuggerContextError, DebuggerProcess, MARKER_BASE,
     MAX_PARTIAL_OUTPUT_LINES, MAX_PARTIAL_OUTPUT_CHARS,
     _acp_is_multibyte, _extract_log_output,
 )
@@ -156,20 +157,33 @@ class DebuggerSession(DebuggerProcess):
             )
         return _ReleaseOnExit(self._io_lock)
 
+    _requires_remote_context = False
+
+    def _wait_for_target_context(self, timeout: float) -> None:
+        """Local engines read markers only when stopped; remote CDB overrides this."""
+        self._wait_for_prompt(timeout)
+
+    def _bounded_reply(self, lines: List[str]) -> List[str]:
+        from .debug_output import BoundedOutput
+        output = BoundedOutput()
+        for line in lines:
+            output.append(line)
+        return output.result()
+
     def _wait_for_prompt(self, timeout: Optional[int] = None) -> None:
-        """Send a bare marker and wait for it, proving the prompt is ready."""
+        """Send a framed marker and wait for transport synchronization."""
         marker = self._next_marker()
         self.ready_event.clear()
         with self.lock:
             self._expected_marker = marker
         doing = "before reaching a prompt"
         self._raise_if_exited(doing)
-        self._write_input(f".echo {marker}\n", doing, "Failed to communicate with debugger")
+        self._write_input(f".echo\n.echo {marker}\n", doing, "Failed to communicate with debugger")
 
-        landed = self.ready_event.wait(timeout or self.timeout)
+        landed = self._wait_ready(timeout or self.timeout)
         self._raise_if_exited(doing)
         if not landed:
-            raise DebuggerError("Timed out waiting for debugger prompt")
+            raise DebuggerPromptTimeoutError("Timed out waiting for debugger prompt")
 
     #: Commands that hand the target back its CPU and do not return to a prompt
     #: on their own. The debugger stops reading stdin until the target stops
@@ -253,6 +267,8 @@ class DebuggerSession(DebuggerProcess):
         """
         if not self.process:
             raise DebuggerError("Debugger process is not running")
+        if self._closing:
+            raise DebuggerError("Session is closed; reopen it or retry cleanup")
         if self._debugger_exited:
             raise DebuggerExitedError(
                 "Debugger process has exited; this session can no longer be used. "
@@ -265,13 +281,13 @@ class DebuggerSession(DebuggerProcess):
             if self.is_live_session:
                 go_at = self._go_segment_index(command)
                 if go_at is not None:
-                    return self._run_then_resume(command, go_at, cmd_timeout)
+                    return self._bounded_reply(self._run_then_resume(command, go_at, cmd_timeout))
 
             # Anything the target printed on the way to stopping - a bugcheck
             # banner, a breakpoint report - is why it stopped, so it leads the
             # output rather than being dropped on the floor.
-            preamble = self._break_in_and_resync() if self._target_running else []
-            return preamble + self._send_marked(command, cmd_timeout, preamble)
+            preamble = self._break_in_and_resync() if (self._target_running or self._requires_remote_context) else []
+            return self._bounded_reply(preamble + self._send_marked(command, cmd_timeout, preamble))
 
     def _enable_unicode_log(self) -> None:
         """On a multibyte code page, mirror output to a UTF-16 log and read
@@ -290,10 +306,11 @@ class DebuggerSession(DebuggerProcess):
             fd, path = tempfile.mkstemp(prefix="mcp_windbg_", suffix=".ulog")
             os.close(fd)
             os.remove(path)  # cdb creates it; a pre-existing file would be appended to
-            self._send_marked(f".logopen /u {path}", self.timeout)
+            self._log_path = path  # Keep ownership even if the open/drain fails.
+            self._send_marked(f'.logopen /u "{path}"', self.timeout)
             if not os.path.exists(path):
+                self._cleanup_log()
                 return
-            self._log_path = path
             self._log_offset = 0
             self._log_active = True
             # The log opens mid-command, so it starts with its banner and the
@@ -302,7 +319,11 @@ class DebuggerSession(DebuggerProcess):
             # in a way that trusting the post-open file size is not.
             self._send_marked(".echo", self.timeout)
         except Exception:
+            from .error_log import log_error
+            log_error("Could not enable the Unicode output log", exc_info=True)
             self._cleanup_log()
+            if self._closing:
+                raise
 
     def _marker_landed(self) -> bool:
         """True if the pending marker arrived just as the deadline expired."""
@@ -323,7 +344,7 @@ class DebuggerSession(DebuggerProcess):
 
         output: List[str] = []
         if prefix:
-            output.extend(self._break_in_and_resync() if self._target_running else [])
+            output.extend(self._break_in_and_resync() if (self._target_running or self._requires_remote_context) else [])
             output.extend(self._send_marked(prefix, cmd_timeout, output))
         output.extend(self._resume_target(rest))
         return output
@@ -343,6 +364,9 @@ class DebuggerSession(DebuggerProcess):
                 resynced = self.ready_event.wait(min(10, max(3, self.timeout)))
             except Exception:
                 resynced = False
+        if not resynced:
+            # A list clear cannot separate late output from the next command.
+            self.shutdown()
         with self.lock:
             self.output_lines = []
             self._expected_marker = None
@@ -402,11 +426,12 @@ class DebuggerSession(DebuggerProcess):
         CTRL+BREAK. An answer means the target never left, or came straight back.
         """
         try:
-            self._wait_for_prompt(RESUME_CONFIRM_TIMEOUT)
+            self._wait_for_target_context(RESUME_CONFIRM_TIMEOUT)
         except DebuggerExitedError:
             raise
-        except DebuggerError:
-            return not self._abandon_marker()
+        except (DebuggerPromptTimeoutError, DebuggerContextError):
+            landed = self._abandon_marker()
+            return self._requires_remote_context or not landed
         return False
 
     def _break_in_and_resync(self) -> List[str]:
@@ -432,11 +457,12 @@ class DebuggerSession(DebuggerProcess):
         except Exception as e:
             raise DebuggerError(f"Failed to break into the running target: {e}")
         try:
-            self._wait_for_prompt(min(10, max(3, self.timeout)))
+            self._wait_for_target_context(min(10, max(3, self.timeout)))
         except DebuggerExitedError:
             raise
-        except DebuggerError:
-            if not self._abandon_marker():
+        except (DebuggerPromptTimeoutError, DebuggerContextError):
+            landed = self._abandon_marker()
+            if self._requires_remote_context or not landed:
                 raise DebuggerError(
                     "Target did not stop after CTRL+BREAK and is still running; "
                     "it may be wedged below the debugger's reach."
@@ -454,11 +480,12 @@ class DebuggerSession(DebuggerProcess):
         printed on the way to stopping is left published for the caller to take.
         """
         try:
-            self._wait_for_prompt(BREAK_IN_PROBE_TIMEOUT)
+            self._wait_for_target_context(BREAK_IN_PROBE_TIMEOUT)
         except DebuggerExitedError:
             raise
-        except DebuggerError:
-            return not self._abandon_marker()
+        except (DebuggerPromptTimeoutError, DebuggerContextError):
+            landed = self._abandon_marker()
+            return self._requires_remote_context or not landed
         return False
 
     def wait_for_break(self, timeout: Optional[int] = None) -> List[str]:
@@ -490,6 +517,19 @@ class DebuggerSession(DebuggerProcess):
             return self._wait_for_break_locked(timeout)
 
     def _wait_for_break_locked(self, timeout: Optional[int]) -> List[str]:
+        if self._requires_remote_context:
+            wait = timeout or DEFAULT_WAIT_FOR_BREAK_TIMEOUT
+            try:
+                self._wait_for_target_context(wait)
+            except DebuggerExitedError:
+                raise
+            except (DebuggerPromptTimeoutError, DebuggerContextError):
+                self._abandon_marker()
+                if self._closing:
+                    raise DebuggerError("Session was closed while waiting for the target to stop")
+                raise DebuggerError(f"Target did not stop within {wait} seconds and is still running") from None
+            self._target_running = False
+            return self._take_output() or ["Target was already stopped; there was nothing to wait for."]
         was_running = self._target_running
         marker = self._next_marker()
         self.ready_event.clear()
@@ -498,10 +538,10 @@ class DebuggerSession(DebuggerProcess):
             self._expected_marker = marker
         doing = "while waiting for the target to stop"
         self._raise_if_exited(doing)
-        self._write_input(f".echo {marker}\n", doing, "Failed to communicate with debugger")
+        self._write_input(f".echo\n.echo {marker}\n", doing, "Failed to communicate with debugger")
 
         wait = timeout or DEFAULT_WAIT_FOR_BREAK_TIMEOUT
-        landed = self.ready_event.wait(wait)
+        landed = self._wait_ready(wait)
         if self._closing:
             raise DebuggerError("Session was closed while waiting for the target to stop")
         self._raise_if_exited(doing)

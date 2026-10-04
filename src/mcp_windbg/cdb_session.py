@@ -14,11 +14,15 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 from typing import List, Optional
 
+from .debug_output import BoundedOutput, LOGGED_PROMPT
 from .debug_session import (
     DebuggerError,
+    DebuggerExitedError,
+    DebuggerContextError,
     DebuggerSession,
     build_debugger_args,
     find_executable,
@@ -88,6 +92,10 @@ class CDBSession(DebuggerSession):
         self.dump_path = dump_path
         self.remote_connection = remote_connection
         self.is_live_session = bool(remote_connection)
+        self._requires_remote_context = self.is_live_session
+        self._remote_context_ready = threading.Event()
+        self._remote_probe_pending = False
+        self._remote_probe_output = BoundedOutput()
         # A -remote client drives a debug engine on the server, so .logopen would
         # open the Unicode log on the server (a path/lifecycle we do not own).
         # The log-output transport is only for sessions whose engine is ours.
@@ -126,32 +134,64 @@ class CDBSession(DebuggerSession):
             super()._startup()
             return
         deadline = time.monotonic() + self.timeout
-        output: List[str] = []
         try:
             super()._startup()
             self._take_output()
             # The open tool promises initial triage, which needs a thread context.
             # A running -remote client can answer a bare .echo without one.
             self.send_ctrl_break()
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    detail = "\n" + "\n".join(output[-20:]) if output else ""
-                    raise CDBError(
-                        "Remote debugger did not provide a thread context after CTRL+BREAK"
-                        + detail
-                    )
-                # Startup owns stdin exclusively. Use the existing marker wait
-                # without normal-command timeout recovery (another 3-10 seconds).
-                self._write_input("r\n", "while checking remote context", "Failed to query registers")
-                self._wait_for_prompt(max(0.001, deadline - time.monotonic()))
-                output = self._take_output()
-                if any(_REGISTER_CONTEXT.match(line) for line in output):
-                    self._target_running = False
-                    return
-                # Pace retries while the asynchronous break request is in flight;
-                # elapsed time or a marker alone never establishes readiness.
-                time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+            self._wait_for_target_context(max(0.001, deadline - time.monotonic()))
+            self._take_output()
+            self._target_running = False
         except BaseException:
             self.shutdown()
             raise
+
+    def _on_output_line(self, line: str) -> None:
+        if not self._remote_probe_pending:
+            return
+        prompt = LOGGED_PROMPT.match(line)
+        if prompt:
+            line = line[prompt.end():].lstrip(" \t")
+        if _REGISTER_CONTEXT.match(line):
+            self._remote_probe_pending = False
+            self._remote_context_ready.set()
+        elif "does not have a current" in line:
+            # A warning is a completed but invalid probe. Retry only after that
+            # reply; a queued r with no reply must never be duplicated.
+            self._remote_probe_pending = False
+
+    def _on_debugger_exit(self) -> None:
+        self._remote_context_ready.set()
+
+    def _wait_for_target_context(self, timeout: float) -> None:
+        if not self._requires_remote_context:
+            super()._wait_for_target_context(timeout)
+            return
+        deadline = time.monotonic() + timeout
+        if not self._remote_probe_pending:
+            self._remote_context_ready.clear()
+        while True:
+            if self._closing:
+                raise CDBError("Session was closed while checking remote context")
+            if self._debugger_exited:
+                raise DebuggerExitedError(self._exited_message("while checking remote context", self._take_output()))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                detail = "\n".join(self._remote_probe_output.result()[-20:])
+                raise DebuggerContextError("Remote debugger did not provide a thread context after CTRL+BREAK\n" + detail)
+            if not self._remote_probe_pending and not self._remote_context_ready.is_set():
+                self._remote_probe_pending = True
+                self._write_input("r\n", "while checking remote context", "Failed to query registers")
+                self._wait_for_prompt(remaining)
+                for line in self._take_output():
+                    self._remote_probe_output.append(line)
+            if self._remote_context_ready.is_set():
+                self._wait_for_prompt(max(0.001, deadline - time.monotonic()))
+                for line in self._take_output():
+                    self._remote_probe_output.append(line)
+                with self.lock:
+                    self.output_lines = self._remote_probe_output.result()
+                self._remote_probe_output = BoundedOutput()
+                return
+            self._remote_context_ready.wait(min(0.05, max(0, deadline - time.monotonic())))

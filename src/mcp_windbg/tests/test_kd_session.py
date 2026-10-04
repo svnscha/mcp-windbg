@@ -58,10 +58,22 @@ class _FakeStdout:
         return self
 
     def __next__(self):
-        item = self._proc._out.get()
-        if item is _STOP:
+        line = self.readline()
+        if not line:
             raise StopIteration
-        return item
+        return line
+
+    def readline(self, size=-1):
+        pending = getattr(self, "_pending", "")
+        if not pending:
+            item = self._proc._out.get()
+            if item is _STOP:
+                return ""
+            pending = item + "\n"
+        if size < 0:
+            size = len(pending)
+        line, self._pending = pending[:size], pending[size:]
+        return line
 
 
 class _FakeKd:

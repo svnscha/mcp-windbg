@@ -1,3 +1,7 @@
+# Runtime error diagnostics (including rotated backups)
+src/mcp_windbg/logs/
+__tmp/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

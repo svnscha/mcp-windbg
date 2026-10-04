@@ -21,6 +21,21 @@ from e2e.harness import SCENARIOS_DIR  # noqa: E402
 from e2e.runner import load_scenario, scenario_markers  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def no_native_kill_for_fake_processes(monkeypatch):
+    from mcp_windbg.debug_process import DebuggerProcess
+    from test_debug_session import _FakeProc
+    terminate = DebuggerProcess._terminate_process
+
+    def kill(session):
+        if isinstance(session.process, _FakeProc):
+            session.process.terminate()
+        else:
+            terminate(session)
+
+    monkeypatch.setattr(DebuggerProcess, "_terminate_process", kill)
+
+
 def pytest_generate_tests(metafunc):
     if "scenario" not in metafunc.fixturenames:
         return

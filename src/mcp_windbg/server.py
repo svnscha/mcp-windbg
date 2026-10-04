@@ -2,7 +2,9 @@ import os
 import functools
 import traceback
 import glob
+import itertools
 import logging
+import threading
 import uuid
 from typing import Dict, List, Optional
 from contextlib import ExitStack, asynccontextmanager
@@ -11,6 +13,7 @@ from .cdb_session import CDBSession
 from .debug_session import DebuggerError
 from .kd_session import KDSession
 from .filter_script import FilterScript, load_filter_script
+from .error_log import log_error
 
 from mcp.shared.exceptions import MCPError
 from mcp.server import Server
@@ -41,6 +44,8 @@ logger = logging.getLogger(__name__)
 # other tool addresses a session by that id. A record tracks the live session
 # object, its kind ("cdb" or "kd"), and a human label for messages.
 _sessions: Dict[str, dict] = {}
+_session_lock = threading.Lock()
+_closing_sessions: set[str] = set()
 
 
 def _new_session_id(kind: str) -> str:
@@ -49,7 +54,8 @@ def _new_session_id(kind: str) -> str:
 
 def _register_session(session, kind: str, label: str, cleanup: ExitStack) -> str:
     session_id = _new_session_id(kind)
-    _sessions[session_id] = {"session": session, "kind": kind, "label": label}
+    with _session_lock:
+        _sessions[session_id] = {"session": session, "kind": kind, "label": label}
     cleanup.callback(_close_session, session_id, kind)
     return session_id
 
@@ -96,21 +102,40 @@ def _require_live_session(session_id: str, what: str):
 
 def _close_session(session_id: str, kind: str, resume: Optional[bool] = None) -> bool:
     """Shut down and forget a session; returns False if id/kind did not match."""
-    record = _sessions.get(session_id)
-    if record is None or record["kind"] != kind:
-        return False
-    # Claim the session before blocking in shutdown. Concurrent close calls must
-    # not shut down the same debugger twice or overwrite its resume policy.
-    record = _sessions.pop(session_id, None)
-    if record is None:
-        return False
-    if resume is not None:
-        record["session"].resume_on_close = resume
+    with _session_lock:
+        record = _sessions.get(session_id)
+        if record is None or record["kind"] != kind or session_id in _closing_sessions:
+            return False
+        _closing_sessions.add(session_id)
     try:
+        if resume is not None:
+            record["session"].resume_on_close = resume
         record["session"].shutdown()
-    except Exception:
-        pass
-    return True
+        with _session_lock:
+            _sessions.pop(session_id, None)
+        return True
+    except Exception as error:
+        log_error("Close failed for %s; session retained", session_id, exc_info=True)
+        raise DebuggerError(f"Could not close {session_id}; retry close_{kind}_session: {error}") from error
+    finally:
+        with _session_lock:
+            _closing_sessions.discard(session_id)
+
+
+def _build_session(cls, kind, label, cleanup, **settings):
+    """Keep a failed constructor retryable if it could not reap its process."""
+    session = cls.__new__(cls)
+    try:
+        cls.__init__(session, **settings)
+    except Exception as error:
+        if getattr(session, "process", None) is not None:
+            recovery_id = _register_session(session, kind, label, cleanup)
+            raise DebuggerError(
+                f"Startup failed: {error}; cleanup incomplete. "
+                f"Retry close_{kind}_session with session_id={recovery_id}"
+            ) from error
+        raise
+    return session
 
 
 async def serve(
@@ -247,21 +272,39 @@ def _create_server(
         # Keep the event loop available for other tools, especially break-in.
         return await anyio.to_thread.run_sync(functools.partial(handler, *args))
 
+    cleanup_limiter = anyio.CapacityLimiter(2)
+    discovery_limiter = anyio.CapacityLimiter(2)
+
+    async def _run_cleanup_handler(handler, *args):
+        # Cleanup must remain available when all normal workers wait for targets.
+        return await anyio.to_thread.run_sync(functools.partial(handler, *args), limiter=cleanup_limiter)
+
     async def _run_open_handler(handler, name, arguments, call_id, *settings):
         # An open owns its debugger until triage AND output filtering succeed.
         # Roll back only this call's session; unrelated sessions may be busy.
         cleanup = ExitStack()
+        failure = None
         try:
             content = await _run_debugger_handler(handler, arguments, *settings, cleanup)
             result = filter_tool_content(name, content, call_id)
             await anyio.lowlevel.checkpoint_if_cancelled()
             cleanup.pop_all()
             return result
+        except BaseException as error:
+            failure = error
+            raise
         finally:
             # Keep hooks on the event loop, but never block it on shutdown.
             # Cancellation must not skip the rollback of an undisclosed open.
             with anyio.CancelScope(shield=True):
-                await _run_debugger_handler(cleanup.close)
+                try:
+                    await _run_cleanup_handler(cleanup.close)
+                except DebuggerError as cleanup_error:
+                    if isinstance(failure, Exception):
+                        raise DebuggerError(f"{failure}; cleanup incomplete: {cleanup_error}") from failure
+                    if failure is None:
+                        raise
+                    # Preserve cancellation; the retained recovery id is logged.
 
     async def _dispatch_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
@@ -269,7 +312,10 @@ def _create_server(
             arguments = filter_tool_arguments(name, arguments, call_id)
 
             if name == "list_dumps":
-                return filter_tool_content(name, _handle_list_dumps(arguments), call_id)
+                content = await anyio.to_thread.run_sync(
+                    functools.partial(_handle_list_dumps, arguments), limiter=discovery_limiter,
+                )
+                return filter_tool_content(name, content, call_id)
 
             if name == "open_cdb_dump":
                 return await _run_open_handler(_handle_open_cdb_dump,
@@ -302,13 +348,13 @@ def _create_server(
                 ), call_id)
 
             if name == "close_cdb_session":
-                return filter_tool_content(name, await _run_debugger_handler(
+                return filter_tool_content(name, await _run_cleanup_handler(
                     _handle_close, CloseCdbSession(**arguments).session_id, "cdb"
                 ), call_id)
 
             if name == "close_kd_session":
                 close_args = CloseKdSession(**arguments)
-                return filter_tool_content(name, await _run_debugger_handler(
+                return filter_tool_content(name, await _run_cleanup_handler(
                     _handle_close, close_args.session_id, "kd", close_args.resume
                 ), call_id)
 
@@ -322,12 +368,15 @@ def _create_server(
             raise MCPError(INVALID_PARAMS, f"Unknown tool: {name}")
 
         except MCPError:
+            log_error("MCP tool %s failed", name, exc_info=True)
             raise
         except DebuggerError as e:
+            log_error("Debugger tool %s failed", name, exc_info=True)
             # An expected debugger failure: its message is the whole story, and a
             # stack trace would repeat it (partial output included) a second time.
             raise MCPError(INTERNAL_ERROR, f"Error executing tool {name}: {e}")
         except Exception as e:
+            log_error("Unexpected tool %s failure", name, exc_info=True)
             traceback_str = traceback.format_exc()
             raise MCPError(INTERNAL_ERROR, f"Error executing tool {name}: {str(e)}\n{traceback_str}")
 
@@ -342,18 +391,24 @@ def _create_server(
             raise MCPError(INVALID_PARAMS, f"Directory not found: {directory}")
 
         pattern = os.path.join(directory, "**", "*.*dmp") if args.recursive else os.path.join(directory, "*.*dmp")
-        dump_files = sorted(glob.glob(pattern, recursive=args.recursive))
+        # ponytail: filesystem-order offset pages avoid retaining/sorting a whole
+        # directory tree; use a persistent index if stable snapshots are needed.
+        page = list(itertools.islice(glob.iglob(pattern, recursive=args.recursive), args.offset, args.offset + args.limit + 1))
+        has_more = len(page) > args.limit
+        dump_files = page[:args.limit]
 
         if not dump_files:
             return [TextContent(type="text", text=f"No crash dump files (*.*dmp) found in {directory}")]
 
-        text = f"Found {len(dump_files)} crash dump file(s) in {directory}:\n\n"
-        for i, dump_file in enumerate(dump_files):
+        text = f"Found {len(dump_files)} crash dump file(s) on this page in {directory} (offset {args.offset}):\n\n"
+        for i, dump_file in enumerate(dump_files, start=args.offset):
             try:
                 size_mb = round(os.path.getsize(dump_file) / (1024 * 1024), 2)
             except (OSError, IOError):
                 size_mb = "unknown"
             text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
+        if has_more:
+            text += f"\nMore dumps available: call list_dumps with offset={args.offset + args.limit}, limit={args.limit}.\n"
         return [TextContent(type="text", text=text)]
 
     def _handle_open_cdb_dump(arguments, cdb_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols, cleanup):
@@ -365,7 +420,7 @@ def _create_server(
         effective = _effective_timeout(args.timeout_seconds, CDB_DUMP_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
         try:
-            session = CDBSession(
+            session = _build_session(CDBSession, "cdb", f"dump {args.dump_path}", cleanup,
                 dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=effective_symbols,
                 timeout=effective, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols,
             )
@@ -388,7 +443,7 @@ def _create_server(
         effective = _effective_timeout(args.timeout_seconds, CDB_REMOTE_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
         try:
-            session = CDBSession(
+            session = _build_session(CDBSession, "cdb", f"remote {args.connection_string}", cleanup,
                 remote_connection=args.connection_string, cdb_path=cdb_path,
                 symbols_path=effective_symbols, timeout=effective, verbose=verbose,
             )
@@ -411,7 +466,7 @@ def _create_server(
         effective = _effective_timeout(args.timeout_seconds, KD_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
         try:
-            session = KDSession(
+            session = _build_session(KDSession, "kd", f"kernel {args.connection_string}", cleanup,
                 kernel_connection=args.connection_string, kd_path=kd_path,
                 symbols_path=effective_symbols, timeout=effective, verbose=verbose,
             )
@@ -434,7 +489,7 @@ def _create_server(
         effective = _effective_timeout(args.timeout_seconds, KD_DUMP_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
         try:
-            session = KDSession(
+            session = _build_session(KDSession, "kd", f"dump {args.dump_path}", cleanup,
                 dump_path=args.dump_path, kd_path=kd_path, symbols_path=effective_symbols,
                 timeout=effective, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols,
             )
@@ -536,14 +591,13 @@ def _create_server(
 # Clean up function to ensure all sessions are closed when the server exits
 def cleanup_sessions():  # pragma: no cover - atexit handler, runs after coverage stops
     """Close all active sessions."""
-    for record in _sessions.values():
+    with _session_lock:
+        records = list(_sessions.items())
+    for session_id, record in records:
         try:
-            session = record.get("session")
-            if session is not None:
-                session.shutdown()
-        except Exception:
-            pass
-    _sessions.clear()
+            _close_session(session_id, record["kind"])
+        except DebuggerError:
+            pass  # Already logged; ownership remains available for another retry.
 
 
 # Register cleanup on module exit

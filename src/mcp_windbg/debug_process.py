@@ -3,22 +3,24 @@ from __future__ import annotations
 
 import locale
 import os
-import re
+from collections import deque
 import subprocess
+import sys
 import threading
 import time
 import uuid
 from typing import List, Optional
 
-MARKER_BASE = "COMMAND_COMPLETED_MARKER"
-_MARKER_LINE = re.compile(rf"{MARKER_BASE}_(?:[0-9a-f]{{32}}_)?\d+")
+from .debug_output import (
+    BoundedOutput, MARKER_BASE, MARKER_LINE as _MARKER_LINE,
+    LOGGED_PROMPT as _LOGGED_PROMPT, MAX_LOG_BYTES, ROTATE_LOG_BYTES,
+    MAX_OUTPUT_LINES as MAX_PARTIAL_OUTPUT_LINES,
+    MAX_OUTPUT_CHARS as MAX_PARTIAL_OUTPUT_CHARS, output_lines, read_log_segment,
+)
+from .error_log import log_error
+
 _EXIT_TAIL_LINES = 20
-_LOGGED_PROMPT = re.compile(r"^(?:\[.*\]\s*)?(?:\d+:[^>]*|l?kd)>")
-
-MAX_PARTIAL_OUTPUT_LINES = 2000
-
-
-MAX_PARTIAL_OUTPUT_CHARS = 64 * 1024
+_SHUTDOWN_GRACE_SECONDS = 2.0
 
 
 class DebuggerError(Exception):
@@ -31,6 +33,14 @@ class DebuggerError(Exception):
 
 class DebuggerExitedError(DebuggerError):
     """The debugger process exited; the session cannot be used again."""
+
+
+class DebuggerPromptTimeoutError(DebuggerError):
+    """The marker did not arrive before a probe deadline."""
+
+
+class DebuggerContextError(DebuggerError):
+    """The remote transport replied but no stopped thread context was proven."""
 
 
 def _debugger_output_encoding() -> str:
@@ -124,6 +134,13 @@ class DebuggerProcess:
         #: lock as marker state so a timeout can retain output before the marker
         #: arrives, even though the reader owns the list itself.
         self._reader_buffer: Optional[List[str]] = None
+        self._reader_truncated = False
+        self._reader_recent = deque(maxlen=_EXIT_TAIL_LINES)
+        self._log_limit_exceeded = False
+        self._last_log_check = 0.0
+        self._shutdown_lock = threading.Lock()
+        self._release_thread: Optional[threading.Thread] = None
+        self._release_done = threading.Event()
         self.lock = threading.Lock()
         #: Serializes whole operations on the debugger's stdin. ``self.lock``
         #: only guards individual field writes; it cannot make "install a
@@ -194,45 +211,78 @@ class DebuggerProcess:
         if not self.process or not self.process.stdout:
             return
 
-        buffer: List[str] = []
+        buffer = BoundedOutput()
+        fragment = False
         with self.lock:
-            self._reader_buffer = buffer
+            self._reader_buffer = buffer.lines
         try:
-            for line in self.process.stdout:
+            for line in output_lines(self.process.stdout):
+                was_fragment, fragment = fragment, not line.endswith("\n")
                 line = line.rstrip("\r\n")
                 if self.verbose:
-                    print(f"DBG > {line}")
-
+                    print(f"DBG > {line}", file=sys.stderr)
+                self._check_log_size()
                 with self.lock:
-                    if MARKER_BASE in line and _LOGGED_PROMPT.match(line):
-                        # Remote transcripts echo another client's command too;
-                        # an echoed command is not its completion output.
-                        self._on_output_line(line)
+                    prompt = _LOGGED_PROMPT.match(line) if not was_fragment else None
+                    payload = line[prompt.end():].lstrip(" \t") if prompt else line
+                    self._on_output_line(line)
+                    if not payload:
                         continue
-                    if _MARKER_LINE.fullmatch(line):
-                        # Drop abandoned/foreign markers, but only the exact
-                        # standalone output of our pending marker completes it.
-                        self._on_output_line(line)
-                        if self._expected_marker == line:
-                            self.output_lines = buffer
-                            buffer = []
-                            self._reader_buffer = buffer
+                    if MARKER_BASE in payload and prompt and payload.startswith(".echo "):
+                        continue  # The echoed input is not completion output.
+                    if not was_fragment and not fragment and _MARKER_LINE.fullmatch(payload):
+                        if self._expected_marker == payload:
+                            self.output_lines = buffer.result()
+                            buffer = BoundedOutput()
+                            self._reader_buffer = buffer.lines
+                            self._reader_truncated = False
                             self._expected_marker = None
                             self.ready_event.set()
-                        continue
+                        continue  # Discard stale/foreign exact marker lines.
+                    self._reader_recent.append(line[:1024])
                     buffer.append(line)
-                    self._on_output_line(line)
-        except (IOError, ValueError, AttributeError) as e:
-            if self.verbose:
-                print(f"Debugger output reader error: {e}")
+                    self._reader_truncated = buffer.truncated
+        except (IOError, ValueError, AttributeError):
+            if not self._closing:
+                log_error("Debugger output reader failed", exc_info=True)
         finally:
-            # Publish what the debugger printed last - often the only record of
-            # why it exited - and wake any waiter rather than let it time out.
             with self.lock:
                 self._debugger_exited = True
-                self.output_lines = buffer
+                if self._expected_marker is not None or buffer.lines:
+                    self.output_lines = buffer.result()
             self._on_debugger_exit()
             self.ready_event.set()
+
+    def _check_log_size(self) -> None:
+        if not self._log_active or time.monotonic() - self._last_log_check < 0.1:
+            return
+        self._last_log_check = time.monotonic()
+        try:
+            if os.path.getsize(self._log_path) > MAX_LOG_BYTES:
+                with self.lock:
+                    if self._log_limit_exceeded:
+                        return
+                    self._log_limit_exceeded = True
+                threading.Thread(target=self._close_oversized_log, daemon=True).start()
+                self.ready_event.set()
+        except OSError:
+            pass
+
+    def _close_oversized_log(self) -> None:
+        try:
+            self.shutdown()
+        except DebuggerError:
+            pass  # shutdown logs the error and keeps ownership for retry.
+
+    def _wait_ready(self, timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while True:
+            self._check_log_size()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return self.ready_event.is_set()
+            if self.ready_event.wait(min(0.1, remaining)):
+                return True
 
     def _exited_message(self, doing: str, tail: List[str]) -> str:
         process = self.process
@@ -250,6 +300,8 @@ class DebuggerProcess:
             # Windows exit codes are often NTSTATUS values, e.g. 0xC0000005.
             status = f" (exit code 0x{code & 0xFFFFFFFF:08X})"
         message = f"Debugger process exited{status} {doing}."
+        with self.lock:
+            tail = list(self._reader_recent) or tail
         if tail:
             message += "\nLast debugger output:\n" + "\n".join(tail[-_EXIT_TAIL_LINES:])
         return message
@@ -257,6 +309,12 @@ class DebuggerProcess:
     def _raise_if_exited(self, doing: str) -> None:
         """Raise DebuggerExitedError if the debugger exited with the current
         marker still pending - i.e. it can never land."""
+        if self._log_limit_exceeded:
+            self.shutdown()
+            raise DebuggerError(
+                "Unicode log exceeded the 8 MiB safety threshold; session closed. "
+                "Narrow the command and reopen the session."
+            )
         with self.lock:
             if not self._debugger_exited or self._expected_marker is None:
                 return
@@ -288,10 +346,10 @@ class DebuggerProcess:
         """Return bounded output read before the current marker arrived."""
         with self.lock:
             lines = list(self._reader_buffer or [])
+            truncated = self._reader_truncated
 
         bounded: List[str] = []
         char_count = 0
-        truncated = False
         for line in lines:
             if len(bounded) >= MAX_PARTIAL_OUTPUT_LINES:
                 truncated = True
@@ -347,16 +405,17 @@ class DebuggerProcess:
             self._expected_marker = marker
         doing = f"while running '{command}'"
         self._raise_if_exited(doing)
-        self._write_input(f"{command}\n.echo {marker}\n", doing, "Failed to send command")
+        # A bare .echo frames a fresh line even on CDB's truncated DBCS pipe.
+        self._write_input(f"{command}\n.echo\n.echo {marker}\n", doing, "Failed to send command")
 
-        landed = self.ready_event.wait(cmd_timeout)
+        landed = self._wait_ready(cmd_timeout)
+        self._raise_if_exited(doing)
         if self._closing:
             raise DebuggerError("Session was closed while the command was running")
-        self._raise_if_exited(doing)
         if not landed and not self._marker_landed():
             partial_output = self._snapshot_partial_output()
             resynced = self._abort_running_command()
-            detail = "" if resynced else " (session may need a manual break-in)"
+            detail = "" if resynced else " (session closed because command synchronization was lost; reopen it)"
             # The break-in output is the only record of why the target stopped
             # and would otherwise die with this exception, so it rides along.
             lost = (
@@ -381,7 +440,11 @@ class DebuggerProcess:
             # has not caught up (it always should, the marker just landed).
             logged = self._read_log_segment(marker)
             if logged is not None:
+                self._rotate_log_if_needed()
                 return logged
+            # Do not reuse an offset that would include this command next time.
+            self._log_active = False
+            log_error("Unicode log boundary missing; falling back to the pipe")
         return pipe_output
 
     # -- Unicode log content channel --------------------------------------
@@ -394,29 +457,19 @@ class DebuggerProcess:
         first is this command's transcript; consuming through the second leaves
         the offset at a clean boundary for the next command.
         """
-        deadline = time.time() + max(2.0, self.timeout / 10)
-        while True:
-            try:
-                with open(self._log_path, "rb") as handle:
-                    handle.seek(self._log_offset)
-                    text = handle.read().decode("utf-16-le", errors="replace")
-            except OSError:
-                return None
-            offset = 0
-            command_start = None
-            for line in text.split("\n"):
-                content = line.rstrip("\r")
-                prompt = _LOGGED_PROMPT.match(content)
-                if prompt and content[prompt.end():].strip() == f".echo {marker}":
-                    command_start = offset
-                elif content == marker and offset + len(line) < len(text) and command_start is not None:
-                    end = offset + len(line) + 1
-                    self._log_offset += len(text[:end].encode("utf-16-le"))
-                    return _extract_log_output(text[:command_start])
-                offset += len(line) + 1
-            if time.time() >= deadline:
-                return None
-            time.sleep(0.02)
+        result = read_log_segment(self._log_path, self._log_offset, marker, self.timeout)
+        if result is None:
+            return None
+        output, self._log_offset = result
+        return output
+
+    def _rotate_log_if_needed(self) -> None:
+        if not self._log_active or os.path.getsize(self._log_path) <= ROTATE_LOG_BYTES:
+            return
+        self._log_active = False  # Avoid recursively rotating the .logclose command.
+        self._send_marked(".logclose", self.timeout)
+        self._cleanup_log()
+        self._enable_unicode_log()
 
     def _cleanup_log(self) -> None:
         self._log_active = False
@@ -434,6 +487,9 @@ class DebuggerProcess:
                 break
             except OSError:
                 time.sleep(0.05)
+        else:
+            log_error("Could not remove Unicode log %s", self._log_path)
+            raise DebuggerError(f"Could not remove Unicode log {self._log_path!r}; retry close")
         self._log_path = None
 
     def _release_target(self) -> None:
@@ -452,6 +508,14 @@ class DebuggerProcess:
             self.process.stdin.write("q\n")
         self.process.stdin.flush()
 
+    def _release_gracefully(self) -> None:
+        try:
+            self._release_target()
+        except Exception:
+            pass  # A broken/full stdin pipe must not prevent the tree kill.
+        finally:
+            self._release_done.set()
+
     def shutdown(self) -> None:
         """Request client exit, then terminate the debugger process.
 
@@ -463,38 +527,56 @@ class DebuggerProcess:
         """
         self._closing = True
         self.ready_event.set()
-        try:
-            if self.process and self.process.poll() is None:
-                try:
-                    self._release_target()
-                    self.process.wait(timeout=2)
-                except Exception:
-                    pass
-
-                if self.process.poll() is None:
-                    self._terminate_process()
-        except Exception as e:
-            if self.verbose:
-                print(f"Error during shutdown: {e}")
-        finally:
-            self.process = None
-            self._cleanup_log()
+        with self._shutdown_lock:
+            try:
+                if self.process and self.process.poll() is None:
+                    if self._release_thread is None or not self._release_thread.is_alive():
+                        self._release_done.clear()
+                        self._release_thread = threading.Thread(target=self._release_gracefully, daemon=True)
+                        self._release_thread.start()
+                    if self._release_done.wait(_SHUTDOWN_GRACE_SECONDS):
+                        try:
+                            self.process.wait(timeout=_SHUTDOWN_GRACE_SECONDS)
+                        except Exception:
+                            pass
+                    if self.process.poll() is None:
+                        self._terminate_process()
+                if self.process:
+                    if self._release_thread is not None:
+                        self._release_thread.join(timeout=2)
+                        if self._release_thread.is_alive():
+                            raise DebuggerError("Debugger release writer did not stop; retry close")
+                    self.reader_thread.join(timeout=2)
+                    if self.reader_thread.is_alive():
+                        raise DebuggerError("Debugger reader did not stop; retry close")
+                    for pipe in (self.process.stdin, self.process.stdout):
+                        close = getattr(pipe, "close", None)
+                        if close:
+                            close()
+                    self.process = None
+                self._cleanup_log()
+            except Exception as error:
+                log_error("Debugger shutdown failed; ownership retained for retry", exc_info=True)
+                pid = f" PID {self.process.pid}" if self.process else ""
+                raise DebuggerError(f"Debugger{pid} shutdown failed; retry close: {error}") from error
 
     def _terminate_process(self) -> None:
         """Kill the debugger process. On Windows use a tree kill: cdb.exe/kd.exe
         launched via the Microsoft Store execution aliases spawn a child that a
         plain terminate() leaves behind holding the target/connection."""
+        process = self.process
         if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
-                capture_output=True,
+            result = subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                capture_output=True, timeout=8, stdin=subprocess.DEVNULL,
             )
+            if result.returncode != 0:
+                raise DebuggerError(f"taskkill failed for PID {process.pid} (exit {result.returncode}); retry close")
         else:  # pragma: no cover - project is Windows-only
-            self.process.terminate()
-        try:
-            self.process.wait(timeout=3)
-        except Exception:
-            pass
+            process.terminate()
+        process.wait(timeout=3)
+        if process.poll() is None:
+            raise DebuggerError(f"Debugger PID {process.pid} is still alive; retry close")
 
     def __enter__(self):  # pragma: no cover - convenience API, not used by the server
         return self

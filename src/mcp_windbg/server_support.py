@@ -67,6 +67,8 @@ class ListDumps(BaseModel):
         description="Directory to search for dump files. Defaults to the configured dump path from the registry."
     )
     recursive: bool = Field(default=False, description="Search subdirectories recursively.")
+    offset: int = Field(default=0, ge=0, description="Skip this many results in filesystem enumeration order; refresh if files change.")
+    limit: int = Field(default=50, ge=1, le=1000, description="Maximum dump paths and sizes returned per page (default 50, maximum 1000).")
 
 
 class OpenCdbDump(BaseModel):
@@ -363,4 +365,3 @@ async def on_get_prompt(ctx, params) -> GetPromptResult:
             ),
         ],
     )
-

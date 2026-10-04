@@ -29,6 +29,20 @@ It is not a magical auto-fix. It is a Python wrapper around `cdb.exe` / `kd.exe`
 - **Text filter hooks** - a `--filter-script` can redact PII/secrets from tool arguments and output before they leave the machine.
 - **stdio or HTTP** - run locally over stdio, or as a streamable-HTTP service you drive from another machine.
 
+## Debugger safety
+
+- Completion markers are session-unique, line-framed and accepted after native CDB/KD prompts, never from echoed input or long-line fragments.
+- Returned output and the reader buffer are capped at 2,000 lines / 65,536 characters; the reader keeps draining and reports truncation. Use narrower debugger commands for larger results.
+- Local Unicode logs rotate after completed commands at 512 KiB. A hung command exceeding the 8 MiB safety threshold closes its session; this polling threshold is not an OS-level disk quota.
+- A remote control `.echo` is not proof that the target stopped: contextual operations verify register output, without repeatedly queuing `r` while a prior probe is pending.
+- If timeout recovery cannot reestablish command synchronization, the session closes rather than allowing stale output into the next command. Reopen it to continue.
+- Close operations have reserved workers. A blocked exit-command write cannot prevent the timed process-tree kill. A failed close does not report success or discard a registered session: its error contains a recovery id for retry. Startup cleanup failures also report the owned debugger PID.
+- Error diagnostics are written asynchronously to `src/mcp_windbg/logs/errors.log`, with three 1 MiB backups. Verbose debugger tracing uses stderr, not the MCP stdout channel.
+
+The Unicode-log workaround requires a local engine; remote clients still use the pipe and can lose multibyte output on affected CDB builds. No wrapper can guarantee recovery from an OS-denied process termination or all native debugger/kernel failures.
+
+Opt-in native verification: `uv run python "src/mcp_windbg/tests/e2e/check_native_protocol.py"` (or add `--cdb "PATH"`). It checks the bundled small dump and a localhost dump server under a 45-second supervisor; it does not use a live process, remote machine, kernel target, or symbol downloads.
+
 ## Use cases
 
 | You have | You want to | Guide |
@@ -46,7 +60,7 @@ Every `open_*` tool returns an opaque **`session_id`** (e.g. `cdb-1a2b3c4d`); pa
 
 | Tool | Purpose |
 |------|---------|
-| `list_dumps` | List crash dump files in a directory |
+| `list_dumps` | List a bounded page of crash dump files (`offset`, `limit`) |
 | `open_cdb_dump` | Open and triage a crash dump |
 | `open_cdb_remote` | Attach to a user-mode remote debug server (`-remote`) |
 | `open_kd_session` | Attach to a kernel target (`-k`, KDNET / named pipe / serial) |

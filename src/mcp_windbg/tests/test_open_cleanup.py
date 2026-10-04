@@ -110,6 +110,34 @@ async def test_cleanup_failure_does_not_hide_open_failure(open_handler):
     with pytest.raises(server_module.MCPError, match="triage failed: !peb"):
         await make_handler()(None, CallToolRequestParams(name="open_cdb_remote", arguments={"connection_string": "test remote"}))
     assert created[0].shutdown_calls == 1
+    assert len(server_module._sessions) == 1
+    session_id = next(iter(server_module._sessions))
+    session_type.shutdown_failure = False
+    assert server_module._close_session(session_id, "cdb")
+    assert not server_module._sessions
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("tool,arguments,first,second,kind", OPEN_CALLS)
+async def test_failed_constructor_cleanup_retains_a_recovery_id(open_handler, monkeypatch, tool, arguments, first, second, kind):
+    make_handler, session_type, created = open_handler
+    original_init = session_type.__init__
+
+    def failed_init(self, **settings):
+        original_init(self, **settings)
+        self.process = object()  # Represents an unreaped child from startup.
+        raise DebuggerError("bootstrap failed")
+
+    monkeypatch.setattr(session_type, "__init__", failed_init)
+    session_type.shutdown_failure = True
+    with pytest.raises(server_module.MCPError, match="bootstrap failed") as failure:
+        await make_handler()(None, CallToolRequestParams(name=tool, arguments=arguments))
+    assert len(server_module._sessions) == 1
+    session_id = next(iter(server_module._sessions))
+    assert session_id in str(failure.value)
+    assert server_module._sessions[session_id]["session"] is created[0]
+    session_type.shutdown_failure = False
+    assert server_module._close_session(session_id, kind)
     assert not server_module._sessions
 
 

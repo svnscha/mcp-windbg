@@ -59,7 +59,7 @@ def test_remote_open_waits_for_real_context(monkeypatch, running, delay):
         assert proc.probes == delay + 1
         assert not proc.running
         assert not session._target_running
-        assert session.send_command("!peb") == ["OUT:!peb"]
+        assert session.send_command("!peb")[-1] == "OUT:!peb"
     finally:
         session.shutdown()
     assert not proc._alive
