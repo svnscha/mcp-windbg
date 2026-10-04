@@ -16,7 +16,7 @@ def test_different_sessions_never_share_a_marker(make_session):
     assert first._next_marker() != second._next_marker()
 
 
-@pytest.mark.parametrize("kind", ["echo", "prefix", "foreign", "target_text"])
+@pytest.mark.parametrize("kind", ["echo", "prefix", "foreign", "target_text", "whitespace"])
 def test_only_exact_standalone_marker_completes_command(make_session, kind):
     session, proc = make_session()
     original_handle = proc._handle
@@ -40,6 +40,8 @@ def test_only_exact_standalone_marker_completes_command(make_session, kind):
             candidate = marker + "0"
         elif kind == "foreign":
             candidate = f"{MARKER_BASE}_{'0' * 32}_{session._marker_seq}"
+        elif kind == "whitespace":
+            candidate = marker + " \t"
         else:
             candidate = f"application mentions {marker}, not a completion"
         candidate_lines.append(candidate)
@@ -66,7 +68,7 @@ def test_only_exact_standalone_marker_completes_command(make_session, kind):
         proc._handle = original_handle
     assert not worker.is_alive()
     expected = ["OUT:r"]
-    if kind == "target_text":
+    if kind in {"target_text", "whitespace"}:
         expected += candidate_lines
     assert outcome == [expected]
 
@@ -85,6 +87,24 @@ def test_unicode_log_uses_complete_lines_not_marker_substrings(tmp_path):
     session._log_offset = 0
     session.timeout = 1
     assert session._read_log_segment(marker) == [
-        f"application mentions {marker}", marker + "0"
+        f"application mentions {marker}"
     ]
+    assert session._log_offset == len(content.encode("utf-16-le"))
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\x85", "\v"])
+def test_unicode_text_does_not_create_a_marker_line(tmp_path, separator):
+    session = DebuggerSession.__new__(DebuggerSession)
+    marker = f"{MARKER_BASE}_{'a' * 32}_2"
+    content = (
+        "0:000> r\r\nOUT:r\r\n"
+        f"0:000> .echo {marker}\r\n"
+        f"noise{separator}{marker}\r\nremaining output\r\n{marker}\r\n"
+    )
+    path = tmp_path / "debugger.log"
+    path.write_bytes(content.encode("utf-16-le"))
+    session._log_path = str(path)
+    session._log_offset = 0
+    session.timeout = 1
+    assert session._read_log_segment(marker) == ["OUT:r"]
     assert session._log_offset == len(content.encode("utf-16-le"))

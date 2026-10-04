@@ -80,7 +80,7 @@ def _extract_log_output(segment: str) -> List[str]:
     that prints nothing yields ``[]``, as the pipe path does.
     """
     lines = [ln.rstrip("\r") for ln in segment.split("\n")]
-    kept = [ln for ln in lines if not _LOGGED_PROMPT.match(ln)]
+    kept = [ln for ln in lines if not _LOGGED_PROMPT.match(ln) and not _MARKER_LINE.fullmatch(ln)]
     while kept and kept[0] == "":
         kept.pop(0)
     while kept and kept[-1] == "":
@@ -199,7 +199,7 @@ class DebuggerProcess:
             self._reader_buffer = buffer
         try:
             for line in self.process.stdout:
-                line = line.rstrip()
+                line = line.rstrip("\r\n")
                 if self.verbose:
                     print(f"DBG > {line}")
 
@@ -404,16 +404,16 @@ class DebuggerProcess:
                 return None
             offset = 0
             command_start = None
-            for line in text.splitlines(keepends=True):
-                content = line.rstrip("\r\n")
+            for line in text.split("\n"):
+                content = line.rstrip("\r")
                 prompt = _LOGGED_PROMPT.match(content)
                 if prompt and content[prompt.end():].strip() == f".echo {marker}":
                     command_start = offset
-                elif content == marker and line.endswith("\n") and command_start is not None:
-                    end = offset + len(line)
+                elif content == marker and offset + len(line) < len(text) and command_start is not None:
+                    end = offset + len(line) + 1
                     self._log_offset += len(text[:end].encode("utf-16-le"))
                     return _extract_log_output(text[:command_start])
-                offset += len(line)
+                offset += len(line) + 1
             if time.time() >= deadline:
                 return None
             time.sleep(0.02)
