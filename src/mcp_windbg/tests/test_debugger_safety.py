@@ -281,7 +281,8 @@ async def test_close_is_not_starved_by_wait_for_break_workers(open_handler, monk
 def test_unicode_log_success_output_is_also_bounded(make_session):
     session, proc = make_session(timeout=1)
     marker = session._next_marker()
-    path = Path(__file__).resolve().parent / "unicode-output.ulog"
+    path = Path(__file__).resolve().parents[3] / "__tmp" / "bounded-unicode-output.ulog"
+    path.parent.mkdir(parents=True, exist_ok=True)
     session._log_path = str(path)
     path.write_bytes(
         ("x" * (2 * debug_process.MAX_PARTIAL_OUTPUT_CHARS)
