@@ -42,7 +42,20 @@ Stack traces full of offsets and no function names mean symbols are not resolvin
 
 - For your own binaries, keep the matching `.pdb` next to the dump (the dump's directory is
   added automatically) or pass an extra path, see [Symbols and CDB](reference/cli.md#symbols-and-cdb).
-- Confirm the machine can reach `https://msdl.microsoft.com`.
+- With automatic dump-directory symbols, that directory is prepended to the explicit
+  symbol path, or to `_NT_SYMBOL_PATH` when no explicit path was supplied.
+- For `-remote`, commands and symbol loading run in the existing debugging **server**.
+  Setting the MCP client's environment does not change an independently launched server.
+  Check `.sympath` there and preserve the project directory when appending the Microsoft
+  symbol server with `.sympath+ srv*C:\\Symbols*https://msdl.microsoft.com/download/symbols`.
+- Confirm the symbol-loading machine can reach `https://msdl.microsoft.com`.
+  `_NT_SYMBOL_PROXY` is optional: SymSrv can use the Windows default proxy. If symbol
+  loading needs an explicit proxy, set `host:port` in the debugging server's launch
+  environment, not just the remote MCP client's. See Microsoft's
+  [proxy documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/firewalls-and-proxy-servers).
+- Use `!sym noisy` followed by `.reload /f ntdll.dll` to distinguish network errors from
+  a missing search path or mismatched PDB, then turn tracing off with `!sym quiet`.
+  This can download symbols and write to the cache.
 
 ## Command timeouts
 

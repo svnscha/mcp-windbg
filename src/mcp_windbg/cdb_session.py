@@ -100,6 +100,8 @@ class CDBSession(DebuggerSession):
 
         # Auto-include the dump's own directory in the symbol search path.
         if auto_dump_dir_symbols and dump_path:
+            # -y replaces the inherited path; keep it when no explicit path was supplied.
+            symbols_path = symbols_path or os.environ.get("_NT_SYMBOL_PATH")
             dump_dir = os.path.dirname(os.path.abspath(dump_path))
             symbols_path = f"{dump_dir};{symbols_path}" if symbols_path else dump_dir
 
