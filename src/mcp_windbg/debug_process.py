@@ -437,13 +437,14 @@ class DebuggerProcess:
         self._log_path = None
 
     def _release_target(self) -> None:
-        """Tell the debugger to release the target before the process is dropped.
+        """Request debugger exit before the client process is dropped.
 
         - A dump session quits with ``q``.
-        - A live user-mode remote detaches with CTRL+B, which resumes the target.
+        - A live user-mode remote exits this client with CTRL+B; it does not
+          promise to resume the independently managed server target.
 
-        Kernel sessions override this: CTRL+B does not resume a kernel target
-        (only ``g`` does), so :class:`~mcp_windbg.kd_session.KDSession` handles it.
+        Kernel sessions override this: only ``g`` resumes a kernel target, so
+        :class:`~mcp_windbg.kd_session.KDSession` handles its release policy.
         """
         if self.is_live_session:
             self.process.stdin.write("\x02")  # CTRL+B detaches a user-mode remote
@@ -452,7 +453,7 @@ class DebuggerProcess:
         self.process.stdin.flush()
 
     def shutdown(self) -> None:
-        """Release the target, then terminate the debugger process.
+        """Request client exit, then terminate the debugger process.
 
         Deliberately does not take ``_io_lock``: closing a session has to work
         while a ``wait_for_break`` is parked on it, which is precisely when the
