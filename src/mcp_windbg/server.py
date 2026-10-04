@@ -6,7 +6,7 @@ import winreg
 import logging
 import uuid
 from typing import Dict, List, Optional
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 
 from .cdb_session import CDBSession
 from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT, DebuggerError
@@ -71,9 +71,10 @@ def _new_session_id(kind: str) -> str:
     return f"{kind}-{uuid.uuid4().hex[:8]}"
 
 
-def _register_session(session, kind: str, label: str) -> str:
+def _register_session(session, kind: str, label: str, cleanup: ExitStack) -> str:
     session_id = _new_session_id(kind)
     _sessions[session_id] = {"session": session, "kind": kind, "label": label}
+    cleanup.callback(_close_session, session_id, kind)
     return session_id
 
 
@@ -521,6 +522,18 @@ def _create_server(
         # Keep the event loop available for other tools, especially break-in.
         return await anyio.to_thread.run_sync(functools.partial(handler, *args))
 
+    async def _run_open_handler(handler, name, arguments, call_id, *settings):
+        def open_and_filter():
+            # An open owns its debugger until triage AND output filtering succeed.
+            # Roll back only this call's session; unrelated sessions may be busy.
+            with ExitStack() as cleanup:
+                content = handler(arguments, *settings, cleanup)
+                result = filter_tool_content(name, content, call_id)
+                cleanup.pop_all()
+                return result
+
+        return await _run_debugger_handler(open_and_filter)
+
     async def _dispatch_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
             call_id = uuid.uuid4().hex
@@ -530,24 +543,24 @@ def _create_server(
                 return filter_tool_content(name, _handle_list_dumps(arguments), call_id)
 
             if name == "open_cdb_dump":
-                return filter_tool_content(name, await _run_debugger_handler(_handle_open_cdb_dump,
-                    arguments, cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols
-                ), call_id)
+                return await _run_open_handler(_handle_open_cdb_dump,
+                    name, arguments, call_id, cdb_path, symbols_path, timeout, verbose, auto_dump_dir_symbols
+                )
 
             if name == "open_cdb_remote":
-                return filter_tool_content(name, await _run_debugger_handler(_handle_open_cdb_remote,
-                    arguments, cdb_path, symbols_path, timeout, verbose
-                ), call_id)
+                return await _run_open_handler(_handle_open_cdb_remote,
+                    name, arguments, call_id, cdb_path, symbols_path, timeout, verbose
+                )
 
             if name == "open_kd_session":
-                return filter_tool_content(name, await _run_debugger_handler(_handle_open_kd_session,
-                    arguments, kd_path, symbols_path, timeout, verbose
-                ), call_id)
+                return await _run_open_handler(_handle_open_kd_session,
+                    name, arguments, call_id, kd_path, symbols_path, timeout, verbose
+                )
 
             if name == "open_kd_dump":
-                return filter_tool_content(name, await _run_debugger_handler(_handle_open_kd_dump,
-                    arguments, kd_path, symbols_path, timeout, verbose, auto_dump_dir_symbols
-                ), call_id)
+                return await _run_open_handler(_handle_open_kd_dump,
+                    name, arguments, call_id, kd_path, symbols_path, timeout, verbose, auto_dump_dir_symbols
+                )
 
             if name == "run_cdb_command":
                 return filter_tool_content(name, await _run_debugger_handler(_handle_run_command,
@@ -614,7 +627,7 @@ def _create_server(
             text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
         return [TextContent(type="text", text=text)]
 
-    def _handle_open_cdb_dump(arguments, cdb_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols):
+    def _handle_open_cdb_dump(arguments, cdb_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols, cleanup):
         # Missing dump_path: help the caller discover dumps (kept from the old tool).
         if not arguments.get("dump_path"):
             return _dump_discovery_help()
@@ -630,7 +643,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open cdb dump session: {e}")
 
-        session_id = _register_session(session, "cdb", f"dump {args.dump_path}")
+        session_id = _register_session(session, "cdb", f"dump {args.dump_path}", cleanup)
         results = [_session_header(session_id, "cdb", f"crash dump {args.dump_path}")]
         results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
 
@@ -641,7 +654,7 @@ def _create_server(
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 
-    def _handle_open_cdb_remote(arguments, cdb_path, symbols_path, server_timeout, verbose):
+    def _handle_open_cdb_remote(arguments, cdb_path, symbols_path, server_timeout, verbose, cleanup):
         args = OpenCdbRemote(**arguments)
         effective = _effective_timeout(args.timeout_seconds, CDB_REMOTE_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
@@ -653,7 +666,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open cdb remote session: {e}")
 
-        session_id = _register_session(session, "cdb", f"remote {args.connection_string}")
+        session_id = _register_session(session, "cdb", f"remote {args.connection_string}", cleanup)
         results = [_session_header(session_id, "cdb", f"remote target {args.connection_string}")]
         results.extend(_init_sections(session, _init_for(kernel=False), effective))
 
@@ -664,7 +677,7 @@ def _create_server(
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 
-    def _handle_open_kd_session(arguments, kd_path, symbols_path, server_timeout, verbose):
+    def _handle_open_kd_session(arguments, kd_path, symbols_path, server_timeout, verbose, cleanup):
         args = OpenKdSession(**arguments)
         effective = _effective_timeout(args.timeout_seconds, KD_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
@@ -676,7 +689,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open kd session: {e}")
 
-        session_id = _register_session(session, "kd", f"kernel {args.connection_string}")
+        session_id = _register_session(session, "kd", f"kernel {args.connection_string}", cleanup)
         results = [_session_header(session_id, "kd", f"kernel target {args.connection_string}")]
         results.extend(_init_sections(session, _init_for(kernel=True), effective))
 
@@ -687,7 +700,7 @@ def _create_server(
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 
-    def _handle_open_kd_dump(arguments, kd_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols):
+    def _handle_open_kd_dump(arguments, kd_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols, cleanup):
         args = OpenKdDump(**arguments)
         effective = _effective_timeout(args.timeout_seconds, KD_DUMP_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
@@ -699,7 +712,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open kd dump session: {e}")
 
-        session_id = _register_session(session, "kd", f"kernel dump {args.dump_path}")
+        session_id = _register_session(session, "kd", f"kernel dump {args.dump_path}", cleanup)
         results = [_session_header(session_id, "kd", f"kernel dump {args.dump_path}")]
         results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
 
