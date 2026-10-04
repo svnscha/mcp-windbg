@@ -13,6 +13,8 @@ connect handshake). The shared subprocess/marker machinery is in
 from __future__ import annotations
 
 import os
+import re
+import time
 from typing import List, Optional
 
 from .debug_session import (
@@ -24,6 +26,9 @@ from .debug_session import (
 
 # Kept as the public error name for user-mode sessions.
 CDBError = DebuggerError
+
+# First register in the default x86/x64/ARM/ARM64/IA64 register display.
+_REGISTER_CONTEXT = re.compile(r"^\s*(?:eax|rax|r0|x0|pc|ip|eip|rip|iip)\s*=\s*[0-9a-f]+", re.I)
 
 # Default paths where cdb.exe might be located.
 DEFAULT_CDB_PATHS = [
@@ -112,3 +117,39 @@ class CDBSession(DebuggerSession):
             timeout=timeout,
             verbose=verbose,
         )
+
+    def _startup(self) -> None:
+        """A remote client's marker proves connectivity, not a stopped target."""
+        if not self.is_live_session:
+            super()._startup()
+            return
+        deadline = time.monotonic() + self.timeout
+        output: List[str] = []
+        try:
+            super()._startup()
+            self._take_output()
+            # The open tool promises initial triage, which needs a thread context.
+            # A running -remote client can answer a bare .echo without one.
+            self.send_ctrl_break()
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    detail = "\n" + "\n".join(output[-20:]) if output else ""
+                    raise CDBError(
+                        "Remote debugger did not provide a thread context after CTRL+BREAK"
+                        + detail
+                    )
+                # Startup owns stdin exclusively. Use the existing marker wait
+                # without normal-command timeout recovery (another 3-10 seconds).
+                self._write_input("r\n", "while checking remote context", "Failed to query registers")
+                self._wait_for_prompt(max(0.001, deadline - time.monotonic()))
+                output = self._take_output()
+                if any(_REGISTER_CONTEXT.match(line) for line in output):
+                    self._target_running = False
+                    return
+                # Pace retries while the asynchronous break request is in flight;
+                # elapsed time or a marker alone never establishes readiness.
+                time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+        except BaseException:
+            self.shutdown()
+            raise
