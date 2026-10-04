@@ -29,8 +29,10 @@ connection string formats:
 
 ## Break in, then inspect
 
-If the target is running, pause it before you inspect state. Ask the model to break in,
-which calls [`send_ctrl_break`](../reference/tools.md#send_ctrl_break):
+Opening the remote session requests CTRL+BREAK and waits for a usable thread context
+before running its initial analysis. The target is stopped when the open succeeds.
+If you later resume it, pause it again before inspecting state, using
+[`send_ctrl_break`](../reference/tools.md#send_ctrl_break):
 
 ```text
 Send CTRL+BREAK to interrupt the target, then show all thread stacks with ~*k
@@ -50,7 +52,7 @@ A typical hang investigation:
 
 ```text
 1. Connect to tcp:Port=5005,Server=192.168.0.100
-2. Send CTRL+BREAK so we can inspect safely
+2. Confirm that opening stopped the target and returned its initial state
 3. Show current state - registers, stack, threads
 4. Run ~*k and identify the thread holding things up
 5. Run !locks to check synchronization objects

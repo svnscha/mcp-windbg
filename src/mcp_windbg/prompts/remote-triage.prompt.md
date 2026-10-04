@@ -23,8 +23,9 @@ follow-up command needs it.
 
 ### Step 2: Break in, if the target is running
 
-Unlike a kernel session, connecting does **not** halt the target. If it is running, pause it
-before inspecting state, or you will read values that are already stale.
+Opening the session requests CTRL+BREAK and confirms a usable thread context before
+initial triage. The target is stopped when Step 1 succeeds. Only request another break
+if the target was resumed afterward.
 
 **Tool:** `send_ctrl_break`
 - **Parameters:**
