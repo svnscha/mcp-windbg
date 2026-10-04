@@ -127,6 +127,7 @@ class CDBSession(DebuggerSession):
         output: List[str] = []
         try:
             super()._startup()
+            self._take_output()
             # The open tool promises initial triage, which needs a thread context.
             # A running -remote client can answer a bare .echo without one.
             self.send_ctrl_break()
@@ -138,7 +139,11 @@ class CDBSession(DebuggerSession):
                         "Remote debugger did not provide a thread context after CTRL+BREAK"
                         + detail
                     )
-                output = self._send_marked("r", remaining)
+                # Startup owns stdin exclusively. Use the existing marker wait
+                # without normal-command timeout recovery (another 3-10 seconds).
+                self._write_input("r\n", "while checking remote context", "Failed to query registers")
+                self._wait_for_prompt(max(0.001, deadline - time.monotonic()))
+                output = self._take_output()
                 if any(_REGISTER_CONTEXT.match(line) for line in output):
                     self._target_running = False
                     return

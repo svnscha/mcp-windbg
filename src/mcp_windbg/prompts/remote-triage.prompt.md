@@ -1,4 +1,4 @@
-Investigate a live user-mode target through a `cdb` debugging server: orient, form a hypothesis, test it against the process, and leave the target running.
+Investigate a live user-mode target through a `cdb` debugging server: orient, form a hypothesis, test it against the process, and explicitly agree on its final execution state.
 
 The target is a **live process**, not a frozen dump. It keeps running unless you break into it, and state changes between commands. Break in before you inspect, and detach cleanly when you are done.
 
@@ -71,7 +71,10 @@ an earlier one, say so rather than smoothing it over.
 - **Parameters:**
   - `session_id`: the id from Step 1
 
-This detaches and lets the target continue.
+This detaches the client; it does not guarantee that the server's target resumes.
+If the user wants the target running, obtain permission and run `g` before closing,
+or ask them to resume it from the server. Do not resume a pre-existing breakpoint
+or crash automatically. Verify and report the final state rather than assuming it.
 
 ## REQUIRED OUTPUT FORMAT:
 
@@ -98,7 +101,8 @@ would distinguish them.]
 1. [The command or check that would confirm or refute the above]
 2. [What to collect if it needs escalating: a full dump, symbols, a repro]
 
-**Session closed:** [Yes, target resumed | No, still attached and why]
+**Session closed:** [Yes | No, still attached and why]
+**Target final state:** [Explicitly resumed | Left stopped | Unknown, check server]
 ```
 
 ## RULES:

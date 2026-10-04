@@ -67,6 +67,15 @@ def test_remote_open_waits_for_real_context(monkeypatch, running, delay):
     assert not session.reader_thread.is_alive()
 
 
+def test_missing_probe_marker_does_not_trigger_extra_timeout_recovery(monkeypatch):
+    proc = _RemoteProc()
+    proc.answer_budget = 1  # Answer the connection handshake, not the r probe.
+    with pytest.raises(CDBError, match="Timed out waiting for debugger prompt"):
+        _open(monkeypatch, proc, timeout=0.15)
+    assert len(proc.signals) == 1
+    assert not proc._alive
+
+
 def test_a_failed_break_request_cleans_up(monkeypatch):
     proc = _RemoteProc(signal_fails=True)
     with pytest.raises(CDBError, match="break request rejected"):

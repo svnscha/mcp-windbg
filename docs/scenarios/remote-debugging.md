@@ -30,7 +30,8 @@ connection string formats:
 ## Break in, then inspect
 
 Opening the remote session requests CTRL+BREAK and waits for a usable thread context
-before running its initial analysis. The target is stopped when the open succeeds.
+before running its initial analysis. This confirms a stopped context at that point;
+other clients of the shared server can still resume the target afterward.
 If you later resume it, pause it again before inspecting state, using
 [`send_ctrl_break`](../reference/tools.md#send_ctrl_break):
 
@@ -68,7 +69,10 @@ Close the connection to tcp:Port=5005,Server=192.168.0.100
 ```
 
 This calls [`close_cdb_session`](../reference/tools.md#close_cdb_session) and releases
-the session.
+this client session. It does not promise to resume the server's target. If the target
+should continue, explicitly confirm and run `g` before closing, or resume it from the
+server. A failed open can also leave it stopped; check the server rather than assuming
+cleanup restored its prior execution state.
 
 ## Related
 
