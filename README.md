@@ -9,6 +9,20 @@
 
 A Model Context Protocol server that bridges AI models with WinDbg for crash dump analysis, user-mode remote debugging, and kernel debugging.
 
+> [!TIP]
+> **Looking for AI debugging built into WinDbg itself?** Microsoft now ships an official
+> WinDbg MCP, starting with WinDbg 1.2610.1001.0. You enable it in WinDbg's MCP service
+> settings, and chat with your active debugging session from VS Code with GitHub Copilot or
+> from the GitHub Copilot CLI. If that is what you want, start there:
+>
+> - [Introducing WinDbg MCP](https://devblogs.microsoft.com/performance-diagnostics/introducing-windbg-mcp-debug-with-natural-language-grounded-in-evidence/) (announcement)
+> - [Set up WinDbg MCP](https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/set-up-windbg-mcp) and the [overview](https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/windbg-mcp-overview)
+> - [Get the latest WinDbg](https://aka.ms/windbg/download)
+>
+> This project is an independent, community-built alternative. It runs `cdb.exe` / `kd.exe`
+> headless, so it fits when you want to use another MCP client, drive a debugger from another machine over HTTP, or script triage across many
+> dumps without opening the WinDbg UI.
+
 <!-- mcp-name: io.github.svnscha/mcp-windbg -->
 
 ## Overview
