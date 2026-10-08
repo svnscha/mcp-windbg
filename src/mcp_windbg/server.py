@@ -133,10 +133,7 @@ def _close_session(session_id: str, kind: str, resume: Optional[bool] = None) ->
         return False
     if resume is not None:
         record["session"].resume_on_close = resume
-    try:
-        record["session"].shutdown()
-    except Exception:
-        pass
+    record["session"].shutdown()
     return True
 
 
@@ -551,7 +548,15 @@ def _create_server(
             arguments = filter_tool_arguments(name, arguments, call_id)
 
             if name == "list_dumps":
-                return filter_tool_content(name, _handle_list_dumps(arguments), call_id)
+                # Off the loop: a glob over a big or remote dump share
+                # blocks it, and break-in has to stay answerable.
+                return filter_tool_content(
+                    name,
+                    await anyio.to_thread.run_sync(
+                        functools.partial(_handle_list_dumps, arguments)
+                    ),
+                    call_id,
+                )
 
             if name == "open_cdb_dump":
                 return await _run_open_handler(_handle_open_cdb_dump,
@@ -742,7 +747,19 @@ def _create_server(
         return [TextContent(type="text", text=text)]
 
     def _handle_close(session_id, kind, resume=None) -> list[TextContent]:
-        if _close_session(session_id, kind, resume):
+        try:
+            closed = _close_session(session_id, kind, resume)
+        except Exception as e:
+            # The record is gone either way, so the id cannot be retried.
+            # Reporting success here would hide a debugger still holding
+            # its target, which is the thing the caller needs to know.
+            raise MCPError(
+                INTERNAL_ERROR,
+                f"Session {session_id} was dropped, but shutting its "
+                f"debugger down failed: {e}. Check for a stray "
+                f"{kind}.exe process.",
+            )
+        if closed:
             return [TextContent(type="text", text=f"Successfully closed {kind} session {session_id}")]
         return [TextContent(type="text", text=f"No active {kind} session found for session_id {session_id}")]
 

@@ -207,3 +207,46 @@ async def test_rollback_does_not_resume_the_target(open_handler, tool, arguments
     assert created[0].shutdown_calls == 1
     assert created[0].resume_on_close is False
     assert not server_module._sessions
+
+
+@pytest.mark.anyio
+async def test_a_close_that_fails_to_shut_down_reports_it(open_handler):
+    """A close used to swallow the shutdown error and still report success.
+
+    The record is dropped either way, so the id cannot be retried, and a
+    debugger left holding its target is exactly what the caller needs to know
+    about.
+    """
+    make_handler, session_type, created = open_handler
+    handler = make_handler()
+    await handler(None, CallToolRequestParams(
+        name="open_cdb_dump", arguments={"dump_path": "app.dmp"}
+    ))
+    session_id = next(iter(server_module._sessions))
+    created[0].shutdown_failure = True
+
+    with pytest.raises(server_module.MCPError, match="cleanup failure"):
+        await handler(None, CallToolRequestParams(
+            name="close_cdb_session", arguments={"session_id": session_id}
+        ))
+
+    assert not server_module._sessions
+
+
+@pytest.mark.anyio
+async def test_list_dumps_keeps_a_stable_order(open_handler, tmp_path):
+    """The order is part of what callers see, so it stays sorted rather than
+    following whatever order the filesystem hands back."""
+    for name in ["zz.dmp", "B.dmp", "a.dmp", "Mid.dmp", "Z0.dmp"]:
+        (tmp_path / name).write_bytes(b"x")
+    make_handler, _, _ = open_handler
+
+    result = await make_handler()(None, CallToolRequestParams(
+        name="list_dumps", arguments={"directory_path": str(tmp_path)}
+    ))
+
+    text = result.content[0].text if hasattr(result, "content") else result[0].text
+    listed = [n for n in ["B.dmp", "Mid.dmp", "Z0.dmp", "a.dmp", "zz.dmp"] if n in text]
+    positions = [text.index(n) for n in listed]
+    assert positions == sorted(positions), f"not in sorted order: {listed}"
+    assert len(listed) == 5

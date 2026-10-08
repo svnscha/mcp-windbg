@@ -135,7 +135,23 @@ class _FakeProc:
                     # command instead, so there the marker is bare.
                     self._log_write(f"{marker}\r\n")
         elif line.startswith(".logopen /u "):
-            self._open_log(line[len(".logopen /u "):].strip())
+            arg = line[len(".logopen /u "):].strip()
+            if arg.startswith('"') and arg.endswith('"'):
+                self._open_log(arg[1:-1])  # cdb strips the quotes
+            elif " " in arg:
+                # Measured on real cdb: unquoted, it takes the first token,
+                # opens a log at that truncated path, and reports the rest as
+                # an error. The intended log is never created, which silently
+                # disables this whole channel.
+                self._out.put(f"Extra character error in '.logopen /u {arg}'")
+                self._open_log(arg.split(" ", 1)[0])
+            else:
+                self._open_log(arg)
+        elif line.startswith(".flood "):
+            # Not a real command. Emits many output lines in one go so the
+            # retention bound can be exercised deterministically.
+            for i in range(int(line.split()[1])):
+                self._out.put(f"flood line {i}")
         elif line in ("q", "\x02"):
             # quit / detach: the real process exits, ending the reader loop
             self._alive = False
@@ -916,3 +932,60 @@ def test_a_live_session_that_cannot_be_resynced_is_left_open(make_session):
 
     assert "manual break-in" in str(err.value)
     assert session.process is not None
+
+
+def test_the_unicode_log_opens_on_a_path_containing_spaces(make_session, monkeypatch, tmp_path):
+    """The log path has to be quoted.
+
+    Measured on real cdb: given an unquoted path with a space in it, it does not
+    merely fail. It opens a log at the truncated prefix, reports "Extra
+    character error", and never creates the intended file, so the whole
+    multibyte channel is silently off. Reachable whenever the resolved temp
+    directory has a space in it, such as a user name with a space.
+    """
+    spaced = tmp_path / "dir with spaces"
+    spaced.mkdir()
+    monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: True)
+
+    real_mkstemp = debug_session.tempfile.mkstemp
+
+    def spaced_mkstemp(*a, **kw):
+        kw["dir"] = str(spaced)
+        return real_mkstemp(*a, **kw)
+
+    monkeypatch.setattr(debug_session.tempfile, "mkstemp", spaced_mkstemp)
+    session, proc = make_session()
+
+    assert session._log_active is True
+    assert session._log_path == proc._log_path   # not a truncated prefix
+    assert " " in session._log_path
+    assert session.send_command("r rip") == ["OUT:r rip"]
+
+
+def test_retained_output_is_bounded_and_says_so(make_session):
+    """A runaway command could print without end and every line was kept.
+    MAX_PARTIAL_OUTPUT_* only ever bounded the diagnostic snapshot, not the
+    output actually stored and returned."""
+    session, _ = make_session()
+    over = debug_session.MAX_RETAINED_LINES + 500
+
+    output = session.send_command(f".flood {over}", timeout=20)
+
+    assert len(output) == debug_session.MAX_RETAINED_LINES + 1
+    assert "output truncated" in output[-1]
+    # Draining continued, so the marker still completed the command and the
+    # session is usable rather than wedged behind the flood.
+    assert session.send_command("r rip") == ["OUT:r rip"]
+
+
+def test_a_single_enormous_line_is_bounded(make_session):
+    """One unterminated line could hold the whole output on its own."""
+    session, proc = make_session()
+    proc._out.put("x" * (debug_session.MAX_RETAINED_LINE_CHARS + 1000))
+
+    output = session.send_command("r rip", timeout=20)
+
+    long_lines = [line for line in output if line.startswith("x")]
+    assert long_lines, "the long line was dropped entirely"
+    assert "line truncated" in long_lines[0]
+    assert len(long_lines[0]) < debug_session.MAX_RETAINED_LINE_CHARS + 200

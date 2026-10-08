@@ -27,7 +27,8 @@ def main():
     parser.add_argument("--symbols-path", type=str, help="Custom symbols path")
     parser.add_argument("--filter-script", type=str, help="Path to a Python script with process_input/process_output tool text hooks")
     parser.add_argument("--timeout", type=int, default=60, help="Baseline command/connect timeout in seconds (floor for per-tool defaults)")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Log debugger traffic and server diagnostics to stderr")
     parser.add_argument("--no-dump-dir-symbols", action="store_true",
                         help="Disable automatic inclusion of the dump file's directory in the symbol search path")
     parser.add_argument("--init-command", action="append", metavar="COMMAND",
@@ -51,6 +52,20 @@ def main():
     parser.add_argument("--port", type=int, default=8000, help="Port to bind HTTP server to (default: 8000)")
 
     args = parser.parse_args()
+
+    if args.verbose:
+        # Without this there is no handler at all, so every logger.info in the
+        # server and in a --filter-script was discarded and --verbose only ever
+        # reached the debugger traffic. stderr, because on the stdio transport
+        # stdout carries the JSON-RPC stream and nothing else may go there.
+        import logging
+        import sys
+
+        logging.basicConfig(
+            stream=sys.stderr,
+            level=logging.INFO,
+            format="%(levelname)s %(name)s: %(message)s",
+        )
 
     auto_dump_dir_symbols = not args.no_dump_dir_symbols
     init_commands = _resolve_init_commands(args.init_command)
