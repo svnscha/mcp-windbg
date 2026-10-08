@@ -40,13 +40,16 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
 from typing import List, Optional
 
 # Detects a CDB/KD prompt line such as ``0:000>`` or ``3: kd>``.
 PROMPT_REGEX = re.compile(r"^\d+:.*>\s*$")
 
-# Base text of the per-command completion marker; a monotonic sequence number is
-# appended so each command waits for its own, distinct marker.
+# Base text of the per-command completion marker. A per-session random nonce and
+# a monotonic sequence number are appended, so each command waits for a marker
+# that is distinct both within this session and across any other client sharing
+# the same debug server.
 MARKER_BASE = "COMMAND_COMPLETED_MARKER"
 
 # How long a tree kill may take before shutdown gives up on it and moves on.
@@ -274,6 +277,11 @@ class DebuggerSession:
         self._io_lock = threading.RLock()
         self.ready_event = threading.Event()
         self._marker_seq = 0
+        #: Random per session, so a marker from one session can never
+        #: complete a command in another. Several clients on one shared
+        #: -remote debug server see each other's output, and a plain
+        #: counter restarts at 1 in every one of them.
+        self._marker_nonce = uuid.uuid4().hex
         self._expected_marker: Optional[str] = None
         #: True between a go-class command and the next break-in. While set, the
         #: debugger is not reading its input, so the marker protocol is unusable.
@@ -360,7 +368,9 @@ class DebuggerSession:
                         # abandoned on a timeout - which must not be published as
                         # if the debugger had printed it.
                         self._on_output_line(line)
-                        if self._expected_marker and self._expected_marker in line:
+                        if self._expected_marker and line.rstrip().endswith(
+                            self._expected_marker
+                        ):
                             self.output_lines = buffer
                             buffer = []
                             self._reader_buffer = buffer
@@ -426,7 +436,7 @@ class DebuggerSession:
 
     def _next_marker(self) -> str:
         self._marker_seq += 1
-        return f"{MARKER_BASE}_{self._marker_seq}"
+        return f"{MARKER_BASE}_{self._marker_nonce}_{self._marker_seq}"
 
     def _take_output(self) -> List[str]:
         """Detach and return whatever the reader has published."""
