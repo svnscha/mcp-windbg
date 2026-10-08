@@ -539,7 +539,18 @@ def _create_server(
             # token. Shielded, because cancellation must not skip the rollback
             # of an open whose id the caller never received.
             with anyio.CancelScope(shield=True):
-                await _run_debugger_handler(cleanup.close)
+                try:
+                    await _run_debugger_handler(cleanup.close)
+                except Exception as cleanup_error:
+                    # Why the open failed is what the caller can act on, so a
+                    # teardown failure must not replace it. The session record
+                    # is gone either way, so there is no id to retry with; log
+                    # it so a stray debugger process is still traceable.
+                    logger.error(
+                        "Rolling back a failed open did not shut its debugger "
+                        "down: %s. Check for a stray debugger process.",
+                        cleanup_error,
+                    )
             raise
 
     async def _dispatch_tool(name: str, arguments: dict) -> list[TextContent]:
