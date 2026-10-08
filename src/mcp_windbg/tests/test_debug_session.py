@@ -73,11 +73,17 @@ class _FakeProc:
         swallow_markers: bool = False,
         resumes_on_go: bool = False,
         breaks_on_signal: bool = True,
+        prompt: str = "0:000> ",
     ):
         self._out: "queue.Queue" = queue.Queue()
         self._swallow = swallow_markers
         self._resumes_on_go = resumes_on_go
         self._breaks_on_signal = breaks_on_signal
+        #: Real cdb/kd write their prompt without a trailing newline, so
+        #: the completion marker always arrives prefixed by it. Emitting a
+        #: bare marker here is what let a strict standalone-line matcher
+        #: pass the suite while wedging every real session.
+        self.prompt = prompt
         self.stdin = _FakeStdin(self)
         self.stdout = _FakeStdout(self)
         self._alive = True
@@ -123,8 +129,10 @@ class _FakeProc:
                     return
                 self.answer_budget -= 1
             if not self._swallow:
-                self._out.put(marker)
+                self._out.put(f"{self.prompt}{marker}")
                 if logging:
+                    # In the transcript the prompt sits on the echoed
+                    # command instead, so there the marker is bare.
                     self._log_write(f"{marker}\r\n")
         elif line.startswith(".logopen /u "):
             self._open_log(line[len(".logopen /u "):].strip())
@@ -215,8 +223,10 @@ def make_session(monkeypatch):
     the returned proc can be switched to swallow markers afterwards."""
     created = []
 
-    def _factory(timeout=5, live=False, breaks_on_signal=True):
-        proc = _FakeProc(resumes_on_go=live, breaks_on_signal=breaks_on_signal)
+    def _factory(timeout=5, live=False, breaks_on_signal=True, prompt="0:000> "):
+        proc = _FakeProc(
+            resumes_on_go=live, breaks_on_signal=breaks_on_signal, prompt=prompt
+        )
         monkeypatch.setattr(debug_session.subprocess, "Popen", lambda *a, **k: proc)
         cls = _LiveSession if live else _Session
         session = cls(
@@ -841,3 +851,40 @@ def test_a_dump_session_always_quits(make_session):
     session._release_target()
 
     assert written == ["q\n"]
+
+
+# The prompt forms real cdb/kd write before a completion marker. The prompt
+# carries no trailing newline, so the marker always shares its line. A matcher
+# that required the marker to stand alone, or that parsed these forms and met
+# one it did not know, would wedge every session of that kind.
+REAL_PROMPTS = [
+    "0:000> ",      # user-mode dump or a stopped remote client
+    "1:001:x86> ",  # second thread of a WOW64 target
+    "8: kd> ",      # kernel, and the processor number varies
+    "lkd> ",        # local kernel
+    "kd> ",
+    "?:???> ",      # connected, but no current process or thread yet
+    "*BUSY* 0:000> ",
+    r"[BOX\user (tcp 1.2.3.4:5)] 0:000> ",  # remote client with a server banner
+]
+
+
+@pytest.mark.parametrize("prompt", REAL_PROMPTS)
+def test_a_prompt_prefixed_marker_completes_the_command(make_session, prompt):
+    """Completion must not depend on recognising the prompt, only on the marker
+    being the last thing on the line."""
+    session, _ = make_session(prompt=prompt)
+
+    assert session.send_command("r rip") == ["OUT:r rip"]
+
+
+def test_each_session_gets_its_own_marker_nonce(make_session):
+    """Markers restart at 1 in every session, so the sequence number alone does
+    not distinguish them. Several clients on one shared -remote debug server see
+    each other's output, where a foreign marker could otherwise complete the
+    wrong command."""
+    first, _ = make_session()
+    second, _ = make_session()
+
+    assert first._marker_nonce != second._marker_nonce
+    assert first._next_marker() != second._next_marker()
