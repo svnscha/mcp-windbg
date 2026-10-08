@@ -888,3 +888,31 @@ def test_each_session_gets_its_own_marker_nonce(make_session):
 
     assert first._marker_nonce != second._marker_nonce
     assert first._next_marker() != second._next_marker()
+
+
+def test_a_dump_that_cannot_be_resynced_is_closed(make_session):
+    """A dump offers no way back from a lost sync: send_ctrl_break rejects a
+    dump session, so leaving it open would strand a wedged debugger whose later
+    output could lead the next command's reply."""
+    session, proc = make_session(timeout=1)
+    proc._swallow = True            # no marker ever lands, so the cancel cannot resync
+    proc._breaks_on_signal = False
+
+    with pytest.raises(debug_session.DebuggerError) as err:
+        session.send_command("!process 0 7", timeout=1)
+
+    assert "was closed" in str(err.value)
+    assert session.process is None   # shutdown ran
+
+
+def test_a_live_session_that_cannot_be_resynced_is_left_open(make_session):
+    """A live target can be rescued by hand, since send_ctrl_break accepts it,
+    so it keeps the session and says so instead."""
+    session, proc = make_session(timeout=1, live=True, breaks_on_signal=False)
+    proc._swallow = True
+
+    with pytest.raises(debug_session.DebuggerError) as err:
+        session.send_command("!peb", timeout=1)
+
+    assert "manual break-in" in str(err.value)
+    assert session.process is not None
