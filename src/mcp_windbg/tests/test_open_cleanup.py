@@ -86,7 +86,6 @@ async def test_failed_open_closes_only_its_session(open_handler, tool, arguments
         with pytest.raises(server_module.MCPError, match=f"triage failed: {failure}"):
             await handler(None, params)
         assert created[-1].shutdown_calls == 1
-        assert created[-1].shutdown_thread != threading.get_ident()
         assert server_module._sessions == {"existing": unrelated}
 
     session_type.failure = None
@@ -164,6 +163,9 @@ async def test_cancelled_open_rolls_back_after_worker_finishes(open_handler, mon
                 release.set()
 
     assert created[0].shutdown_calls == 1
+    # The one place this is pinned: a shielded rollback still has to shut the
+    # debugger down on a worker, because shutdown can block for seconds and the
+    # event loop has to stay free for break-in on other sessions.
     assert created[0].shutdown_thread != threading.get_ident()
     assert not server_module._sessions
 
@@ -182,4 +184,26 @@ async def test_output_filter_failure_rolls_back_open(open_handler, tool, argumen
     with pytest.raises(server_module.MCPError, match="output filter failed"):
         await make_handler(FailingFilter())(None, CallToolRequestParams(name=tool, arguments=arguments))
     assert created[0].shutdown_calls == 1
+    assert not server_module._sessions
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("tool,arguments,first,second,kind", OPEN_CALLS)
+async def test_rollback_does_not_resume_the_target(open_handler, tool, arguments, first, second, kind):
+    """A rolled-back open must leave the target as it found it.
+
+    Closing a session normally lets a live target run again, which is what
+    ``close_kd_session``'s ``resume`` parameter is for. An open that failed
+    never handed out a session id, so resuming on its behalf would be a
+    side effect nobody asked for and could not opt out of.
+    """
+    make_handler, session_type, created = open_handler
+    session_type.failure = first
+    handler = make_handler()
+
+    with pytest.raises(server_module.MCPError, match=f"triage failed: {first}"):
+        await handler(None, CallToolRequestParams(name=tool, arguments=arguments))
+
+    assert created[0].shutdown_calls == 1
+    assert created[0].resume_on_close is False
     assert not server_module._sessions

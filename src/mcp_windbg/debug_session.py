@@ -49,6 +49,9 @@ PROMPT_REGEX = re.compile(r"^\d+:.*>\s*$")
 # appended so each command waits for its own, distinct marker.
 MARKER_BASE = "COMMAND_COMPLETED_MARKER"
 
+# How long a tree kill may take before shutdown gives up on it and moves on.
+TERMINATE_TIMEOUT = 10
+
 # A runaway debugger command can produce output indefinitely. Keep timeout
 # diagnostics useful without turning the error itself into another unbounded
 # response.
@@ -231,6 +234,12 @@ class DebuggerSession:
     #: static dump. Live sessions get their own process group (so CTRL+BREAK can
     #: break in) and are detached with CTRL+B instead of quit with ``q``.
     is_live_session: bool = False
+
+    #: Whether closing this session should let the target run again. Only live
+    #: sessions have anything to resume; a dump ignores it. Set False to close
+    #: without resuming, which is what a rolled-back open does: an open that
+    #: never returned a session id must leave the target as it found it.
+    resume_on_close: bool = True
 
     #: Whether this session's debug engine is our own subprocess (a dump or a
     #: kernel target on the wire), rather than a remote server we are only a
@@ -980,6 +989,11 @@ class DebuggerSession:
         (only ``g`` does), so :class:`~mcp_windbg.kd_session.KDSession` handles it.
         """
         if self.is_live_session:
+            if not self.resume_on_close:
+                # CTRL+B detaches *and* resumes. With resume disabled there is
+                # nothing to send: dropping the client leaves the server's
+                # target exactly as it is, stopped if it was stopped.
+                return
             self.process.stdin.write("\x02")  # CTRL+B detaches a user-mode remote
         else:
             self.process.stdin.write("q\n")
@@ -1018,10 +1032,17 @@ class DebuggerSession:
         launched via the Microsoft Store execution aliases spawn a child that a
         plain terminate() leaves behind holding the target/connection."""
         if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
-                capture_output=True,
-            )
+            try:
+                # Bounded: a rolled-back open runs this on the event loop's
+                # behalf, so an unresponsive taskkill must not hang teardown
+                # and keep the server from exiting.
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
+                    capture_output=True,
+                    timeout=TERMINATE_TIMEOUT,
+                )
+            except subprocess.TimeoutExpired:
+                pass
         else:  # pragma: no cover - project is Windows-only
             self.process.terminate()
         try:

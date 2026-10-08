@@ -803,3 +803,41 @@ def test_a_remote_client_keeps_the_pipe_even_on_a_multibyte_code_page(monkeypatc
         assert session.send_command("r rip") == ["OUT:r rip"]
     finally:
         session.shutdown()
+
+
+def test_a_live_session_detaches_with_ctrl_b_when_it_may_resume(make_session):
+    """The default close of a live user-mode remote resumes the target."""
+    session, proc = make_session(live=True)
+    written: list = []
+    proc.stdin.write = written.append
+
+    session._release_target()
+
+    assert written == ["\x02"]
+
+
+def test_a_live_session_writes_nothing_when_it_may_not_resume(make_session):
+    """CTRL+B detaches *and* resumes, so a session closing with resume disabled
+    must send nothing at all: dropping the client then leaves the server's
+    target exactly as it is. This is what a rolled-back open relies on."""
+    session, proc = make_session(live=True)
+    session.resume_on_close = False
+    written: list = []
+    proc.stdin.write = written.append
+
+    session._release_target()
+
+    assert written == []
+
+
+def test_a_dump_session_always_quits(make_session):
+    """A dump has no target to resume, so resume_on_close does not apply to it
+    and it still quits cleanly rather than being killed."""
+    session, proc = make_session()
+    session.resume_on_close = False
+    written: list = []
+    proc.stdin.write = written.append
+
+    session._release_target()
+
+    assert written == ["q\n"]

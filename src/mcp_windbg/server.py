@@ -72,10 +72,12 @@ def _new_session_id(kind: str) -> str:
     return f"{kind}-{uuid.uuid4().hex[:8]}"
 
 
-def _register_session(session, kind: str, label: str, cleanup: ExitStack) -> str:
+def _register_session(session, kind: str, label: str, *, cleanup: ExitStack) -> str:
     session_id = _new_session_id(kind)
     _sessions[session_id] = {"session": session, "kind": kind, "label": label}
-    cleanup.callback(_close_session, session_id, kind)
+    # resume=False: an open that never returned an id leaves the target as it
+    # found it. Resuming stays an explicit choice through close_kd_session.
+    cleanup.callback(_close_session, session_id, kind, False)
     return session_id
 
 
@@ -518,26 +520,30 @@ def _create_server(
         content = await _dispatch_tool(params.name, params.arguments or {})
         return CallToolResult(content=content)
 
-    async def _run_debugger_handler(handler, *args):
+    async def _run_debugger_handler(handler, *args, **kwargs):
         # Debugger startup, commands, and shutdown can wait for seconds or minutes.
         # Keep the event loop available for other tools, especially break-in.
-        return await anyio.to_thread.run_sync(functools.partial(handler, *args))
+        return await anyio.to_thread.run_sync(functools.partial(handler, *args, **kwargs))
 
     async def _run_open_handler(handler, name, arguments, call_id, *settings):
         # An open owns its debugger until triage AND output filtering succeed.
         # Roll back only this call's session; unrelated sessions may be busy.
         cleanup = ExitStack()
         try:
-            content = await _run_debugger_handler(handler, arguments, *settings, cleanup)
+            content = await _run_debugger_handler(handler, arguments, *settings, cleanup=cleanup)
             result = filter_tool_content(name, content, call_id)
             await anyio.lowlevel.checkpoint_if_cancelled()
             cleanup.pop_all()
             return result
-        finally:
-            # Keep hooks on the event loop, but never block it on shutdown.
-            # Cancellation must not skip the rollback of an undisclosed open.
+        except BaseException:
+            # Only on failure: pop_all() has already disarmed the stack on the
+            # success path, where going through the worker pool a second time
+            # would cost another thread hop and an uncancellable wait for a
+            # token. Shielded, because cancellation must not skip the rollback
+            # of an open whose id the caller never received.
             with anyio.CancelScope(shield=True):
                 await _run_debugger_handler(cleanup.close)
+            raise
 
     async def _dispatch_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
@@ -632,7 +638,7 @@ def _create_server(
             text += f"{i+1}. {dump_file} ({size_mb} MB)\n"
         return [TextContent(type="text", text=text)]
 
-    def _handle_open_cdb_dump(arguments, cdb_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols, cleanup):
+    def _handle_open_cdb_dump(arguments, cdb_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols, *, cleanup):
         # Missing dump_path: help the caller discover dumps (kept from the old tool).
         if not arguments.get("dump_path"):
             return _dump_discovery_help()
@@ -648,7 +654,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open cdb dump session: {e}")
 
-        session_id = _register_session(session, "cdb", f"dump {args.dump_path}", cleanup)
+        session_id = _register_session(session, "cdb", f"dump {args.dump_path}", cleanup=cleanup)
         results = [_session_header(session_id, "cdb", f"crash dump {args.dump_path}")]
         results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
 
@@ -659,7 +665,7 @@ def _create_server(
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 
-    def _handle_open_cdb_remote(arguments, cdb_path, symbols_path, server_timeout, verbose, cleanup):
+    def _handle_open_cdb_remote(arguments, cdb_path, symbols_path, server_timeout, verbose, *, cleanup):
         args = OpenCdbRemote(**arguments)
         effective = _effective_timeout(args.timeout_seconds, CDB_REMOTE_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
@@ -671,7 +677,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open cdb remote session: {e}")
 
-        session_id = _register_session(session, "cdb", f"remote {args.connection_string}", cleanup)
+        session_id = _register_session(session, "cdb", f"remote {args.connection_string}", cleanup=cleanup)
         results = [_session_header(session_id, "cdb", f"remote target {args.connection_string}")]
         results.extend(_init_sections(session, _init_for(kernel=False), effective))
 
@@ -682,7 +688,7 @@ def _create_server(
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 
-    def _handle_open_kd_session(arguments, kd_path, symbols_path, server_timeout, verbose, cleanup):
+    def _handle_open_kd_session(arguments, kd_path, symbols_path, server_timeout, verbose, *, cleanup):
         args = OpenKdSession(**arguments)
         effective = _effective_timeout(args.timeout_seconds, KD_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
@@ -694,7 +700,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open kd session: {e}")
 
-        session_id = _register_session(session, "kd", f"kernel {args.connection_string}", cleanup)
+        session_id = _register_session(session, "kd", f"kernel {args.connection_string}", cleanup=cleanup)
         results = [_session_header(session_id, "kd", f"kernel target {args.connection_string}")]
         results.extend(_init_sections(session, _init_for(kernel=True), effective))
 
@@ -705,7 +711,7 @@ def _create_server(
         results.extend(_optional_sections(session, args, effective))
         return [TextContent(type="text", text="".join(results))]
 
-    def _handle_open_kd_dump(arguments, kd_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols, cleanup):
+    def _handle_open_kd_dump(arguments, kd_path, symbols_path, server_timeout, verbose, auto_dump_dir_symbols, *, cleanup):
         args = OpenKdDump(**arguments)
         effective = _effective_timeout(args.timeout_seconds, KD_DUMP_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
@@ -717,7 +723,7 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open kd dump session: {e}")
 
-        session_id = _register_session(session, "kd", f"kernel dump {args.dump_path}", cleanup)
+        session_id = _register_session(session, "kd", f"kernel dump {args.dump_path}", cleanup=cleanup)
         results = [_session_header(session_id, "kd", f"kernel dump {args.dump_path}")]
         results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
 
