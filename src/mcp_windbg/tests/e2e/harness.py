@@ -26,6 +26,10 @@ from mcp_windbg.kd_session import DEFAULT_KD_PATHS
 #: no target machine - those scenarios skip.
 KERNEL_CONNECTION_ENV = "MCP_WINDBG_KERNEL_CONNECTION"
 
+#: Set this to a built ``mcp-windbg.exe`` to run every scenario against the
+#: standalone binary rather than against ``python -m mcp_windbg``.
+SERVER_EXE_ENV = "MCP_WINDBG_SERVER_EXE"
+
 # Directory layout (this file lives in src/mcp_windbg/tests/e2e/).
 E2E_DIR = Path(__file__).resolve().parent
 TESTS_DIR = E2E_DIR.parent
@@ -66,11 +70,21 @@ def kernel_available() -> bool:
 def server_command(server_args: list[str]) -> tuple[str, list[str]]:
     """Build the (command, args) that hosts the MCP server as a subprocess.
 
+    When ``MCP_WINDBG_SERVER_EXE`` points at a frozen ``mcp-windbg.exe``, the
+    scenarios run against that binary instead of this checkout. That is the only
+    way to prove the standalone build actually serves MCP: the same suite, the
+    same assertions, a different launcher.
+
     When ``MCP_WINDBG_COVERAGE`` is set, the server runs under
     ``coverage run --parallel-mode`` so the hosted process - where all the tool
     dispatch actually executes - is measured. Each subprocess writes its own
     ``.coverage.*`` data file; ``coverage combine`` merges them afterwards.
+    The two are mutually exclusive: a frozen binary carries no coverage.
     """
+    frozen = os.environ.get(SERVER_EXE_ENV)
+    if frozen:
+        return frozen, list(server_args)
+
     module_args = ["-m", "mcp_windbg", *server_args]
     if os.environ.get("MCP_WINDBG_COVERAGE"):
         return sys.executable, ["-m", "coverage", "run", "--parallel-mode", *module_args]
