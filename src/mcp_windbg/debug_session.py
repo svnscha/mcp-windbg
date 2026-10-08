@@ -41,6 +41,7 @@ import re
 import signal
 import subprocess
 import tempfile
+import sys
 import threading
 import time
 import uuid
@@ -57,6 +58,13 @@ MARKER_BASE = "COMMAND_COMPLETED_MARKER"
 
 # How long a tree kill may take before shutdown gives up on it and moves on.
 TERMINATE_TIMEOUT = 10
+
+# What a single command may retain. A runaway command can print without
+# end, and the reader kept every line: MAX_PARTIAL_OUTPUT_* only ever
+# bounded the diagnostic snapshot, not the output actually stored. The
+# transport keeps being drained past these, so markers still land.
+MAX_RETAINED_LINES = 2000
+MAX_RETAINED_LINE_CHARS = 16384
 
 # How many abandoned markers to remember for the Unicode log. One whose
 # command never answers stays at the head, so without a bound the list would
@@ -377,7 +385,9 @@ class DebuggerSession:
             for line in self.process.stdout:
                 line = line.rstrip()
                 if self.verbose:
-                    print(f"DBG > {line}")
+                    # stderr: on the stdio transport stdout carries the
+                    # JSON-RPC stream and nothing else may go there.
+                    print(f"DBG > {line}", file=sys.stderr)
 
                 with self.lock:
                     if MARKER_BASE in line:
@@ -405,11 +415,25 @@ class DebuggerSession:
                             buffer = []
                             self._reader_buffer = buffer
                         continue
-                    buffer.append(line)
+                    if len(line) > MAX_RETAINED_LINE_CHARS:
+                        line = (
+                            line[:MAX_RETAINED_LINE_CHARS]
+                            + f" ... line truncated at "
+                            f"{MAX_RETAINED_LINE_CHARS} characters ..."
+                        )
+                    if len(buffer) < MAX_RETAINED_LINES:
+                        buffer.append(line)
+                    elif len(buffer) == MAX_RETAINED_LINES:
+                        # Say so once, then keep draining so the marker
+                        # still completes the command.
+                        buffer.append(
+                            f"... output truncated at "
+                            f"{MAX_RETAINED_LINES} lines ..."
+                        )
                     self._on_output_line(line)
         except (IOError, ValueError, AttributeError) as e:
             if self.verbose:
-                print(f"Debugger output reader error: {e}")
+                print(f"Debugger output reader error: {e}", file=sys.stderr)
         finally:
             # Publish what the debugger printed last - often the only record of
             # why it exited - and wake any waiter rather than let it time out.
@@ -743,7 +767,11 @@ class DebuggerSession:
             fd, path = tempfile.mkstemp(prefix="mcp_windbg_", suffix=".ulog")
             os.close(fd)
             os.remove(path)  # cdb creates it; a pre-existing file would be appended to
-            self._send_marked(f".logopen /u {path}", self.timeout)
+            # Quoted: on a path containing a space cdb does not merely
+            # fail, it opens a log at the truncated prefix instead and
+            # leaves that file behind, silently disabling this whole
+            # channel. Reachable whenever TEMP has a space in it.
+            self._send_marked(f'.logopen /u "{path}"', self.timeout)
             if not os.path.exists(path):
                 return
             self._log_path = path
@@ -770,7 +798,15 @@ class DebuggerSession:
             try:
                 with open(self._log_path, "rb") as handle:
                     handle.seek(self._log_offset)
-                    text = handle.read().decode("utf-16-le", errors="replace")
+                    raw = handle.read()
+                # UTF-16 is two bytes per code unit and the debugger may
+                # be mid-write, so an odd tail byte is half a character.
+                # Decoding it would shift every character after it; the
+                # offset does not advance past it, so the next read gets
+                # it whole.
+                if len(raw) % 2:
+                    raw = raw[:-1]
+                text = raw.decode("utf-16-le", errors="replace")
             except OSError:
                 return None
             # Step over the segments of commands abandoned on a timeout,
@@ -1099,7 +1135,7 @@ class DebuggerSession:
                     self._terminate_process()
         except Exception as e:
             if self.verbose:
-                print(f"Error during shutdown: {e}")
+                print(f"Error during shutdown: {e}", file=sys.stderr)
         finally:
             self.process = None
             self._cleanup_log()
