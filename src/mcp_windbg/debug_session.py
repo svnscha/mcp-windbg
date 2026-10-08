@@ -13,11 +13,14 @@ Two robustness properties this base guarantees:
   with a monotonic ``<n>``. The reader only completes on the marker the current
   command is waiting for, so a slow command whose output arrives late can never
   be mistaken for the next command's completion.
-- **Cancel-on-timeout for live targets.** When a command on a live session
-  (user-mode remote or kernel) outruns its timeout, the debugger is still busy
-  executing it. We send CTRL+BREAK to break back in, drain to the pending
-  marker, and only then report the timeout - leaving the session resynchronized
-  instead of wedged.
+- **Cancel-on-timeout.** When a command outruns its timeout the debugger is
+  still busy executing it, on a live target and on a static dump alike: a
+  ``!process 0 7`` over a kernel dump runs for minutes, and every command sent
+  after it queues behind it. We send CTRL+BREAK to cancel it, drain to the
+  pending marker, and only then report the timeout, leaving the session
+  resynchronized instead of wedged. If the cancel does not resync, the session
+  has lost its place in the output and is closed rather than left to return one
+  command's output as another's.
 - **Go-class commands do not use the marker at all.** ``g`` and its relatives
   hand the CPU back to the target, and the debugger stops reading stdin until
   the target stops again. Marking them would queue an ``.echo`` the debugger
@@ -54,6 +57,12 @@ MARKER_BASE = "COMMAND_COMPLETED_MARKER"
 
 # How long a tree kill may take before shutdown gives up on it and moves on.
 TERMINATE_TIMEOUT = 10
+
+# How many abandoned markers to remember for the Unicode log. One whose
+# command never answers stays at the head, so without a bound the list would
+# grow with every timeout; past this the oldest is dropped and its segment is
+# left for the ordinary marker search to step over.
+MAX_ABANDONED_LOG_MARKERS = 8
 
 # A runaway debugger command can produce output indefinitely. Keep timeout
 # diagnostics useful without turning the error itself into another unbounded
@@ -292,9 +301,12 @@ class DebuggerSession:
         self._debugger_exited = False
 
         try:
-            creationflags = 0
-            if os.name == "nt" and self.is_live_session:
-                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+            # Every session gets its own process group, so a CTRL+BREAK can
+            # be aimed at it alone: a live session to break into the target,
+            # a dump session to cancel a command that outran its timeout.
+            creationflags = (
+                subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+            )
             self.process: Optional[subprocess.Popen] = subprocess.Popen(
                 launch_args,
                 stdin=subprocess.PIPE,
@@ -318,6 +330,12 @@ class DebuggerSession:
         self._log_path: Optional[str] = None
         self._log_offset = 0
         self._log_active = False
+        #: Markers of commands abandoned on a timeout, oldest first. Their
+        #: segments sit in the log ahead of the next command's, so the next
+        #: log read skips each one once it has landed. Bounded: a marker
+        #: whose command never answers would otherwise sit at the head
+        #: forever and the list would grow with every timeout.
+        self._abandoned_log_markers: List[str] = []
 
         self.reader_thread = threading.Thread(target=self._read_output, daemon=True)
         self.reader_thread.start()
@@ -376,6 +394,16 @@ class DebuggerSession:
                             self._reader_buffer = buffer
                             self._expected_marker = None
                             self.ready_event.set()
+                        elif not self.is_live_session:
+                            # A dump has nothing printing on its own, so
+                            # whatever preceded an abandoned marker is the
+                            # abandoned command's late output. Left in the
+                            # buffer it would lead the next command's reply.
+                            # A live target's stop banner can precede a
+                            # stray probe marker and has to survive, so
+                            # this is dump-only.
+                            buffer = []
+                            self._reader_buffer = buffer
                         continue
                     buffer.append(line)
                     self._on_output_line(line)
@@ -648,8 +676,27 @@ class DebuggerSession:
         self._raise_if_exited(doing)
         if not landed and not self._marker_landed():
             partial_output = self._snapshot_partial_output()
+            if self._log_active:
+                # Before the abort, which queues a marker behind this one.
+                self._abandoned_log_markers.append(marker)
+                del self._abandoned_log_markers[:-MAX_ABANDONED_LOG_MARKERS]
             resynced = self._abort_running_command()
-            detail = "" if resynced else " (session may need a manual break-in)"
+            if resynced:
+                detail = ""
+            elif self.is_live_session:
+                # A live target can still be rescued by hand, since
+                # send_ctrl_break accepts it, so the session is left open.
+                detail = " (session may need a manual break-in)"
+            else:
+                # A dump offers no way back: send_ctrl_break rejects a dump
+                # session, and output still to come cannot be attributed to the
+                # command that produced it. Closing beats both leaving a wedged
+                # session behind and returning one command's output as another's.
+                detail = (
+                    " (the session lost synchronization and was closed;"
+                    " open a new one)"
+                )
+                self.shutdown()
             # The break-in output is the only record of why the target stopped
             # and would otherwise die with this exception, so it rides along.
             lost = (
@@ -726,6 +773,23 @@ class DebuggerSession:
                     text = handle.read().decode("utf-16-le", errors="replace")
             except OSError:
                 return None
+            # Step over the segments of commands abandoned on a timeout,
+            # which sit ahead of this one and would otherwise lead its reply.
+            while self._abandoned_log_markers:
+                stale = self._abandoned_log_markers[0]
+                stale_first = text.find(stale)
+                stale_second = (
+                    text.find(stale, stale_first + len(stale))
+                    if stale_first != -1
+                    else -1
+                )
+                if stale_second == -1:
+                    break  # not logged yet; it may still be on its way
+                stale_nl = text.find("\n", stale_second)
+                stale_end = len(text) if stale_nl == -1 else stale_nl + 1
+                self._log_offset += len(text[:stale_end].encode("utf-16-le"))
+                text = text[stale_end:]
+                self._abandoned_log_markers.pop(0)
             first = text.find(marker)
             second = text.find(marker, first + len(marker)) if first != -1 else -1
             if first != -1 and second != -1:
@@ -781,14 +845,17 @@ class DebuggerSession:
         return output
 
     def _abort_running_command(self) -> bool:
-        """Break into a live target still running a timed-out command.
+        """Cancel a command that outran its timeout.
 
         Sends CTRL+BREAK, then waits briefly for the pending marker to arrive so
         the session lands back at a clean prompt. Returns True if it resynced.
-        For a dump (not live) there is nothing to break into.
+        On a live target this breaks in; on a dump it cancels the command the
+        engine is executing, which the engine reports as "User interrupted
+        operation". Without it every later command on a dump session queued
+        behind the runaway one and timed out as well.
         """
         resynced = False
-        if self.is_live_session and self.process and self.process.poll() is None:
+        if self.process and self.process.poll() is None:
             try:
                 self.process.send_signal(signal.CTRL_BREAK_EVENT)
                 # The queued marker runs once the target breaks in; wait for it.
