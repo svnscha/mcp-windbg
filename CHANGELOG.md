@@ -5,6 +5,51 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-10-09
+
+### Fixed
+
+- A failed `open_*` no longer leaves behind a debugger session the caller cannot
+  address. All four open tools own their debugger until initialization, triage
+  and output filtering have all succeeded; on a failure or a cancelled request
+  that call's session is rolled back and shut down, and unrelated sessions are
+  left alone. A rollback never resumes a live target: an open that never
+  returned a session id should leave the target as it found it, and resuming
+  stays an explicit choice through `close_kd_session`'s `resume` (#125, #136).
+  Thanks to @xiaozhu1337 for the diagnosis, the reproduction and the design.
+- Completion markers are now unique per session. They were numbered from a
+  counter that restarts at 1 in every session, so several clients attached to
+  one shared `-remote` debug server could complete each other's commands, and
+  `..._1` also matched inside `..._10`. Each session now carries a random nonce
+  and the match is anchored at the end of the line (#137). Thanks to
+  @xiaozhu1337 for finding it.
+- A command that outruns its timeout on a **dump** session is now cancelled.
+  Only live targets were broken into before, so on a dump the debugger kept
+  executing the command while every later command queued behind it and timed
+  out as well, wedging the session until it was closed. That is easy to reach
+  now that `open_kd_dump` exists, since a `!process 0 7` over a large kernel
+  dump runs for minutes. If the cancel cannot resynchronize, a live target
+  keeps its session and the manual break-in hint, because `send_ctrl_break`
+  can still rescue it, while a dump session is closed rather than left wedged
+  (#138). Thanks to @robster7674 for the analysis and the fix.
+- The output retained for one command is now bounded, by line count and per
+  line, with a notice saying how it was cut. The transport keeps being drained
+  past the bound, so the command still completes and the session stays usable
+  (#130, #139).
+- `.logopen /u` quotes its path. Given a path containing a space the debugger
+  opened a log at the truncated prefix instead, left that file behind and never
+  created the intended one, which silently disabled the Unicode-log output
+  channel that a multibyte code page depends on. Reachable whenever the
+  resolved temp directory contains a space (#139).
+- A `close_*` that cannot shut its debugger down reports the failure instead of
+  success, so a debugger still holding its target is visible. A failed rollback
+  no longer replaces the error explaining why the open failed (#139).
+- `--verbose` writes to stderr rather than stdout, which on the stdio transport
+  carries the JSON-RPC stream, and it now installs a logging handler at all, so
+  the server's and a `--filter-script`'s own messages actually appear (#139).
+- Dump discovery runs off the event loop, so a glob over a large or remote share
+  no longer blocks a break-in on another session. The order is unchanged (#139).
+
 ## [1.4.0] - 2026-10-01
 
 ### Added
