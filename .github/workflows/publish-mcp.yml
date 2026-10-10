@@ -165,7 +165,9 @@ jobs:
   attach:
     needs: smoke
     if: inputs.tag != ''
-    runs-on: ubuntu-latest
+    # Pinned: the ubuntu-latest label moves to Ubuntu 26 on 2026-10-19,
+    # and a release should not change runner images by surprise.
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
@@ -198,7 +200,7 @@ jobs:
         } >> "$GITHUB_STEP_SUMMARY"
 
   publish-pypi:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-and-test
     if: ${{ !inputs.rehearsal }}
     permissions:

@@ -9,7 +9,9 @@ on:
 
 jobs:
   publish-mcp-registry:
-    runs-on: ubuntu-latest
+    # Pinned: the ubuntu-latest label moves to Ubuntu 26 on 2026-10-19,
+    # and a release should not change runner images by surprise.
+    runs-on: ubuntu-24.04
     permissions:
       id-token: write  # Required for OIDC authentication
       contents: read
