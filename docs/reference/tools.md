@@ -85,6 +85,10 @@ Attach to a user-mode remote debug server (a `cdb`/WinDbg `-server`), launched w
 Returns a `session_id`. For kernel targets use [`open_kd_session`](#open_kd_session) instead:
 `-remote` cannot drive a kernel cable.
 
+If the target is running when the client attaches, the initial triage (`!peb`, `r`) breaks into
+it and the result says so under `Target State`. The target stays stopped until it is resumed
+with `g` or the session is closed, which detaches and resumes it.
+
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `connection_string` | yes | Remote connection string, see formats below. |

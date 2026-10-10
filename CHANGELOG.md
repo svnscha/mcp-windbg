@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `open_cdb_remote` against a debug server whose target is running no longer
+  waits out its whole timeout and fails with "Debugger initialization timed
+  out". A running target reads no commands, so the prompt probe the open
+  relied on could never be answered. The client now waits for its connect
+  banner, which is where connection latency belongs, and then gives the
+  target a short window to answer; silence means it is running, and the
+  session opens in that state. The initial triage then breaks in, as any
+  command on a running target does, the result says so under `Target State`,
+  and the target stays stopped until it is resumed or the session is closed.
+  A failed connect still reports the debugger's own error, and a connect that
+  never completes now says so instead of blaming initialization (#130, item 2;
+  the register-context approach was proposed in #127). Thanks to @xiaozhu1337.
+
 ### Added
 
 - A standalone `mcp-windbg.exe`, for anyone who wants the server without a
