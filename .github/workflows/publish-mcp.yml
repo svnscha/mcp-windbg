@@ -79,7 +79,7 @@ jobs:
     - name: Download the unsigned mcp-windbg.exe
       uses: actions/download-artifact@v8
       with:
-        name: mcp-windbg-exe
+        name: mcp-windbg-exe-unsigned
         path: unsigned/
 
     - name: Sign it

@@ -113,7 +113,10 @@ jobs:
     - name: Upload mcp-windbg.exe
       uses: actions/upload-artifact@v7
       with:
-        name: mcp-windbg-exe
+        # Named for what it is: this job builds before signing, and on a pull
+        # request there is no signing at all. The signed binary is a separate
+        # artifact, and the release asset is the copy anyone should use.
+        name: mcp-windbg-exe-unsigned
         path: dist/mcp-windbg.exe
         retention-days: 7
 
