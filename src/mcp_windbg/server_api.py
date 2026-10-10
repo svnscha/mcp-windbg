@@ -286,4 +286,3 @@ async def on_get_prompt(ctx, params) -> GetPromptResult:
             ),
         ],
     )
-
