@@ -23,8 +23,10 @@ follow-up command needs it.
 
 ### Step 2: Break in, if the target is running
 
-Unlike a kernel session, connecting does **not** halt the target. If it is running, pause it
-before inspecting state, or you will read values that are already stale.
+If the target was running when the client attached, Step 1 broke into it for the initial
+triage and said so under **Target State**, so it is stopped now. It only runs again if it is
+resumed, by you or by someone at the server. If that happened, pause it before inspecting
+state, or you will read values that are already stale.
 
 **Tool:** `send_ctrl_break`
 - **Parameters:**

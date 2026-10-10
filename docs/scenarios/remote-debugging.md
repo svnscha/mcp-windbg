@@ -29,7 +29,9 @@ connection string formats:
 
 ## Break in, then inspect
 
-If the target is running, pause it before you inspect state. Ask the model to break in,
+Inspecting state needs a stopped target. If it is running when you connect, `open_cdb_remote`
+breaks in for its initial triage and says so under **Target State**; the target stays stopped
+until you resume it. If you resume it and want to look again later, ask the model to break in,
 which calls [`send_ctrl_break`](../reference/tools.md#send_ctrl_break):
 
 ```text
@@ -50,7 +52,7 @@ A typical hang investigation:
 
 ```text
 1. Connect to tcp:Port=5005,Server=192.168.0.100
-2. Send CTRL+BREAK so we can inspect safely
+2. Make sure it is stopped (the open breaks in if it was running)
 3. Show current state - registers, stack, threads
 4. Run ~*k and identify the thread holding things up
 5. Run !locks to check synchronization objects

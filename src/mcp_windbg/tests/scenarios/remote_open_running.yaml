@@ -1,0 +1,45 @@
+name: Open a remote session while the target is running
+description: >
+  open_cdb_remote against a debug server whose target is already running (the
+  server's operator resumed it) breaks in for the triage and says so, instead of
+  waiting out the whole timeout and blaming initialization.
+requires:
+  remote:
+    target: ["waitfor.exe", "SomeSignalThatNeverComes"]   # blocks forever once resumed
+steps:
+  - server_input: "g"        # resume the target from the server side before anyone attaches
+    wait: 1.0
+
+  - call: open_cdb_remote
+    arguments:
+      connection_string: "{remote}"
+      timeout_seconds: 30     # the old behaviour needed all of this and then failed
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
+    expect:
+      isError: false
+      contains:
+        - "session_id: cdb-"
+        - "Target State"
+        - "was running when the client attached"
+        - "Break instruction exception"
+        - "Current Registers"
+
+  # Stopped for real: an ordinary command answers without another break-in.
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
+      command: "r"
+    expect:
+      isError: false
+      contains:
+        - "rip="
+      not_contains:
+        - "Break instruction exception"
+
+  - call: close_cdb_session
+    arguments:
+      session_id: "{sid}"
+    expect:
+      contains:
+        - "Successfully closed cdb session"

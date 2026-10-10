@@ -351,6 +351,12 @@ class DebuggerSession:
         self._startup()
         self._enable_unicode_log()
 
+    @property
+    def target_running(self) -> bool:
+        """Whether the target has the CPU as far as this session knows: resumed
+        by a go-class command, or found running when the client attached."""
+        return self._target_running
+
     # -- Subclass hooks ---------------------------------------------------
 
     def _startup(self) -> None:
