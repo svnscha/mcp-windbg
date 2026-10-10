@@ -29,7 +29,7 @@ The guide is a usage guide. Keep it short and scenario-first.
 
 Capability facts come from the code, keep the reference in sync with them:
 
-- Tool names and parameters: `src/mcp_windbg/server.py` (the Pydantic param models and the
+- Tool names and parameters: `src/mcp_windbg/server_api.py` (the Pydantic param models and the
   `list_tools` definitions).
 - Command-line options: `src/mcp_windbg/__init__.py` (the `argparse` setup).
 

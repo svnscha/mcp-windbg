@@ -5,6 +5,16 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Agent-visible remote-server startup warnings in the MCP tool descriptions,
+  remote-triage prompt, optional debug-remote skill, and documentation. They
+  explain the CDB NUL/EOF stdin nonpaged-pool exhaustion risk, the `-noio`
+  workaround, and cleanup of separately launched servers
+  ([CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402)).
+
 ## [1.5.1] - 2026-10-10
 
 ### Fixed

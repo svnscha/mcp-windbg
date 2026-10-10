@@ -30,6 +30,13 @@ steps:
         - open_cdb_remote
         - send_ctrl_break        # a remote target is NOT halted by connecting
         - close_cdb_session
+        - "-server tcp:port=5005 -noio"
+        - "NUL"
+        - "nonpaged pool"
+        - "freeze the host"
+        - "only the MCP client"
+        - "never to the MCP-managed -remote client"
+        - "https://github.com/microsoft/WinDbg-Feedback/issues/402"
 
   - get_prompt: remote-triage
     arguments:
