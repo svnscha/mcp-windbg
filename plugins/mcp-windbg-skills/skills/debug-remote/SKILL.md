@@ -29,6 +29,24 @@ Someone must already be hosting the target. In WinDbg or CDB on that machine:
 If they have not, say so rather than guessing a connection string - there is
 nothing to attach to yet.
 
+## Safety before starting a server
+
+CDB 10.0.29661.1004 with stdin redirected to `NUL` (`/dev/null` or
+`subprocess.DEVNULL`), or a stdin pipe that reaches EOF, can exhaust Windows nonpaged
+pool and freeze the host. For unattended startup use:
+
+```text
+cdb -server tcp:port=5005 -noio <program>
+```
+
+Keep `-server` and its transport first, followed by `-noio`. This disables local
+console I/O; use the remote client for commands and output. Apply `-noio` only to
+the external `-server` process, never to the MCP-managed -remote client. Never use
+NUL/EOF stdin without `-noio`. Arrange cleanup before launching, including failed
+connections and interrupted investigations; record the spawned server PID. If
+`Could not write to pipe, 1450` repeats, stop only your owned server instead of
+retrying. See [the CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402).
+
 ## Connecting
 
 `open_cdb_remote` with the connection string:
@@ -60,7 +78,9 @@ usually worse than an unanalyzed one:
 - Any ordinary command breaks in automatically first.
 
 `close_cdb_session` when finished. Say plainly whether the target was left
-running or halted, so nobody discovers a frozen process an hour later.
+running or halted, so nobody discovers a frozen process an hour later. Closing
+the session closes only the MCP client, not the external debug server. Separately
+stop any server you started and verify it exited; leave pre-existing servers alone.
 
 ## Reporting
 

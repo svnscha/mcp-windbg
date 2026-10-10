@@ -21,6 +21,21 @@ process by PID. If the user wants a local process, tell them to start a `cdb -se
 first. The first output line carries a `session_id` (like `cdb-1a2b3c4d`) - keep it, every
 follow-up command needs it.
 
+**Safety before starting a server:** CDB 10.0.29661.1004 with stdin redirected to `NUL`
+(`/dev/null` or `subprocess.DEVNULL`), or a stdin pipe that reaches EOF, can exhaust Windows
+nonpaged pool and freeze the host. For unattended startup use:
+
+```text
+cdb -server tcp:port=5005 -noio <program>
+```
+
+Keep `-server` and its transport first, followed by `-noio`. This disables local console I/O;
+use the remote client for commands and output. Apply `-noio` only to the external `-server`
+process, never to the MCP-managed -remote client. Never use NUL/EOF stdin without `-noio`.
+Arrange cleanup before launching, including failed connections and interrupted
+investigations; record the spawned server PID. If `Could not write to pipe, 1450` repeats, stop only your
+owned server instead of retrying. See [the CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402).
+
 ### Step 2: Break in, if the target is running
 
 Unlike a kernel session, connecting does **not** halt the target. If it is running, pause it
@@ -70,7 +85,9 @@ an earlier one, say so rather than smoothing it over.
 - **Parameters:**
   - `session_id`: the id from Step 1
 
-This detaches and lets the target continue.
+This detaches and lets the target continue. It closes only the MCP client, not the external
+debug server. Separately stop any server you started and verify it exited; leave
+pre-existing servers alone.
 
 ## REQUIRED OUTPUT FORMAT:
 

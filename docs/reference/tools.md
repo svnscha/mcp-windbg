@@ -85,6 +85,16 @@ Attach to a user-mode remote debug server (a `cdb`/WinDbg `-server`), launched w
 Returns a `session_id`. For kernel targets use [`open_kd_session`](#open_kd_session) instead:
 `-remote` cannot drive a kernel cable.
 
+**Before starting an unattended server**, use `cdb -server tcp:port=5005 -noio <program>`
+(`-server` and its transport first). CDB 10.0.29661.1004 with NUL/EOF stdin
+(`NUL`, `/dev/null`, `subprocess.DEVNULL`, or a closed input pipe) can exhaust
+Windows nonpaged pool and freeze the host. `-noio` disables local console I/O;
+use the remote client for commands and output. Arrange cleanup before launching
+and record the spawned server PID. `close_cdb_session` closes only the MCP client, not
+the external server. Stop only servers you started; leave pre-existing servers
+alone. See [safe server startup](../scenarios/remote-debugging.md#start-an-unattended-server-safely)
+and [the CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402).
+
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `connection_string` | yes | Remote connection string, see formats below. |
@@ -189,7 +199,9 @@ Run any command on an open kernel (kd) session and return its output.
 
 ## close_cdb_session
 
-Close a user-mode session and release its `cdb.exe` process.
+Close a user-mode session and release its `cdb.exe` process. For a remote session,
+this closes only the MCP client, not the external debug server. Stop any server
+you started separately and verify it exited; leave pre-existing servers alone.
 
 | Parameter | Required | Description |
 | --- | --- | --- |

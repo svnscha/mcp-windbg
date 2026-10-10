@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent-visible remote-server startup warnings in the MCP tool descriptions,
+  remote-triage prompt, optional debug-remote skill, and documentation. They
+  explain the CDB NUL/EOF stdin nonpaged-pool exhaustion risk, the `-noio`
+  workaround, and cleanup of separately launched servers
+  ([CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402)).
 - A standalone `mcp-windbg.exe`, for anyone who wants the server without a
   Python toolchain. PyInstaller freezes the interpreter and every dependency
   into one file; `cdb.exe` remains a prerequisite. Importing cleanly does not

@@ -27,6 +27,36 @@ connection string formats:
     `-k` cable is a different mode, handled by [Debug a kernel target](kernel-debugging.md). To
     debug a local process, start a `cdb -server` on it first, then connect.
 
+## Start an unattended server safely
+
+!!! warning "NUL or EOF stdin can freeze the Windows host"
+    CDB 10.0.29661.1004 with stdin redirected to `NUL` (`/dev/null` in Git Bash,
+    `subprocess.DEVNULL` in Python), or a stdin pipe that reaches EOF, can rapidly
+    exhaust Windows **nonpaged pool** and freeze the whole host. This is kernel
+    memory, so a small process memory footprint or bounded output does not make
+    the launch safe. See [the CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402).
+
+For an unattended `cdb -server`, disable local console I/O:
+
+```text
+cdb -server tcp:port=5005 -noio <program>
+```
+
+Keep `-server` and its transport first, followed by `-noio`, as required by the
+[CDB command-line options](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options).
+`-noio` disables the server console input and output; issue commands and read
+output through the remote client (`open_cdb_remote` and `run_cdb_command`). An
+empty server stdout log is expected in this mode. Apply `-noio` to the external
+`-server` process, not to the MCP `-remote` client, which needs its stdin/stdout.
+Never use NUL/EOF stdin without `-noio`. An interactive server can instead keep
+its real console open.
+
+Before an agent launches a server, it must arrange cleanup for success, failed
+connections, and interrupted investigations, then record the spawned server PID. Do not launch
+a detached server without a way to stop and verify that specific process. If
+`Could not write to pipe, 1450` repeats, stop only the server you started instead
+of retrying commands or relying on log rotation. Leave pre-existing servers alone.
+
 ## Break in, then inspect
 
 If the target is running, pause it before you inspect state. Ask the model to break in,
@@ -66,7 +96,9 @@ Close the connection to tcp:Port=5005,Server=192.168.0.100
 ```
 
 This calls [`close_cdb_session`](../reference/tools.md#close_cdb_session) and releases
-the session.
+the MCP client session. It does **not** stop the separately launched debug server.
+If you started a server for this investigation, stop that specific process and
+verify it exited; leave pre-existing servers alone.
 
 ## Related
 
