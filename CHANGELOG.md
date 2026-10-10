@@ -17,8 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MCP_WINDBG_SERVER_EXE` points the e2e harness at a built binary and the whole
   scenario suite re-runs against it.
 - The executable is published on each release, **code signed**, with a
-  `SHA256SUMS` file taken from the signed binary. The signature is verified
-  before the asset is attached.
+  `SHA256SUMS` file taken from the signed binary. Before the asset is attached,
+  the signature is verified and the scenario suite runs once more against the
+  signed binary, since signing rewrites the executable.
 - Windows file metadata on the executable: a version resource generated from
   `pyproject.toml`, an application icon, and a note that the binary is authored
   by Sven Scharmentke and signed with a certificate sponsored by Liasoft GmbH,
