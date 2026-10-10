@@ -60,6 +60,11 @@ dev = [
     "twine>=6.2.0",
     "jsonschema>=4.26.0",
 ]
+# Only scripts/Build-Exe.ps1 needs this, and it pulls in a compiler toolchain's
+# worth of bootstrap binaries, so it stays out of dev.
+dist = [
+    "pyinstaller>=6.22.3",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["src/mcp_windbg/tests"]

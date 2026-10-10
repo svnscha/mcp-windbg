@@ -7,13 +7,41 @@ name: Publish MCP Server
 # publishing by hand if a release ever needs re-shipping.
 on:
   workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to attach the signed mcp-windbg.exe to. Omit to sign without attaching.'
+        required: false
+        type: string
+      rehearsal:
+        description: 'Build, sign and attach, but publish nothing to PyPI.'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to attach the signed mcp-windbg.exe to. Omit to sign without attaching.'
+        required: false
+        type: string
+      # Defaults the other way round from workflow_call on purpose. A release
+      # publishes; a run started by hand is a rehearsal unless someone says
+      # otherwise, because the usual reason to start one is to exercise the
+      # signing path, and the usual cost of getting it wrong is a bad upload to
+      # PyPI that cannot be taken back.
+      rehearsal:
+        description: 'Build, sign and attach, but publish nothing to PyPI.'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   build-and-test:
     uses: ./.github/workflows/build-and-test.yml
     with:
-      check-version: true
+      # The version-consistency check is a release gate, and it fails by design
+      # while CHANGELOG.md carries an `## [Unreleased]` heading. A rehearsal is
+      # not shipping anything, so it does not run it.
+      check-version: ${{ !inputs.rehearsal }}
 
   verify-build:
     runs-on: windows-latest
@@ -31,9 +59,148 @@ jobs:
         Write-Host "Downloaded artifacts:"
         Get-ChildItem -Path "dist/" -Recurse | Format-Table Name, Length, LastWriteTime
 
+  # Signs the standalone executable on a self-hosted runner, which the signing
+  # service requires.
+  #
+  # Two rules keep that safe and both must hold if this job is ever changed: it
+  # must stay out of reach of `pull_request`, `pull_request_target` and
+  # `issue_comment`, which would run a fork's code on the runner, and it must
+  # never check out the repository.
+  sign:
+    needs: build-and-test
+    # Skips in a fork, which cannot reach the runner and would queue forever.
+    if: github.repository == 'svnscha/mcp-windbg'
+    runs-on: [self-hosted, mcp-windbg-sign]
+    environment: signing
+    # Needs none: same-run artifact transfer does not use GITHUB_TOKEN.
+    permissions: {}
+
+    steps:
+    - name: Download the unsigned mcp-windbg.exe
+      uses: actions/download-artifact@v8
+      with:
+        name: mcp-windbg-exe-unsigned
+        path: unsigned/
+
+    - name: Sign it
+      # --fail-with-body is required: without it a failure response is written
+      # over the output file and curl still exits 0.
+      #
+      # The endpoint comes from a secret so it stays out of the logs, and is
+      # read through the environment rather than interpolated into the script.
+      env:
+        SIGNING_URL: ${{ secrets.SIGNING_URL }}
+      run: |
+        mkdir -p signed
+        curl -sS --fail-with-body -X POST "$SIGNING_URL" \
+          -F "File=@unsigned/mcp-windbg.exe" \
+          -o signed/mcp-windbg.exe
+
+    - name: Verify the signature
+      # Checks the digest, the chain, the countersignature and the CRLs, and
+      # exits 1 on an unsigned binary.
+      run: osslsigncode verify signed/mcp-windbg.exe
+
+    - name: Upload the signed mcp-windbg.exe
+      uses: actions/upload-artifact@v7
+      with:
+        name: mcp-windbg-exe-signed
+        path: signed/mcp-windbg.exe
+        retention-days: 7
+
+  # Signing rewrites the PE, and the scenario suite has only ever run against
+  # the unsigned build. This runs it again against the signed binary, because a
+  # signature that disturbs the frozen archive would otherwise ship: the exe
+  # would be valid to Windows and broken to a client. Same suite, same
+  # assertions, the signed launcher.
+  smoke:
+    needs: sign
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        lfs: true
+
+    - name: Install WinDbg from Microsoft Store
+      run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.14
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Download the signed mcp-windbg.exe
+      uses: actions/download-artifact@v8
+      with:
+        name: mcp-windbg-exe-signed
+        path: signed/
+
+    # osslsigncode already checked the chain on the signing host. This is
+    # Windows' own verdict, which is the one a user actually gets.
+    - name: Windows must call the signature valid
+      shell: pwsh
+      run: |
+        $sig = Get-AuthenticodeSignature signed/mcp-windbg.exe
+        Write-Host "Status: $($sig.Status)"
+        Write-Host "Signer: $($sig.SignerCertificate.Subject)"
+        if ($sig.Status -ne 'Valid') { throw "Authenticode status is $($sig.Status)" }
+
+    - name: Serve MCP from the signed binary
+      shell: pwsh
+      env:
+        MCP_WINDBG_SERVER_EXE: ${{ github.workspace }}\signed\mcp-windbg.exe
+      run: uv run pytest src/mcp_windbg/tests/ -q
+
+  # Separate job so the write token stays off the self-hosted runner. Depends
+  # on smoke, so nothing unproven reaches a release.
+  attach:
+    needs: smoke
+    if: inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download the signed mcp-windbg.exe
+      uses: actions/download-artifact@v8
+      with:
+        name: mcp-windbg-exe-signed
+        path: signed/
+
+    - name: Attach it to the release with its checksum
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # gh infers the repository from a git remote, and this job has no
+        # checkout, so it has to be told.
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+      # Hashed after signing: signing rewrites the PE, so a digest taken
+      # earlier would match nothing anyone can download.
+      run: |
+        cd signed
+        sha256sum mcp-windbg.exe > SHA256SUMS
+        gh release upload "$TAG" mcp-windbg.exe SHA256SUMS --clobber
+        {
+          echo "Signed \`mcp-windbg.exe\` attached to \`$TAG\`."
+          echo
+          echo '```'
+          cat SHA256SUMS
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
   publish-pypi:
     runs-on: ubuntu-latest
     needs: build-and-test
+    if: ${{ !inputs.rehearsal }}
     permissions:
       contents: read
 

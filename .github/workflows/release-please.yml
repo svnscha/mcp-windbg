@@ -187,6 +187,10 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     uses: ./.github/workflows/publish-mcp.yml
+    # The tag the signed mcp-windbg.exe is attached to. release-please has
+    # created both it and the release by this point.
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
     secrets: inherit
 
   # The MCP registry checks the package on PyPI before it lists a version, so

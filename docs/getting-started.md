@@ -46,6 +46,11 @@ You need a 64-bit Windows machine with:
     pip install mcp-windbg
     ```
 
+    No Python? Download `mcp-windbg.exe` from the
+    [latest release](https://github.com/svnscha/mcp-windbg/releases/latest) instead. It is a
+    single signed executable carrying its own interpreter, and step 2 points at it directly.
+    See [Standalone executable](reference/clients.md#standalone-executable).
+
 - **VS Code** with the **GitHub Copilot** extension, and MCP enabled (step 3).
 
 !!! tip "Quick sanity check"

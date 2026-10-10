@@ -21,6 +21,35 @@ pwsh scripts/Switch-McpWindbg.ps1 Local       # Claude Code in this checkout: us
 pwsh scripts/Switch-McpWindbg.ps1 Released    # back to the published plugins, updated
 ```
 
+### Standalone binary
+
+`scripts/Build-Exe.ps1` freezes the checkout into `dist/mcp-windbg.exe` with PyInstaller, for
+users who want nothing to do with Python. It carries its own interpreter and every dependency;
+it does not carry `cdb.exe`, which stays a prerequisite.
+
+```powershell
+uv sync --dev --group dist              # pyinstaller lives in the dist group, not dev
+pwsh scripts/Build-Exe.ps1              # -> dist/mcp-windbg.exe, with SHA256
+pwsh scripts/Build-Exe.ps1 -Verify      # build, then run the scenarios against the binary
+```
+
+**Importing cleanly is not the test.** A frozen build only ships the modules PyInstaller's
+static analysis saw, so a dependency that imports lazily or reads a data file at runtime fails
+at the tool call, not at startup. `MCP_WINDBG_SERVER_EXE` points the e2e harness at a built
+binary, so the whole scenario suite re-runs against it with the same assertions and a different
+launcher. That is what `-Verify` does, and what the `exe` job in `build-and-test.yml` runs on
+every PR. Set the variable by hand to drive a downloaded release asset the same way.
+
+Two consequences of freezing worth knowing:
+
+- `prompts/*.prompt.md` are read through `Path(__file__).parent`, which resolves inside the
+  unpacked bundle. They are laid down there by `--add-data`, so moving or adding a prompt file
+  means the build has to lay it down too, or `load_prompt` raises only in the binary.
+- `--filter-script` still loads and runs, but it imports against the bundled standard library,
+  which is the subset the analysis pulled in - `sqlite3`, `xml.etree` and `tkinter` are not in
+  it. A filter script that needs more than the exe happens to carry wants the pip or uvx
+  install instead.
+
 ### Coverage
 
 The code under test runs in **two** processes, and both must be measured or the number lies:
@@ -84,7 +113,7 @@ src/mcp_windbg/
   prompts/           prompt templates (dump-triage.prompt.md)
   tests/             e2e harness: e2e/ (runner + harness), scenarios/*.yaml, dumps/
 scripts/             check-version-consistency.ps1, validate-server-schema.py, Format-Docs.ps1,
-                     Switch-McpWindbg.ps1
+                     Switch-McpWindbg.ps1, Build-Exe.ps1
 examples/            small C++ programs that crash, for generating test dumps
 docs/                MkDocs user guide (Material), deployed to GitHub Pages
 .github/workflows/   ci.yml -> build-and-test.yml (tests), publish-mcp.yml (PyPI on v* tags),

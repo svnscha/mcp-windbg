@@ -79,6 +79,47 @@ jobs:
     - name: Validate server.json schema
       run: uv run python scripts/validate-server-schema.py
 
+  # The standalone binary is a second way to ship the same server, and freezing
+  # is where a dependency's runtime import tricks show up: an installed wheel
+  # finds its data files and lazy imports, a PyInstaller bundle only ships what
+  # the analysis saw. Building it is not the test - serving MCP from it is, so
+  # the scenario suite runs again with the binary in place of python -m.
+  exe:
+    runs-on: windows-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        lfs: true
+
+    - name: Install WinDbg from Microsoft Store
+      run: winget install 9PGJGD53TN86 --accept-source-agreements --accept-package-agreements
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.14
+
+    - name: Install dependencies
+      run: uv sync --dev --group dist
+
+    - name: Build and verify mcp-windbg.exe
+      run: pwsh scripts/Build-Exe.ps1 -Verify
+
+    - name: Upload mcp-windbg.exe
+      uses: actions/upload-artifact@v7
+      with:
+        # Named for what it is: this job builds before signing, and on a pull
+        # request there is no signing at all. The signed binary is a separate
+        # artifact, and the release asset is the copy anyone should use.
+        name: mcp-windbg-exe-unsigned
+        path: dist/mcp-windbg.exe
+        retention-days: 7
+
   build:
     runs-on: windows-latest
     needs: test
