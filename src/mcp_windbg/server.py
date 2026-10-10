@@ -515,6 +515,16 @@ def _create_server(
 
         session_id = _register_session(session, "cdb", f"remote {args.connection_string}", cleanup=cleanup)
         results = [_session_header(session_id, "cdb", f"remote target {args.connection_string}")]
+        if getattr(session, "target_running", False):
+            # The triage below breaks in, as any command on a running target
+            # does. Say so: the caller did not ask for the stop, and it is
+            # the caller who decides whether the target runs again.
+            results.append(
+                "### Target State\n"
+                "The target was running when the client attached. The commands "
+                "below broke into it, so it is now stopped and stays stopped "
+                "until you resume it with `g` or close the session.\n\n"
+            )
         results.extend(_init_sections(session, _init_for(kernel=False), effective))
 
         target_info = session.send_command("!peb", timeout=effective)

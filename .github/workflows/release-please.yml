@@ -186,6 +186,14 @@ jobs:
   publish:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    # A called workflow may not ask for more than its caller grants, and the
+    # check is made when the run starts, not when the job does: with the
+    # workflow-level `contents: read` here, publish-mcp.yml's `attach` job
+    # asking for `contents: write` failed the whole run at startup, on every
+    # push to develop, release or not. Granted here so the signed exe can be
+    # uploaded to the release.
+    permissions:
+      contents: write
     uses: ./.github/workflows/publish-mcp.yml
     # The tag the signed mcp-windbg.exe is attached to. release-please has
     # created both it and the release by this point.

@@ -124,7 +124,8 @@ async def on_list_tools(ctx, params) -> ListToolsResult:
             name="open_cdb_remote",
             description="""
             Attach to a user-mode remote debug server (-remote) with cdb.exe, e.g. one started
-            with 'cdb -server tcp:port=5005 -noio <program>'. Returns a session_id for run_cdb_command
+            with 'cdb -server tcp:port=5005 -noio <program>'. A running target is broken into for the
+            initial triage and left stopped. Returns a session_id for run_cdb_command
             / send_ctrl_break / close_cdb_session. For kernel targets use open_kd_session instead.
             WARNING: CDB 10.0.29661.1004 in -server mode with NUL stdin (/dev/null, subprocess.DEVNULL), or a
             stdin pipe at EOF, can exhaust Windows nonpaged pool and freeze the host. For

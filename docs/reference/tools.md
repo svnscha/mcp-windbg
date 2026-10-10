@@ -95,6 +95,10 @@ the external server. Stop only servers you started; leave pre-existing servers
 alone. See [safe server startup](../scenarios/remote-debugging.md#start-an-unattended-server-safely)
 and [the CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402).
 
+If the target is running when the client attaches, the initial triage (`!peb`, `r`) breaks into
+it and the result says so under `Target State`. The target stays stopped until it is resumed
+with `g` or the session is closed, which detaches and resumes it.
+
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `connection_string` | yes | Remote connection string, see formats below. |
