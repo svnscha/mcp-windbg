@@ -5,6 +5,25 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A standalone `mcp-windbg.exe`, for anyone who wants the server without a
+  Python toolchain. PyInstaller freezes the interpreter and every dependency
+  into one file; `cdb.exe` remains a prerequisite. Importing cleanly does not
+  prove a frozen build works - a dependency that imports lazily or reads a data
+  file at runtime fails at the tool call, not at startup - so
+  `MCP_WINDBG_SERVER_EXE` points the e2e harness at a built binary and the whole
+  scenario suite re-runs against it.
+- The executable is published on each release, **code signed**, with a
+  `SHA256SUMS` file taken from the signed binary. The signature is verified
+  before the asset is attached.
+- Windows file metadata on the executable: a version resource generated from
+  `pyproject.toml`, an application icon, and a note that the binary is authored
+  by Sven Scharmentke and signed with a certificate sponsored by Liasoft GmbH,
+  which is the publisher Windows shows.
+
 ## [1.5.0] - 2026-10-09
 
 ### Fixed

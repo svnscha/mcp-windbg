@@ -64,9 +64,13 @@ Write-Host "INFO: building mcp-windbg.exe $version" -ForegroundColor Cyan
 $workPath = Join-Path $repo "build"
 New-Item -ItemType Directory -Force -Path $workPath | Out-Null
 
-# Windows file metadata. Explorer's Details tab, winget's manifest validation and
-# any future code signature all read this; an executable without it reads as
-# anonymous. PyInstaller wants its own version-file format, so write one.
+# Windows file metadata. Explorer's Details tab and winget's manifest validation
+# read this; an executable without it reads as anonymous. PyInstaller wants its
+# own version-file format, so write one.
+#
+# CompanyName is the author and the certificate is Liasoft GmbH's, so Windows
+# shows a different name as the verified publisher. Comments says so, rather
+# than leaving two names to be reconciled.
 $fileVersion = ($version -split '[.+-]')[0..2] -join ','
 $versionFile = Join-Path $workPath "version-info.txt"
 @"
@@ -79,10 +83,11 @@ VSVersionInfo(
   kids=[
     StringFileInfo([StringTable('040904B0', [
       StringStruct('CompanyName', 'Sven Scharmentke'),
+      StringStruct('Comments', 'Signed by Liasoft GmbH, which sponsors the code signing certificate.'),
       StringStruct('FileDescription', 'MCP server for Windows crash dump analysis and WinDbg debugging'),
       StringStruct('FileVersion', '$version'),
       StringStruct('InternalName', 'mcp-windbg'),
-      StringStruct('LegalCopyright', 'MIT License'),
+      StringStruct('LegalCopyright', 'Copyright (c) 2025 Sven Scharmentke. MIT License.'),
       StringStruct('OriginalFilename', 'mcp-windbg.exe'),
       StringStruct('ProductName', 'mcp-windbg'),
       StringStruct('ProductVersion', '$version')])]),
@@ -102,6 +107,7 @@ $pyinstallerArgs = @(
     "--paths", (Join-Path $repo "src")
     "--add-data", $promptsData
     "--version-file", $versionFile
+    "--icon", (Join-Path $repo "assets\mcp-windbg.ico")
     "--distpath", $OutputPath
     "--workpath", $workPath
     "--specpath", $workPath
