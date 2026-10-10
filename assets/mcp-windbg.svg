@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>mcp-windbg</title>
+  <rect width="256" height="256" rx="48" fill="#1E1E1E"/>
+  <path d="M64 80 112 128 64 176 M144 176H192" fill="none" stroke="#5ABAE0" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
