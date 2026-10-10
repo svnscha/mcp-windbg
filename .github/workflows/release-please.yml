@@ -44,7 +44,9 @@ jobs:
   # `## [Unreleased]` heading, which is correct there and would fail the version
   # comparison, so the check would cry wolf on every commit.
   preflight:
-    runs-on: ubuntu-latest
+    # Pinned: the ubuntu-latest label moves to Ubuntu 26 on 2026-10-19,
+    # and a release should not change runner images by surprise.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -62,7 +64,7 @@ jobs:
 
   release-please:
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write        # tags, releases, and the release branch
       pull-requests: write   # open and rewrite the release PR
@@ -97,7 +99,7 @@ jobs:
   # uv regenerates it, on the release PR, before anyone merges it.
   sync-lockfile:
     needs: release-please
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       pull-requests: read
@@ -153,7 +155,7 @@ jobs:
   release-notes:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -217,7 +219,7 @@ jobs:
   fast-forward-main:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
