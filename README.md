@@ -158,6 +158,22 @@ It investigates the dump and returns a verdict, evidence, and next steps through
 your existing MCP connection. It requires neither uvx nor the skills plugin.
 When upgrading from a version that bundled the agent, install this plugin to keep it.
 
+## Install without Python
+
+Every [release](https://github.com/svnscha/mcp-windbg/releases/latest) attaches
+`mcp-windbg.exe`: one signed executable carrying its own interpreter and every dependency.
+`cdb.exe` is still required. Point your client's `command` at the file and give it no `args`.
+
+The release also publishes `SHA256SUMS`, and the binary is code signed, so both are checkable:
+
+```powershell
+(Get-FileHash .\mcp-windbg.exe -Algorithm SHA256).Hash
+Get-AuthenticodeSignature .\mcp-windbg.exe | Format-List Status, SignerCertificate
+```
+
+`Status` should read `Valid`. The signer is Liasoft GmbH, which sponsors the signing
+certificate; the project is written by Sven Scharmentke.
+
 ## Install in another client
 
 ```bash

@@ -203,7 +203,47 @@ This transport has no authentication, so keep it on localhost or a trusted netwo
 
 ## Other install methods
 
-The snippets above use a pip install, which is the simplest path. Two alternatives:
+The snippets above use a pip install, which is the simplest path. Three alternatives:
+
+### Standalone executable
+
+`mcp-windbg.exe` is attached to every [release](https://github.com/svnscha/mcp-windbg/releases).
+It carries its own Python interpreter and every dependency, so nothing needs installing and no
+Python has to be present. `cdb.exe` is still a prerequisite.
+
+Download it, put it somewhere stable, and point the client straight at it:
+
+```json
+{
+    "servers": {
+        "mcp_windbg": {
+            "type": "stdio",
+            "command": "C:\\tools\\mcp-windbg.exe",
+            "env": {
+                "_NT_SYMBOL_PATH": "SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"
+            }
+        }
+    }
+}
+```
+
+No `args` are needed. Command-line options work as usual, so
+`"args": ["--cdb-path", "C:\\dbg\\cdb.exe"]` is still available.
+
+The release also publishes a `SHA256SUMS` file, and the executable is code signed. Both are
+worth checking:
+
+```powershell
+(Get-FileHash .\mcp-windbg.exe -Algorithm SHA256).Hash   # compare with SHA256SUMS
+Get-AuthenticodeSignature .\mcp-windbg.exe | Format-List Status, SignerCertificate
+```
+
+`Status` should read `Valid`.
+
+!!! note "Why the signature says Liasoft GmbH"
+    The project is written by Sven Scharmentke and the signing certificate is sponsored by
+    Liasoft GmbH, so Windows names Liasoft GmbH as the verified publisher while the file's
+    own details say Sven Scharmentke. The executable's `Comments` field states the same.
 
 With `uvx`, which fetches and runs the server on demand with nothing installed first. Swap the
 `command` and `args` of any snippet above for:
