@@ -1,7 +1,12 @@
 import os
 import functools
+from collections import deque
 import traceback
 import glob
+import shutil
+import subprocess
+import tempfile
+import time
 import winreg
 import logging
 import uuid
@@ -9,7 +14,7 @@ from typing import Dict, List, Optional
 from contextlib import ExitStack, asynccontextmanager
 
 from .cdb_session import CDBSession
-from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT, DebuggerError
+from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT, DebuggerError, debugger_log_dir
 from .kd_session import KDSession
 from .filter_script import FilterScript, load_filter_script
 from .prompts import load_prompt
@@ -161,6 +166,41 @@ def get_local_dumps_path() -> Optional[str]:
 
 # --- Tool parameter models ---------------------------------------------------
 
+# Follows the newest debugger log in its own console window. Polls the folder, so it moves to the
+# new file when the debugger reconnects, and reads only what was appended since the last poll.
+# __LOG_DIR__ is replaced with the log folder before the script is written out
+DISPLAY_SCRIPT = r"""
+$dir = '__LOG_DIR__'
+$cur = $null
+$pos = 0
+Write-Host "Live debugger log folder: $dir" -ForegroundColor Cyan
+while ($true) {
+    $f = Get-ChildItem -LiteralPath $dir -Filter '*.log' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime | Select-Object -Last 1
+    if ($f -and $f.FullName -ne $cur) {
+        $cur = $f.FullName
+        $pos = 0
+        Write-Host ""
+        Write-Host "=== following $cur ===" -ForegroundColor Cyan
+    }
+    if ($cur -and (Test-Path -LiteralPath $cur)) {
+        try {
+            $fs = New-Object System.IO.FileStream($cur, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]'ReadWrite,Delete')
+            if ($fs.Length -lt $pos) { $pos = 0 }
+            $fs.Position = $pos
+            $sr = New-Object System.IO.StreamReader($fs)
+            $text = $sr.ReadToEnd()
+            $pos = $fs.Position
+            $sr.Dispose()
+            $fs.Dispose()
+            if ($text) { Write-Host -NoNewline $text }
+        } catch { }
+    }
+    Start-Sleep -Milliseconds 500
+}
+"""
+
+
 class ListDumps(BaseModel):
     """Parameters for listing crash dumps in a directory."""
     directory_path: Optional[str] = Field(
@@ -168,6 +208,32 @@ class ListDumps(BaseModel):
         description="Directory to search for dump files. Defaults to the configured dump path from the registry."
     )
     recursive: bool = Field(default=False, description="Search subdirectories recursively.")
+
+
+class ReadDebuggerLog(BaseModel):
+    """Parameters for reading the debugger log files this server writes."""
+    lines: int = Field(default=100, ge=1, le=5000, description="How many of the newest matching lines to return.")
+    grep: Optional[str] = Field(default=None, description="Only return lines containing this text (case-insensitive).")
+    log_file: Optional[str] = Field(
+        default=None,
+        description="Log file name inside the log folder. Defaults to the newest log file."
+    )
+
+
+class DisplayDebuggerLog(BaseModel):
+    """No parameters: opens a window that follows the newest debugger log live."""
+
+
+class ExportDebuggerLog(BaseModel):
+    """Parameters for saving a debugger log so the next session's cleanup does not delete it."""
+    label: Optional[str] = Field(
+        default=None,
+        description="Short name added to the saved file name, for example 'nmi-freeze'."
+    )
+    log_file: Optional[str] = Field(
+        default=None,
+        description="Log file name to save. Defaults to the newest log file."
+    )
 
 
 class OpenCdbDump(BaseModel):
@@ -506,6 +572,31 @@ def _create_server(
                 """,
                 inputSchema=WaitForBreak.model_json_schema(),
             ),
+            Tool(
+                name="read_debugger_log",
+                description="""
+                Read the debugger log files this server writes: every line the debugger printed for a session,
+                including kernel debug output. Returns the newest lines of the newest log file, or of log_file if
+                given. Use grep to keep only matching lines.
+                """,
+                inputSchema=ReadDebuggerLog.model_json_schema(),
+            ),
+            Tool(
+                name="display_debugger_log",
+                description="""
+                Open a separate window that shows the debugger log live. It follows the newest log file and
+                switches to the new one automatically when the debugger reconnects.
+                """,
+                inputSchema=DisplayDebuggerLog.model_json_schema(),
+            ),
+            Tool(
+                name="export_debugger_log",
+                description="""
+                Save a debugger log to a separate folder, where it is kept after the next debugger session
+                replaces the live logs. Returns the saved file's path. Give a label to make it easy to find.
+                """,
+                inputSchema=ExportDebuggerLog.model_json_schema(),
+            ),
         ])
 
     async def on_call_tool(ctx, params) -> CallToolResult:
@@ -618,6 +709,27 @@ def _create_server(
             if name == "wait_for_break":
                 return filter_tool_content(name, await _handle_wait_for_break(WaitForBreak(**arguments)), call_id)
 
+            if name == "read_debugger_log":
+                return filter_tool_content(
+                    name,
+                    await anyio.to_thread.run_sync(functools.partial(_handle_read_debugger_log, arguments)),
+                    call_id,
+                )
+
+            if name == "display_debugger_log":
+                return filter_tool_content(
+                    name,
+                    await anyio.to_thread.run_sync(functools.partial(_handle_display_debugger_log, arguments)),
+                    call_id,
+                )
+
+            if name == "export_debugger_log":
+                return filter_tool_content(
+                    name,
+                    await anyio.to_thread.run_sync(functools.partial(_handle_export_debugger_log, arguments)),
+                    call_id,
+                )
+
             raise MCPError(INVALID_PARAMS, f"Unknown tool: {name}")
 
         except MCPError:
@@ -631,6 +743,64 @@ def _create_server(
             raise MCPError(INTERNAL_ERROR, f"Error executing tool {name}: {str(e)}\n{traceback_str}")
 
     # -- Tool handlers --------------------------------------------------------
+
+    def _handle_display_debugger_log(arguments: dict) -> list[TextContent]:
+        DisplayDebuggerLog(**arguments)
+        log_dir = debugger_log_dir()
+        os.makedirs(log_dir, exist_ok=True)
+
+        fd, script_path = tempfile.mkstemp(prefix="mcp-windbg-display-", suffix=".ps1")
+        with os.fdopen(fd, "w", encoding="utf-8-sig") as f:
+            f.write(DISPLAY_SCRIPT.replace("__LOG_DIR__", log_dir))
+
+        subprocess.Popen(
+            ["powershell.exe", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", script_path],
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
+        return [TextContent(type="text", text=f"Opened a live log window following {log_dir}")]
+
+    def _select_debugger_log(log_file: Optional[str]) -> Optional[str]:
+        """The named log in the log folder, or the newest one if no name is given. None if there is none."""
+        log_dir = debugger_log_dir()
+        if log_file:
+            # basename only: the tools read files from the log folder, nowhere else
+            path = os.path.join(log_dir, os.path.basename(log_file))
+        else:
+            logs = [os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.endswith(".log")] if os.path.isdir(log_dir) else []
+            if not logs:
+                return None
+            path = max(logs, key=os.path.getmtime)
+        return path if os.path.isfile(path) else None
+
+    def _handle_export_debugger_log(arguments: dict) -> list[TextContent]:
+        args = ExportDebuggerLog(**arguments)
+        path = _select_debugger_log(args.log_file)
+        if path is None:
+            return [TextContent(type="text", text=f"No debugger log found in {debugger_log_dir()}")]
+
+        # Saved logs go to their own folder, which the session cleanup never touches
+        save_dir = os.environ.get("MCP_WINDBG_SAVE_DIR") or os.path.join(os.path.expanduser("~"), "mcp-windbg-saved")
+        os.makedirs(save_dir, exist_ok=True)
+        label = "".join(c if c.isalnum() or c in "-_" else "-" for c in args.label or "").strip("-")
+        name = time.strftime("%Y%m%d-%H%M%S") + (f"-{label}" if label else "") + ".log"
+        dest = os.path.join(save_dir, name)
+        shutil.copy2(path, dest)
+        return [TextContent(type="text", text=f"Saved {path} to {dest}")]
+
+    def _handle_read_debugger_log(arguments: dict) -> list[TextContent]:
+        args = ReadDebuggerLog(**arguments)
+        path = _select_debugger_log(args.log_file)
+        if path is None:
+            return [TextContent(type="text", text=f"No debugger log found in {debugger_log_dir()}")]
+
+        needle = args.grep.lower() if args.grep else None
+        newest = deque(maxlen=args.lines)
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if needle is None or needle in line.lower():
+                    newest.append(line)
+        return [TextContent(type="text", text=f"{path} ({len(newest)} lines)\n" + "\n".join(newest))]
 
     def _handle_list_dumps(arguments: dict) -> list[TextContent]:
         args = ListDumps(**arguments)

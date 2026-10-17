@@ -179,6 +179,35 @@ def find_executable(paths: List[str], custom_path: Optional[str] = None) -> Opti
     return None
 
 
+def debugger_log_dir() -> str:
+    """The folder the debugger logs are written to: MCP_WINDBG_LOG_DIR, or ~/mcp-windbg-logs by default."""
+    return os.environ.get("MCP_WINDBG_LOG_DIR") or os.path.join(os.path.expanduser("~"), "mcp-windbg-logs")
+
+
+def _open_session_log():
+    """Open a new log file for one debugger session. Every line the debugger prints is appended to it live.
+
+    Returns None if the file can't be opened, so logging never stops a session from working.
+    """
+    try:
+        log_dir = debugger_log_dir()
+        os.makedirs(log_dir, exist_ok=True)
+
+        # The logs are temporary: each new debugger session replaces the previous one's log
+        for old in os.listdir(log_dir):
+            if old.startswith("debugger-") and old.endswith(".log"):
+                try:
+                    os.remove(os.path.join(log_dir, old))
+                except OSError:
+                    pass  # still open by another session, or locked: leave it
+
+        name = time.strftime("debugger-%Y%m%d-%H%M%S") + f"-{os.getpid()}-{uuid.uuid4().hex[:6]}.log"
+        # line buffering, so 'tail -f' sees each line as soon as it is written
+        return open(os.path.join(log_dir, name), "a", encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        return None
+
+
 def _debugger_output_encoding() -> str:
     """The code page cdb/kd write their output in - the process ANSI code page,
     which ``locale.getencoding`` reports (``getpreferredencoding`` on 3.10)."""
@@ -384,12 +413,17 @@ class DebuggerSession:
         if not self.process or not self.process.stdout:
             return
 
+        # Every debugger line is also written to this session's log file, as it arrives
+        log_file = _open_session_log()
+
         buffer: List[str] = []
         with self.lock:
             self._reader_buffer = buffer
         try:
             for line in self.process.stdout:
                 line = line.rstrip()
+                if log_file:
+                    log_file.write(f"{time.strftime('%H:%M:%S')} {line}\n")
                 if self.verbose:
                     # stderr: on the stdio transport stdout carries the
                     # JSON-RPC stream and nothing else may go there.
