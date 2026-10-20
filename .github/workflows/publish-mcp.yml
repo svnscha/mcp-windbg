@@ -106,8 +106,8 @@ jobs:
         fi
         mkdir -p signed
         trap 'rm -f signed/mcp-windbg.exe.pending' EXIT
-        curl -sS --fail -X POST "$SIGNING_URL" \
-          -H "Authorization: Bearer $SIGNING_API_KEY" \
+        printf 'header = "Authorization: Bearer %s"\n' "$SIGNING_API_KEY" |
+          curl --config - -sS --fail -X POST "$SIGNING_URL" \
           -F "File=@unsigned/mcp-windbg.exe" \
           -o signed/mcp-windbg.exe.pending
         mv signed/mcp-windbg.exe.pending signed/mcp-windbg.exe
