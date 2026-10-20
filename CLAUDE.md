@@ -21,6 +21,18 @@ pwsh scripts/Switch-McpWindbg.ps1 Local       # Claude Code in this checkout: us
 pwsh scripts/Switch-McpWindbg.ps1 Released    # back to the published plugins, updated
 ```
 
+### Signing releases
+
+The isolated `sign` job reads `SIGNING_URL` and `SIGNING_API_KEY` through its environment.
+The API key is a repository Actions secret, separate from the hardware PIN; the `signing`
+environment must not shadow it with an older value. A missing key or HTTP failure stops the
+job before a signed artifact is uploaded. `release-please.yml` forwards secrets with
+`secrets: inherit`; reusable callers must also supply `SIGNING_API_KEY`.
+
+For acceptance, dispatch `publish-mcp.yml` on `develop` with `rehearsal=true` and leave `tag`
+empty. This signs and verifies the binary and runs its Windows scenarios, without publishing
+to PyPI or attaching a release asset. Keep the signing job free of checkouts and write tokens.
+
 ### Standalone binary
 
 `scripts/Build-Exe.ps1` freezes the checkout into `dist/mcp-windbg.exe` with PyInstaller, for

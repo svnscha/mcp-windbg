@@ -7,6 +7,9 @@ name: Publish MCP Server
 # publishing by hand if a release ever needs re-shipping.
 on:
   workflow_call:
+    secrets:
+      SIGNING_API_KEY:
+        required: true
     inputs:
       tag:
         description: 'Release tag to attach the signed mcp-windbg.exe to. Omit to sign without attaching.'
@@ -83,18 +86,31 @@ jobs:
         path: unsigned/
 
     - name: Sign it
-      # --fail-with-body is required: without it a failure response is written
+      # --fail is required: without it a failure response is written
       # over the output file and curl still exits 0.
       #
       # The endpoint comes from a secret so it stays out of the logs, and is
       # read through the environment rather than interpolated into the script.
       env:
         SIGNING_URL: ${{ secrets.SIGNING_URL }}
+        SIGNING_API_KEY: ${{ secrets.SIGNING_API_KEY }}
       run: |
+        set -euo pipefail
+        if [ -z "${SIGNING_API_KEY//[[:space:]]/}" ]; then
+          echo '::error::SIGNING_API_KEY is required for signing'
+          exit 1
+        fi
+        if [ -z "$SIGNING_URL" ]; then
+          echo '::error::SIGNING_URL is required for signing'
+          exit 1
+        fi
         mkdir -p signed
-        curl -sS --fail-with-body -X POST "$SIGNING_URL" \
+        trap 'rm -f signed/mcp-windbg.exe.pending' EXIT
+        curl -sS --fail -X POST "$SIGNING_URL" \
+          -H "Authorization: Bearer $SIGNING_API_KEY" \
           -F "File=@unsigned/mcp-windbg.exe" \
-          -o signed/mcp-windbg.exe
+          -o signed/mcp-windbg.exe.pending
+        mv signed/mcp-windbg.exe.pending signed/mcp-windbg.exe
 
     - name: Verify the signature
       # Checks the digest, the chain, the countersignature and the CRLs, and
