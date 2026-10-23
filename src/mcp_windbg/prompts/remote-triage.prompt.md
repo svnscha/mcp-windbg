@@ -38,16 +38,19 @@ owned server instead of retrying. See [the CDB upstream report](https://github.c
 
 ### Step 2: Break in, if the target is running
 
-If the target was running when the client attached, Step 1 broke into it for the initial
-triage and said so under **Target State**, so it is stopped now. It only runs again if it is
-resumed, by you or by someone at the server. If that happened, pause it before inspecting
-state, or you will read values that are already stale.
+If the target was running when the client attached, Step 1 left it running, gathered nothing,
+and said so under **Target State**. Stopping it freezes the process, and on a shared debug
+server it may be someone else's, so do it deliberately. It also has to happen before you
+inspect state, or you will read values that are already stale. The same applies if the
+target was resumed later, by you or by someone at the server.
 
 **Tool:** `send_ctrl_break`
 - **Parameters:**
   - `session_id`: the id from Step 1
 
-Skip this if the target is already stopped (at a breakpoint or an exception).
+Any `run_cdb_command` also breaks in first, after the server's init commands if Step 1 held
+them back. Opening with `break_in: true` stops a running target for the initial triage
+instead. Skip this step if the target is already stopped (at a breakpoint or an exception).
 
 ### Step 3: Orient
 
@@ -87,7 +90,9 @@ an earlier one, say so rather than smoothing it over.
 - **Parameters:**
   - `session_id`: the id from Step 1
 
-This detaches and lets the target continue. It closes only the MCP client, not the external
+This leaves the target as the client found it: running again if it was running when you
+attached, stopped if it was stopped. Pass `resume: true` or `resume: false` to choose
+otherwise, and say which state you left it in. It closes only the MCP client, not the external
 debug server. Separately stop any server you started and verify it exited; leave
 pre-existing servers alone.
 

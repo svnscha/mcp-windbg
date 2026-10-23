@@ -60,9 +60,9 @@ of retrying commands or relying on log rotation. Leave pre-existing servers alon
 ## Break in, then inspect
 
 Inspecting state needs a stopped target. If it is running when you connect, `open_cdb_remote`
-breaks in for its initial triage and says so under **Target State**; the target stays stopped
-until you resume it. If you resume it and want to look again later, ask the model to break in,
-which calls [`send_ctrl_break`](../reference/tools.md#send_ctrl_break):
+leaves it running and says so under **Target State**, since the process may not be yours to
+freeze. To stop it, ask the model to break in, which calls
+[`send_ctrl_break`](../reference/tools.md#send_ctrl_break), or ask for the open with `break_in`:
 
 ```text
 Send CTRL+BREAK to interrupt the target, then show all thread stacks with ~*k
@@ -82,7 +82,7 @@ A typical hang investigation:
 
 ```text
 1. Connect to tcp:Port=5005,Server=192.168.0.100
-2. Make sure it is stopped (the open breaks in if it was running)
+2. Break in if it is running
 3. Show current state - registers, stack, threads
 4. Run ~*k and identify the thread holding things up
 5. Run !locks to check synchronization objects
@@ -98,7 +98,8 @@ Close the connection to tcp:Port=5005,Server=192.168.0.100
 ```
 
 This calls [`close_cdb_session`](../reference/tools.md#close_cdb_session) and releases
-the MCP client session. It does **not** stop the separately launched debug server.
+the MCP client session. The target is left as the client found it: a target that was running
+when you connected runs again. Closing does **not** stop the separately launched debug server.
 If you started a server for this investigation, stop that specific process and
 verify it exited; leave pre-existing servers alone.
 

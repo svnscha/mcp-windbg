@@ -103,7 +103,9 @@ command per line:
 }
 ```
 
-The commands run on every `open_*` tool, dump and live alike, so keep them target-safe.
+The commands run on every `open_*` tool, dump and live alike, so keep them target-safe. When
+`open_cdb_remote` leaves a running target running, they wait and run before the first command
+that stops it.
 
 For commands that only make sense on a kernel target, such as reading the OS version from the
 kernel, use `--kernel-init-command` or `MCP_WINDBG_KERNEL_INIT_COMMANDS` instead. These run after

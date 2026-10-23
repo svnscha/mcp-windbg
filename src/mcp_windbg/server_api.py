@@ -42,6 +42,7 @@ class OpenCdbRemote(BaseModel):
     include_modules: bool = Field(default=False, description="Include loaded modules (lm) in the initial output.")
     include_threads: bool = Field(default=False, description="Include threads (~) in the initial output.")
     timeout_seconds: Optional[int] = Field(default=None, description="Override the connect timeout (seconds).")
+    break_in: bool = Field(default=False, description="If the target is running when the client attaches, break into it for the initial triage and leave it stopped. By default a running target is left running and the open returns without triage.")
 
 
 class OpenKdSession(BaseModel):
@@ -81,6 +82,7 @@ class RunKdCommand(BaseModel):
 class CloseCdbSession(BaseModel):
     """Parameters for closing a user-mode (cdb) session."""
     session_id: str = Field(description="The cdb session_id to close.")
+    resume: Optional[bool] = Field(default=None, description="For a remote session, whether to let a stopped target run again on close. By default the target is left as the client found it: resumed if it was running when the client attached, stopped otherwise. Closing never stops a running target; ignored for a dump.")
 
 
 class CloseKdSession(BaseModel):
@@ -124,8 +126,9 @@ async def on_list_tools(ctx, params) -> ListToolsResult:
             name="open_cdb_remote",
             description="""
             Attach to a user-mode remote debug server (-remote) with cdb.exe, e.g. one started
-            with 'cdb -server tcp:port=5005 -noio <program>'. A running target is broken into for the
-            initial triage and left stopped. Returns a session_id for run_cdb_command
+            with 'cdb -server tcp:port=5005 -noio <program>'. A target that is running when the
+            client attaches is left running and the open returns without triage, unless break_in
+            is true, which breaks in for the triage and leaves it stopped. Returns a session_id for run_cdb_command
             / send_ctrl_break / close_cdb_session. For kernel targets use open_kd_session instead.
             WARNING: CDB 10.0.29661.1004 in -server mode with NUL stdin (/dev/null, subprocess.DEVNULL), or a
             stdin pipe at EOF, can exhaust Windows nonpaged pool and freeze the host. For
@@ -181,7 +184,9 @@ async def on_list_tools(ctx, params) -> ListToolsResult:
             description="""
             Close a user-mode (cdb) session and release its resources, addressed by session_id.
             For a remote session this closes only the MCP client, not the external debug server.
-            Stop any server you started separately; leave pre-existing servers alone.
+            Stop any server you started separately; leave pre-existing servers alone. The target
+            is left as the client found it (resumed if it was running at attach, stopped otherwise)
+            unless resume says otherwise.
             """,
             inputSchema=CloseCdbSession.model_json_schema(),
         ),

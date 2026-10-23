@@ -95,13 +95,15 @@ the external server. Stop only servers you started; leave pre-existing servers
 alone. See [safe server startup](../scenarios/remote-debugging.md#start-an-unattended-server-safely)
 and [the CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402).
 
-If the target is running when the client attaches, the initial triage (`!peb`, `r`) breaks into
-it and the result says so under `Target State`. The target stays stopped until it is resumed
-with `g` or the session is closed, which detaches and resumes it.
+If the target is running when the client attaches, the open leaves it running and returns
+without triage, and the result says so under `Target State`. Init commands wait for the first
+command that stops it. With `break_in: true` the open breaks in for the triage (`!peb`, `r`)
+instead, and the target stays stopped until it is resumed with `g` or the session is closed.
 
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `connection_string` | yes | Remote connection string, see formats below. |
+| `break_in` | no | Break into a running target for the initial triage. Defaults to `false`. |
 | `include_stack_trace` | no | Include the stack trace. Defaults to `false`. |
 | `include_modules` | no | Include loaded module information. Defaults to `false`. |
 | `include_threads` | no | Include thread information. Defaults to `false`. |
@@ -207,9 +209,13 @@ Close a user-mode session and release its `cdb.exe` process. For a remote sessio
 this closes only the MCP client, not the external debug server. Stop any server
 you started separately and verify it exited; leave pre-existing servers alone.
 
+A remote target is left as the client found it: resumed if it was running when the client
+attached, stopped if it was stopped. Closing never stops a running target.
+
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `session_id` | yes | The `cdb` session id to close. |
+| `resume` | no | Override for a remote session: `true` lets a stopped target run again, `false` leaves it stopped. Ignored for a dump. |
 
 ---
 
