@@ -445,7 +445,12 @@ class DebuggerSession:
             # why it exited - and wake any waiter rather than let it time out.
             with self.lock:
                 self._debugger_exited = True
-                self.output_lines = buffer
+                # The waiter may not have taken a reply published by its marker.
+                self.output_lines.extend(buffer)
+                if len(self.output_lines) > MAX_RETAINED_LINES:
+                    self.output_lines[MAX_RETAINED_LINES:] = [
+                        f"... output truncated at {MAX_RETAINED_LINES} lines ..."
+                    ]
             self._on_debugger_exit()
             self.ready_event.set()
 
