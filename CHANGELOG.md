@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workaround, and cleanup of separately launched servers
   ([CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402)).
 
+### Fixed
+
+- Preserve completed command output when the debugger exits before the caller
+  reads it. Any final debugger output is appended within the existing retention
+  limit instead of replacing the completed reply (#151).
+
 ## [1.5.1] - 2026-10-10
 
 ### Fixed

@@ -38,6 +38,12 @@ jobs:
       uses: astral-sh/setup-uv@v7
       with:
         version: "latest"
+        # The default cache key is taken from the runner's own Python, which is
+        # the same on every matrix leg, so all five raced to save one entry and
+        # four of them warned "Unable to reserve cache". The cache holds the
+        # wheels for the interpreter uv installs below, so one per version is
+        # also the correct cache, not just a quiet one.
+        cache-suffix: ${{ matrix.python-version }}
 
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}

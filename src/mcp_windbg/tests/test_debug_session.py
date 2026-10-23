@@ -332,6 +332,83 @@ def test_a_debugger_crash_mid_command_reports_the_exit_status(make_session):
     assert "[ComMethodFrame: 000000c0]" in str(exc.value)
 
 
+@pytest.mark.parametrize("tail", [[], ["Debugger detached"]])
+@pytest.mark.parametrize("prompt", ["0:000> ", "?:???> "])
+def test_completed_output_survives_eof_before_the_waiter_reads_it(
+    make_session, monkeypatch, tail, prompt
+):
+    session, proc = make_session(prompt=prompt)
+    handle = proc._handle
+
+    def complete_and_exit(line):
+        handle(line)
+        if line.startswith(".echo "):
+            proc.exit_with(*tail)
+
+    monkeypatch.setattr(proc, "_handle", complete_and_exit)
+    wait = session.ready_event.wait
+
+    def wait_for_eof(timeout):
+        landed = wait(timeout)
+        session.reader_thread.join(timeout=2)
+        assert not session.reader_thread.is_alive(), "reader did not reach EOF"
+        return landed
+
+    # Force the reported ordering: the marker and EOF are both processed before
+    # send_command can take the output, without racing a timer against the reader.
+    monkeypatch.setattr(session.ready_event, "wait", wait_for_eof)
+    assert session.send_command("r rip") == ["OUT:r rip", *tail]
+    assert session._take_output() == []
+    with pytest.raises(DebuggerExitedError, match="open a new one"):
+        session.send_command("k")
+
+
+def test_eof_does_not_republish_output_already_taken(make_session, monkeypatch):
+    session, proc = make_session()
+    take = session._take_output
+
+    def take_before_eof():
+        result = take()
+        proc.exit_with("Debugger detached")
+        session.reader_thread.join(timeout=2)
+        assert not session.reader_thread.is_alive()
+        return result
+
+    monkeypatch.setattr(session, "_take_output", take_before_eof)
+    assert session.send_command("r rip") == ["OUT:r rip"]
+    assert take() == ["Debugger detached"]
+    assert take() == []
+
+
+@pytest.mark.parametrize("count", [4, 6])
+def test_completed_output_and_exit_tail_share_the_retention_limit(
+    make_session, monkeypatch, count
+):
+    monkeypatch.setattr(debug_session, "MAX_RETAINED_LINES", 4)
+    session, proc = make_session()
+    handle = proc._handle
+
+    def complete_and_exit(line):
+        handle(line)
+        if line.startswith(".echo "):
+            proc.exit_with("exit tail 1", "exit tail 2")
+
+    monkeypatch.setattr(proc, "_handle", complete_and_exit)
+    wait = session.ready_event.wait
+
+    def wait_for_eof(timeout):
+        landed = wait(timeout)
+        session.reader_thread.join(timeout=2)
+        assert not session.reader_thread.is_alive()
+        return landed
+
+    monkeypatch.setattr(session.ready_event, "wait", wait_for_eof)
+    assert session.send_command(f".flood {count}") == [
+        *(f"flood line {i}" for i in range(4)),
+        "... output truncated at 4 lines ...",
+    ]
+
+
 def test_a_debugger_that_exits_during_startup_reports_its_last_words(monkeypatch):
     """A mistyped -remote string makes cdb print why and exit at once; the
     caller should see that, not 'initialization timed out' a minute later."""
