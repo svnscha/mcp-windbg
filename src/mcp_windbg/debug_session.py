@@ -66,6 +66,11 @@ TERMINATE_TIMEOUT = 10
 MAX_RETAINED_LINES = 2000
 MAX_RETAINED_LINE_CHARS = 16384
 
+# Where a session log stops growing. A noisy kernel target prints without
+# end, and the log is meant to be read back, so it ends with a notice here
+# rather than filling the disk.
+MAX_SESSION_LOG_CHARS = 64 * 1024 * 1024
+
 # How many abandoned markers to remember for the Unicode log. One whose
 # command never answers stays at the head, so without a bound the list would
 # grow with every timeout; past this the oldest is dropped and its segment is
@@ -281,10 +286,25 @@ class DebuggerSession:
         launch_args: List[str],
         timeout: int,
         verbose: bool,
+        session_log_path: Optional[str] = None,
     ):
         self.debugger_path = debugger_path
         self.timeout = timeout
         self.verbose = verbose
+
+        #: Every line the debugger prints, appended as it arrives, when the
+        #: server was started with a log folder. Opened before the debugger, so
+        #: a log that cannot be written fails the open instead of leaking it.
+        #: Line buffered, so a tail of the file sees each line at once.
+        self._session_log = None
+        self._session_log_chars = 0
+        if session_log_path:
+            try:
+                self._session_log = open(
+                    session_log_path, "a", encoding="utf-8", errors="replace", buffering=1
+                )
+            except OSError as e:
+                raise DebuggerError(f"Cannot write the debugger log {session_log_path}: {e}")
 
         self.output_lines: List[str] = []
         #: The reader's current command buffer. It is published under the same
@@ -400,6 +420,8 @@ class DebuggerSession:
         try:
             for line in self.process.stdout:
                 line = line.rstrip()
+                if MARKER_BASE not in line:
+                    self._write_session_log(line)
                 if self.verbose:
                     # stderr: on the stdio transport stdout carries the
                     # JSON-RPC stream and nothing else may go there.
@@ -461,8 +483,39 @@ class DebuggerSession:
                     self.output_lines[MAX_RETAINED_LINES:] = [
                         f"... output truncated at {MAX_RETAINED_LINES} lines ..."
                     ]
+            self._close_session_log()
             self._on_debugger_exit()
             self.ready_event.set()
+
+    def _write_session_log(self, line: str) -> None:
+        """Append one debugger line to the session log, if there is one.
+
+        Only the reader writes, so no lock. A failed write ends the log, never
+        the session: the log is a side record, and the reader stopping would
+        report a healthy debugger as exited.
+        """
+        if self._session_log is None:
+            return
+        try:
+            text = f"{time.strftime('%H:%M:%S')} {line}\n"
+            if self._session_log_chars + len(text) > MAX_SESSION_LOG_CHARS:
+                self._session_log.write(
+                    f"... log stopped at {MAX_SESSION_LOG_CHARS // (1024 * 1024)} MiB ...\n"
+                )
+                self._close_session_log()
+                return
+            self._session_log.write(text)
+            self._session_log_chars += len(text)
+        except (OSError, ValueError):
+            self._close_session_log()
+
+    def _close_session_log(self) -> None:
+        log, self._session_log = self._session_log, None
+        if log is not None:
+            try:
+                log.close()
+            except OSError:
+                pass
 
     def _exited_message(self, doing: str, tail: List[str]) -> str:
         process = self.process

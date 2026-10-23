@@ -21,6 +21,7 @@ The `mcp-windbg` entry point is equivalent, if its scripts directory is on your 
 | `--no-dump-dir-symbols` | off | Do not auto-add a dump's own directory to the symbol path. |
 | `--init-command COMMAND` | `MCP_WINDBG_INIT_COMMANDS` | Debugger command to run on every new session, before triage. Repeatable. See [Init commands](#init-commands). |
 | `--kernel-init-command COMMAND` | `MCP_WINDBG_KERNEL_INIT_COMMANDS` | Like `--init-command`, but only for kernel targets. Repeatable. See [Init commands](#init-commands). |
+| `--log-dir DIR` | off | Log every session's debugger output to `DIR`. See [Debugger log](#debugger-log). |
 | `--filter-script PATH` | none | Python script with tool-text hooks. See [Filter script hooks](#filter-script-hooks). |
 | `--timeout SECONDS` | `60` | Baseline command/connect timeout; a floor for the per-tool defaults. |
 | `--verbose` | off | Verbose logging to stderr. |
@@ -112,6 +113,27 @@ kernel, use `--kernel-init-command` or `MCP_WINDBG_KERNEL_INIT_COMMANDS` instead
 the shared ones, on `open_kd_session` and on kernel dumps (`MEMORY.DMP`, kernel minidumps), whether
 opened with `open_kd_dump` or `open_cdb_dump`. The dump's file header decides, not the tool.
 User-mode dumps and `open_cdb_remote` skip them.
+
+## Debugger log
+
+Use `--log-dir` to keep everything each session's debugger prints, including what a running
+target prints between tool calls, such as kernel debug output:
+
+```json
+"args": ["--log-dir", "C:\\DebugLogs"]
+```
+
+Each session writes `<session_id>.log` in that folder, one timestamped line per output line, and
+the model reads it back with [`read_debugger_log`](tools.md#read_debugger_log). To follow a
+session yourself while it runs:
+
+```powershell
+Get-Content C:\DebugLogs\cdb-1a2b3c4d.log -Wait -Tail 50
+```
+
+The files are raw debugger output: a [filter script](#filter-script-hooks) does not apply to
+them, only to what `read_debugger_log` returns. A log stops at 64 MiB, and the server never
+deletes one, so clean the folder up yourself.
 
 ## Filter script hooks
 

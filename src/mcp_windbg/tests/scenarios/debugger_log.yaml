@@ -1,0 +1,60 @@
+name: Debugger log
+description: >
+  With --log-dir, every line a session prints goes to <session_id>.log, without the
+  completion markers, and read_debugger_log returns the newest lines, filtered by
+  grep, before and after the session is closed.
+requires:
+  cdb: true
+  dump: DemoCrash1.exe.7088.dmp
+server:
+  args: ["--timeout", "120", "--log-dir", "{tmp_dir}"]
+steps:
+  - call: open_cdb_dump
+    arguments:
+      dump_path: "{dump}"
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
+    expect:
+      isError: false
+
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
+      command: ".echo MCP_LOG_PROBE"
+    expect:
+      isError: false
+      contains:
+        - "MCP_LOG_PROBE"
+
+  - call: read_debugger_log
+    arguments:
+      session_id: "{sid}"
+      grep: "mcp_log_probe"
+    expect:
+      isError: false
+      contains:
+        - "lines matching 'mcp_log_probe'"
+        - "MCP_LOG_PROBE"
+      not_contains:
+        - "COMMAND_COMPLETED_MARKER"
+      regex:
+        - 'cdb-[0-9a-f]{8}\.log'
+
+  - call: close_cdb_session
+    arguments:
+      session_id: "{sid}"
+    expect:
+      contains:
+        - "Successfully closed cdb session"
+
+  # The log outlives the session, which is the point of keeping it.
+  - call: read_debugger_log
+    arguments:
+      session_id: "{sid}"
+      lines: 5
+    expect:
+      isError: false
+      contains:
+        - "last 5 lines"
+      not_contains:
+        - "COMMAND_COMPLETED_MARKER"

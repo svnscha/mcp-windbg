@@ -68,6 +68,7 @@ class CDBSession(DebuggerSession):
         verbose: bool = False,
         additional_args: Optional[List[str]] = None,
         auto_dump_dir_symbols: bool = True,
+        session_log_path: Optional[str] = None,
     ):
         """Start a user-mode session.
 
@@ -80,6 +81,7 @@ class CDBSession(DebuggerSession):
             verbose: Echo debugger output for debugging.
             additional_args: Extra cdb.exe arguments.
             auto_dump_dir_symbols: Prepend the dump's directory to the symbol path.
+            session_log_path: File to append every debugger output line to.
 
         Raises:
             CDBError: cdb.exe not found or failed to start / initialize.
@@ -128,6 +130,7 @@ class CDBSession(DebuggerSession):
             launch_args=launch_args,
             timeout=timeout,
             verbose=verbose,
+            session_log_path=session_log_path,
         )
 
     def _on_output_line(self, line: str) -> None:

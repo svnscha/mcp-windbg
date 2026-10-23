@@ -16,6 +16,7 @@ one from your request, but this is the precise contract for each.
 | [`close_kd_session`](#close_kd_session) | Close a kernel session. |
 | [`send_ctrl_break`](#send_ctrl_break) | Break into a running target. |
 | [`wait_for_break`](#wait_for_break) | Wait for a resumed target to stop. |
+| [`read_debugger_log`](#read_debugger_log) | Read a session's debugger log (needs `--log-dir`). |
 
 ## Sessions and session ids
 
@@ -261,6 +262,20 @@ It asks the debugger rather than trusting a flag, so it is right about a target 
 for reasons this server never caused - one resumed from the machine's own console, say. If the
 target is already stopped it returns immediately. If the wait expires the target is **left
 running**: wait again, or halt it with [`send_ctrl_break`](#send_ctrl_break).
+
+---
+
+## read_debugger_log
+
+Return the newest lines of a session's [debugger log](cli.md#debugger-log), including output no
+tool call returned, such as kernel debug prints while the target ran. Needs the server started
+with `--log-dir`. The log outlives the session, so this works after `close_*` too.
+
+| Parameter | Required | Description |
+| --- | --- | --- |
+| `session_id` | yes | The session whose log to read. |
+| `lines` | no | How many of the newest matching lines to return, 1 to 2000. Defaults to 200. |
+| `grep` | no | Only return lines containing this text, case-insensitive. |
 
 ---
 
