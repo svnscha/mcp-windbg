@@ -15,6 +15,13 @@ steps:
         - close_kd_session
         - send_ctrl_break
         - wait_for_break
+        - "-server tcp:port=5005 -noio"
+        - "NUL"
+        - "nonpaged pool"
+        - "freeze the host"
+        - "only the MCP client"
+        - "never to the MCP-managed -remote client"
+        - "https://github.com/microsoft/WinDbg-Feedback/issues/402"
       not_contains:
         - open_windbg_dump
         - run_windbg_cmd
