@@ -102,6 +102,13 @@ class WaitForBreak(BaseModel):
     timeout_seconds: Optional[int] = Field(default=None, description=f"Maximum seconds to wait (default {WAIT_FOR_BREAK_TIMEOUT}). The target stops on a crash/bugcheck, a breakpoint, or a CTRL+BREAK from elsewhere.")
 
 
+class ReadDebuggerLog(BaseModel):
+    """Parameters for reading a session's debugger log."""
+    session_id: str = Field(description="The session_id whose log to read. A closed session's log stays readable.")
+    lines: int = Field(default=200, ge=1, le=2000, description="How many of the newest matching lines to return.")
+    grep: Optional[str] = Field(default=None, description="Only return lines containing this text (case-insensitive).")
+
+
 async def on_list_tools(ctx, params) -> ListToolsResult:
     return ListToolsResult(tools=[
         Tool(
@@ -215,6 +222,16 @@ async def on_list_tools(ctx, params) -> ListToolsResult:
             running: wait again, or halt it with send_ctrl_break.
             """,
             inputSchema=WaitForBreak.model_json_schema(),
+        ),
+        Tool(
+            name="read_debugger_log",
+            description="""
+            Read the newest lines a session's debugger printed, including output no tool call
+            returned, such as kernel debug prints while the target ran. Optionally keep only
+            lines containing grep. Needs the server started with --log-dir; works after the
+            session is closed.
+            """,
+            inputSchema=ReadDebuggerLog.model_json_schema(),
         ),
     ])
 

@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explain the CDB NUL/EOF stdin nonpaged-pool exhaustion risk, the `-noio`
   workaround, and cleanup of separately launched servers
   ([CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402)).
+- `--log-dir` keeps a log of everything each debugger session prints, including
+  what a running target prints between tool calls, and `read_debugger_log`
+  returns its newest lines, optionally filtered. The log files are unfiltered
+  raw output and stop at 64 MiB (#152, #153).
 - `close_cdb_session` takes `resume`, like `close_kd_session`, to choose whether
   a remote target runs again after the close.
 

@@ -114,6 +114,7 @@ Resolved in every argument string (and in `server.args`):
 | `{cdb}` | path to the discovered `cdb.exe` (for `--cdb-path`) |
 | `{kd}` | path to the discovered `kd.exe` (for `--kd-path`) |
 | `{kernel}` | the `-k` connection string from `MCP_WINDBG_KERNEL_CONNECTION` |
+| `{tmp_dir}` | an empty directory for this scenario, removed afterwards |
 
 ### Step kinds
 

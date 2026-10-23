@@ -239,14 +239,15 @@ def make_session(monkeypatch):
     the returned proc can be switched to swallow markers afterwards."""
     created = []
 
-    def _factory(timeout=5, live=False, breaks_on_signal=True, prompt="0:000> "):
+    def _factory(timeout=5, live=False, breaks_on_signal=True, prompt="0:000> ", session_log_path=None):
         proc = _FakeProc(
             resumes_on_go=live, breaks_on_signal=breaks_on_signal, prompt=prompt
         )
         monkeypatch.setattr(debug_session.subprocess, "Popen", lambda *a, **k: proc)
         cls = _LiveSession if live else _Session
         session = cls(
-            debugger_path="fake", launch_args=["fake"], timeout=timeout, verbose=False
+            debugger_path="fake", launch_args=["fake"], timeout=timeout, verbose=False,
+            session_log_path=session_log_path,
         )
         created.append(session)
         return session, proc
@@ -1075,3 +1076,64 @@ def test_a_single_enormous_line_is_bounded(make_session):
     assert long_lines, "the long line was dropped entirely"
     assert "line truncated" in long_lines[0]
     assert len(long_lines[0]) < debug_session.MAX_RETAINED_LINE_CHARS + 200
+
+
+def _log_lines(path):
+    with open(path, encoding="utf-8") as handle:
+        # Drop the HH:MM:SS stamp each line carries.
+        return [line.rstrip("\n").split(" ", 1)[1] for line in handle]
+
+
+def test_the_session_log_records_output_but_not_markers(make_session, tmp_path):
+    log = tmp_path / "cdb-00000000.log"
+    session, proc = make_session(session_log_path=str(log))
+    assert session.send_command("r rip") == ["OUT:r rip"]
+    session.shutdown()
+
+    lines = _log_lines(log)
+    assert "OUT:r rip" in lines
+    assert not any(debug_session.MARKER_BASE in line for line in lines)
+
+
+def test_a_failed_log_write_ends_the_log_not_the_session(make_session, tmp_path):
+    """The log is a side record. A full disk used to kill the reader, which
+    then reported a healthy debugger as exited."""
+    session, proc = make_session(session_log_path=str(tmp_path / "x.log"))
+
+    class FullDisk:
+        def write(self, text):
+            raise OSError(28, "No space left on device")
+
+        def close(self):
+            pass
+
+    session._session_log = FullDisk()
+    assert session.send_command("r rip") == ["OUT:r rip"]
+    assert session._session_log is None
+    assert session.send_command("k") == ["OUT:k"]
+
+
+def test_the_session_log_stops_at_its_size_limit(make_session, monkeypatch, tmp_path):
+    monkeypatch.setattr(debug_session, "MAX_SESSION_LOG_CHARS", 200)
+    log = tmp_path / "x.log"
+    session, proc = make_session(session_log_path=str(log))
+    session.send_command(".flood 50")
+    assert session._session_log is None
+    assert session.send_command("k") == ["OUT:k"]  # still a working session
+    session.shutdown()
+
+    text = log.read_text(encoding="utf-8")
+    assert len(text) < 300
+    assert text.rstrip().endswith("... log stopped at 0 MiB ...")
+    assert "OUT:k" not in text
+
+
+def test_an_unwritable_log_fails_the_open_before_the_debugger_starts(monkeypatch, tmp_path):
+    started = []
+    monkeypatch.setattr(debug_session.subprocess, "Popen", lambda *a, **k: started.append(1))
+    with pytest.raises(DebuggerError, match="Cannot write the debugger log"):
+        _Session(
+            debugger_path="fake", launch_args=["fake"], timeout=5, verbose=False,
+            session_log_path=str(tmp_path / "missing-dir" / "x.log"),
+        )
+    assert not started

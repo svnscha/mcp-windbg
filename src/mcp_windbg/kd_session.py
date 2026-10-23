@@ -82,6 +82,7 @@ class KDSession(DebuggerSession):
         verbose: bool = False,
         dump_path: Optional[str] = None,
         auto_dump_dir_symbols: bool = True,
+        session_log_path: Optional[str] = None,
     ):
         """Attach to a kernel target, or open a kernel crash dump.
 
@@ -95,6 +96,7 @@ class KDSession(DebuggerSession):
             dump_path: Kernel crash dump to open (``-z``), mutually exclusive
                 with ``kernel_connection``.
             auto_dump_dir_symbols: Prepend the dump's directory to the symbol path.
+            session_log_path: File to append every debugger output line to.
 
         Raises:
             KDError: kd.exe not found, or the target never connected / broke in.
@@ -141,6 +143,7 @@ class KDSession(DebuggerSession):
             launch_args=launch_args,
             timeout=timeout,
             verbose=verbose,
+            session_log_path=session_log_path,
         )
 
     def _on_output_line(self, line: str) -> None:

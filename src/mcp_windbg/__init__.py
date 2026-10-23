@@ -39,6 +39,9 @@ def main():
                         help="Like --init-command, but only for kernel targets (kd sessions and "
                              "kernel dumps). Repeatable. Defaults to the lines of "
                              f"{KERNEL_INIT_COMMANDS_ENV}")
+    parser.add_argument("--log-dir", type=str, metavar="DIR",
+                        help="Write every line each debugger session prints to DIR/<session_id>.log, "
+                             "unfiltered, for read_debugger_log. Off by default")
 
     # Transport options
     parser.add_argument(
@@ -82,6 +85,7 @@ def main():
             auto_dump_dir_symbols=auto_dump_dir_symbols,
             init_commands=init_commands,
             kernel_init_commands=kernel_init_commands,
+            log_dir=args.log_dir,
         ))
     else:  # pragma: no cover - HTTP transport is verified behaviorally (http_transport.yaml), not line-counted
         asyncio.run(serve_http(
@@ -96,6 +100,7 @@ def main():
             auto_dump_dir_symbols=auto_dump_dir_symbols,
             init_commands=init_commands,
             kernel_init_commands=kernel_init_commands,
+            log_dir=args.log_dir,
         ))
 
 

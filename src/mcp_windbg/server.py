@@ -1,12 +1,9 @@
 import os
 import functools
+import re
 from collections import deque
 import traceback
 import glob
-import shutil
-import subprocess
-import tempfile
-import time
 import winreg
 import logging
 import uuid
@@ -14,7 +11,7 @@ from typing import Dict, List, Optional
 from contextlib import ExitStack, asynccontextmanager
 
 from .cdb_session import CDBSession
-from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT, DebuggerError, debugger_log_dir
+from .debug_session import DEFAULT_WAIT_FOR_BREAK_TIMEOUT, MAX_RETAINED_LINE_CHARS, DebuggerError
 from .kd_session import KDSession
 from .filter_script import FilterScript, load_filter_script
 from .server_api import (
@@ -29,6 +26,7 @@ from .server_api import (
     CloseKdSession,
     SendCtrlBreak,
     WaitForBreak,
+    ReadDebuggerLog,
     on_list_tools,
     on_list_prompts,
     on_get_prompt,
@@ -86,9 +84,9 @@ def _new_session_id(kind: str) -> str:
 
 def _register_session(
     session, kind: str, label: str, *, cleanup: ExitStack,
-    resume_on_rollback: Optional[bool] = False,
+    resume_on_rollback: Optional[bool] = False, session_id: Optional[str] = None,
 ) -> str:
-    session_id = _new_session_id(kind)
+    session_id = session_id or _new_session_id(kind)
     _sessions[session_id] = {"session": session, "kind": kind, "label": label}
     # An open that never returned an id leaves the target as it found it.
     # False never resumes; None lets a session that knows how it found the
@@ -228,12 +226,13 @@ async def serve(
     auto_dump_dir_symbols: bool = True,
     init_commands: Optional[List[str]] = None,
     kernel_init_commands: Optional[List[str]] = None,
+    log_dir: Optional[str] = None,
 ) -> None:
     """Run the WinDbg MCP server with stdio transport."""
     content_filter = load_filter_script(filter_script) if filter_script else None
     server = _create_server(
         cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "stdio",
-        auto_dump_dir_symbols, init_commands, kernel_init_commands,
+        auto_dump_dir_symbols, init_commands, kernel_init_commands, log_dir,
     )
 
     options = server.create_initialization_options()
@@ -256,6 +255,7 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     auto_dump_dir_symbols: bool = True,
     init_commands: Optional[List[str]] = None,
     kernel_init_commands: Optional[List[str]] = None,
+    log_dir: Optional[str] = None,
 ) -> None:
     """Run the WinDbg MCP server with Streamable HTTP transport."""
     from starlette.applications import Starlette
@@ -266,7 +266,7 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     content_filter = load_filter_script(filter_script) if filter_script else None
     server = _create_server(
         cdb_path, kd_path, symbols_path, timeout, verbose, content_filter, "streamable-http",
-        auto_dump_dir_symbols, init_commands, kernel_init_commands,
+        auto_dump_dir_symbols, init_commands, kernel_init_commands, log_dir,
     )
 
     # Create the session manager
@@ -312,6 +312,7 @@ def _create_server(
     auto_dump_dir_symbols: bool = True,
     init_commands: Optional[List[str]] = None,
     kernel_init_commands: Optional[List[str]] = None,
+    log_dir: Optional[str] = None,
 ) -> Server:
     """Create and configure the MCP server with all tools and prompts.
 
@@ -319,6 +320,14 @@ def _create_server(
     ``@server.<method>()`` decorators, so the server itself is built at the end
     of this function, once the handlers below exist.
     """
+
+    if log_dir:
+        # At startup, so a folder that cannot be created fails the server
+        # rather than every open.
+        os.makedirs(log_dir, exist_ok=True)
+
+    def _session_log_path(session_id: str) -> Optional[str]:
+        return os.path.join(log_dir, f"{session_id}.log") if log_dir else None
 
     def _init_for(kernel: bool) -> list[str]:
         """Init commands for a new session: the shared ones, then the kernel-only ones."""
@@ -448,25 +457,10 @@ def _create_server(
                 return filter_tool_content(name, await _handle_wait_for_break(WaitForBreak(**arguments)), call_id)
 
             if name == "read_debugger_log":
-                return filter_tool_content(
-                    name,
-                    await anyio.to_thread.run_sync(functools.partial(_handle_read_debugger_log, arguments)),
-                    call_id,
-                )
-
-            if name == "display_debugger_log":
-                return filter_tool_content(
-                    name,
-                    await anyio.to_thread.run_sync(functools.partial(_handle_display_debugger_log, arguments)),
-                    call_id,
-                )
-
-            if name == "export_debugger_log":
-                return filter_tool_content(
-                    name,
-                    await anyio.to_thread.run_sync(functools.partial(_handle_export_debugger_log, arguments)),
-                    call_id,
-                )
+                # Off the loop: a log can be tens of MiB.
+                return filter_tool_content(name, await anyio.to_thread.run_sync(
+                    _handle_read_debugger_log, ReadDebuggerLog(**arguments)
+                ), call_id)
 
             raise MCPError(INVALID_PARAMS, f"Unknown tool: {name}")
 
@@ -481,64 +475,6 @@ def _create_server(
             raise MCPError(INTERNAL_ERROR, f"Error executing tool {name}: {str(e)}\n{traceback_str}")
 
     # -- Tool handlers --------------------------------------------------------
-
-    def _handle_display_debugger_log(arguments: dict) -> list[TextContent]:
-        DisplayDebuggerLog(**arguments)
-        log_dir = debugger_log_dir()
-        os.makedirs(log_dir, exist_ok=True)
-
-        fd, script_path = tempfile.mkstemp(prefix="mcp-windbg-display-", suffix=".ps1")
-        with os.fdopen(fd, "w", encoding="utf-8-sig") as f:
-            f.write(DISPLAY_SCRIPT.replace("__LOG_DIR__", log_dir))
-
-        subprocess.Popen(
-            ["powershell.exe", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", script_path],
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
-        )
-        return [TextContent(type="text", text=f"Opened a live log window following {log_dir}")]
-
-    def _select_debugger_log(log_file: Optional[str]) -> Optional[str]:
-        """The named log in the log folder, or the newest one if no name is given. None if there is none."""
-        log_dir = debugger_log_dir()
-        if log_file:
-            # basename only: the tools read files from the log folder, nowhere else
-            path = os.path.join(log_dir, os.path.basename(log_file))
-        else:
-            logs = [os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.endswith(".log")] if os.path.isdir(log_dir) else []
-            if not logs:
-                return None
-            path = max(logs, key=os.path.getmtime)
-        return path if os.path.isfile(path) else None
-
-    def _handle_export_debugger_log(arguments: dict) -> list[TextContent]:
-        args = ExportDebuggerLog(**arguments)
-        path = _select_debugger_log(args.log_file)
-        if path is None:
-            return [TextContent(type="text", text=f"No debugger log found in {debugger_log_dir()}")]
-
-        # Saved logs go to their own folder, which the session cleanup never touches
-        save_dir = os.environ.get("MCP_WINDBG_SAVE_DIR") or os.path.join(os.path.expanduser("~"), "mcp-windbg-saved")
-        os.makedirs(save_dir, exist_ok=True)
-        label = "".join(c if c.isalnum() or c in "-_" else "-" for c in args.label or "").strip("-")
-        name = time.strftime("%Y%m%d-%H%M%S") + (f"-{label}" if label else "") + ".log"
-        dest = os.path.join(save_dir, name)
-        shutil.copy2(path, dest)
-        return [TextContent(type="text", text=f"Saved {path} to {dest}")]
-
-    def _handle_read_debugger_log(arguments: dict) -> list[TextContent]:
-        args = ReadDebuggerLog(**arguments)
-        path = _select_debugger_log(args.log_file)
-        if path is None:
-            return [TextContent(type="text", text=f"No debugger log found in {debugger_log_dir()}")]
-
-        needle = args.grep.lower() if args.grep else None
-        newest = deque(maxlen=args.lines)
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                line = line.rstrip("\n")
-                if needle is None or needle in line.lower():
-                    newest.append(line)
-        return [TextContent(type="text", text=f"{path} ({len(newest)} lines)\n" + "\n".join(newest))]
 
     def _handle_list_dumps(arguments: dict) -> list[TextContent]:
         args = ListDumps(**arguments)
@@ -571,15 +507,17 @@ def _create_server(
         args = OpenCdbDump(**arguments)
         effective = _effective_timeout(args.timeout_seconds, CDB_DUMP_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        session_id = _new_session_id("cdb")
         try:
             session = CDBSession(
                 dump_path=args.dump_path, cdb_path=cdb_path, symbols_path=effective_symbols,
                 timeout=effective, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols,
+                session_log_path=_session_log_path(session_id),
             )
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open cdb dump session: {e}")
 
-        session_id = _register_session(session, "cdb", f"dump {args.dump_path}", cleanup=cleanup)
+        session_id = _register_session(session, "cdb", f"dump {args.dump_path}", cleanup=cleanup, session_id=session_id)
         results = [_session_header(session_id, "cdb", f"crash dump {args.dump_path}")]
         results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
 
@@ -594,10 +532,12 @@ def _create_server(
         args = OpenCdbRemote(**arguments)
         effective = _effective_timeout(args.timeout_seconds, CDB_REMOTE_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        session_id = _new_session_id("cdb")
         try:
             session = CDBSession(
                 remote_connection=args.connection_string, cdb_path=cdb_path,
                 symbols_path=effective_symbols, timeout=effective, verbose=verbose,
+                session_log_path=_session_log_path(session_id),
             )
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open cdb remote session: {e}")
@@ -605,7 +545,7 @@ def _create_server(
         running = getattr(session, "target_running", False)
         session_id = _register_session(
             session, "cdb", f"remote {args.connection_string}", cleanup=cleanup,
-            resume_on_rollback=None,
+            resume_on_rollback=None, session_id=session_id,
         )
         results = [_session_header(session_id, "cdb", f"remote target {args.connection_string}")]
         if running and not args.break_in:
@@ -652,15 +592,17 @@ def _create_server(
         args = OpenKdSession(**arguments)
         effective = _effective_timeout(args.timeout_seconds, KD_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        session_id = _new_session_id("kd")
         try:
             session = KDSession(
                 kernel_connection=args.connection_string, kd_path=kd_path,
                 symbols_path=effective_symbols, timeout=effective, verbose=verbose,
+                session_log_path=_session_log_path(session_id),
             )
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open kd session: {e}")
 
-        session_id = _register_session(session, "kd", f"kernel {args.connection_string}", cleanup=cleanup)
+        session_id = _register_session(session, "kd", f"kernel {args.connection_string}", cleanup=cleanup, session_id=session_id)
         results = [_session_header(session_id, "kd", f"kernel target {args.connection_string}")]
         results.extend(_init_sections(session, _init_for(kernel=True), effective))
 
@@ -675,15 +617,17 @@ def _create_server(
         args = OpenKdDump(**arguments)
         effective = _effective_timeout(args.timeout_seconds, KD_DUMP_OPEN_TIMEOUT, server_timeout)
         effective_symbols = _combine_symbols(args.symbols_path, symbols_path)
+        session_id = _new_session_id("kd")
         try:
             session = KDSession(
                 dump_path=args.dump_path, kd_path=kd_path, symbols_path=effective_symbols,
                 timeout=effective, verbose=verbose, auto_dump_dir_symbols=auto_dump_dir_symbols,
+                session_log_path=_session_log_path(session_id),
             )
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open kd dump session: {e}")
 
-        session_id = _register_session(session, "kd", f"kernel dump {args.dump_path}", cleanup=cleanup)
+        session_id = _register_session(session, "kd", f"kernel dump {args.dump_path}", cleanup=cleanup, session_id=session_id)
         results = [_session_header(session_id, "kd", f"kernel dump {args.dump_path}")]
         results.extend(_init_sections(session, _init_for(_is_kernel_dump(args.dump_path)), effective))
 
@@ -726,6 +670,33 @@ def _create_server(
         if closed:
             return [TextContent(type="text", text=f"Successfully closed {kind} session {session_id}")]
         return [TextContent(type="text", text=f"No active {kind} session found for session_id {session_id}")]
+
+    def _handle_read_debugger_log(args: ReadDebuggerLog) -> list[TextContent]:
+        if not log_dir:
+            raise MCPError(INVALID_PARAMS, (
+                "Debugger logging is off. Start the server with --log-dir to "
+                "keep a log of every session's output."
+            ))
+        # The id names the file, so it must be one this server could have
+        # issued, never a path.
+        if not re.fullmatch(r"(cdb|kd)-[0-9a-f]{8}", args.session_id):
+            raise MCPError(INVALID_PARAMS, f"Not a session_id: {args.session_id!r}")
+        path = _session_log_path(args.session_id)
+        if not os.path.isfile(path):
+            raise MCPError(INVALID_PARAMS, f"No debugger log for session {args.session_id}.")
+
+        needle = args.grep.lower() if args.grep else None
+        newest: deque = deque(maxlen=args.lines)
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                line = line.rstrip("\n")
+                if needle is None or needle in line.lower():
+                    if len(line) > MAX_RETAINED_LINE_CHARS:
+                        line = line[:MAX_RETAINED_LINE_CHARS] + " ... line truncated ..."
+                    newest.append(line)
+        what = f"lines matching {args.grep!r}" if needle else "lines"
+        text = f"Debugger log {path}, last {len(newest)} {what}:\n```\n" + "\n".join(newest) + "\n```"
+        return [TextContent(type="text", text=text)]
 
     def _handle_send_ctrl_break(session_id) -> list[TextContent]:
         record = _require_live_session(session_id, "break into")

@@ -10,7 +10,9 @@ real server, real transport, real ``cdb.exe``.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import tempfile
 import sys
 import time
 from pathlib import Path
@@ -128,9 +130,11 @@ async def run_scenario(scenario: dict[str, Any]) -> None:
     remote_server: Optional[harness.RemoteCdbServer] = None
 
     # Placeholders available to every argument string in the scenario.
+    tmp_dir = tempfile.mkdtemp(prefix="mcp_windbg_scenario_")
     mapping = {
         "dumps_dir": str(harness.DUMPS_DIR),
         "scenarios_dir": str(harness.SCENARIOS_DIR),
+        "tmp_dir": tmp_dir,
     }
     dump = _requires(scenario).get("dump")
     if dump:
@@ -175,6 +179,7 @@ async def run_scenario(scenario: dict[str, Any]) -> None:
     finally:
         if remote_server is not None:
             remote_server.cleanup()
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 async def _run_stdio(scenario, server_args, remote_server, mapping, timeout) -> None:

@@ -1,5 +1,5 @@
 name: Tools contract
-description: The server advertises exactly the eleven harmonized, session-id tools.
+description: The server advertises the harmonized, session-id tools.
 steps:
   - list_tools: true
     expect:
@@ -15,6 +15,7 @@ steps:
         - close_kd_session
         - send_ctrl_break
         - wait_for_break
+        - read_debugger_log
         - "-server tcp:port=5005 -noio"
         - "NUL"
         - "nonpaged pool"
@@ -26,3 +27,5 @@ steps:
         - open_windbg_dump
         - run_windbg_cmd
         - open_windbg_kernel
+        - display_debugger_log
+        - export_debugger_log
