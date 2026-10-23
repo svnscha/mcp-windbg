@@ -908,29 +908,38 @@ def test_a_remote_client_keeps_the_pipe_even_on_a_multibyte_code_page(monkeypatc
         session.shutdown()
 
 
-def test_a_live_session_detaches_with_ctrl_b_when_it_may_resume(make_session):
-    """The default close of a live user-mode remote resumes the target."""
+@pytest.mark.parametrize(
+    "found_running,resume,running_now,expected",
+    [
+        # The default restores what the client found.
+        (False, None, False, ["\x02"]),
+        (True, None, False, ["g\n", "\x02"]),
+        # An explicit choice overrides it.
+        (False, True, False, ["g\n", "\x02"]),
+        (True, False, False, ["\x02"]),
+        # Never a g behind a running target: it would sit queued and resume
+        # the target again the next time anyone stopped it.
+        (True, None, True, ["\x02"]),
+        (False, True, True, ["\x02"]),
+    ],
+)
+def test_a_live_session_resumes_with_g_before_ctrl_b(
+    make_session, monkeypatch, found_running, resume, running_now, expected
+):
+    """CTRL+B only ends a -remote client; measured against real cdb, it never
+    resumes the target. Closing used to rely on it doing so, and left every
+    target it had broken into stopped. Resuming takes a g, sent first."""
+    monkeypatch.setattr(debug_session, "REMOTE_RESUME_SETTLE", 0)
     session, proc = make_session(live=True)
+    session._found_running = found_running
+    session._target_running = running_now
+    session.resume_on_close = resume
     written: list = []
     proc.stdin.write = written.append
 
     session._release_target()
 
-    assert written == ["\x02"]
-
-
-def test_a_live_session_writes_nothing_when_it_may_not_resume(make_session):
-    """CTRL+B detaches *and* resumes, so a session closing with resume disabled
-    must send nothing at all: dropping the client then leaves the server's
-    target exactly as it is. This is what a rolled-back open relies on."""
-    session, proc = make_session(live=True)
-    session.resume_on_close = False
-    written: list = []
-    proc.stdin.write = written.append
-
-    session._release_target()
-
-    assert written == []
+    assert written == expected
 
 
 def test_a_dump_session_always_quits(make_session):

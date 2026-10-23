@@ -150,7 +150,8 @@ class CDBSession(DebuggerSession):
         fine. Instead: wait for the connect banner, which is where connection
         latency belongs, then give the target one short window to answer.
         Silence means it is running, and the session opens in that state. The
-        first ordinary command breaks in, exactly as it does after ``g``.
+        first ordinary command breaks in, exactly as it does after ``g``, and a
+        default close resumes it again.
         """
         if not self.is_live_session:
             super()._startup()
@@ -174,6 +175,7 @@ class CDBSession(DebuggerSession):
             # the target next stops; the reader drops it as a stray marker.
             if not self._abandon_marker():
                 self._target_running = True
+                self._found_running = True
                 # What the reader holds is the connect banner and the
                 # server's replayed transcript, which a landed probe would
                 # have swept away. Drop it the same way, so the break-in

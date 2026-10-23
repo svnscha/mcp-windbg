@@ -77,8 +77,10 @@ usually worse than an unanalyzed one:
 - `wait_for_break` blocks until it stops on its own.
 - Any ordinary command breaks in automatically first.
 
-`close_cdb_session` when finished. Say plainly whether the target was left
-running or halted, so nobody discovers a frozen process an hour later. Closing
+`close_cdb_session` when finished. By default it leaves the target as the
+client found it, running again if it was running at attach; `resume` overrides
+that. Say plainly whether the target was left running or halted, so nobody
+discovers a frozen process an hour later. Closing
 the session closes only the MCP client, not the external debug server. Separately
 stop any server you started and verify it exited; leave pre-existing servers alone.
 

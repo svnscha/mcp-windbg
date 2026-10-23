@@ -79,12 +79,16 @@ def _new_session_id(kind: str) -> str:
     return f"{kind}-{uuid.uuid4().hex[:8]}"
 
 
-def _register_session(session, kind: str, label: str, *, cleanup: ExitStack) -> str:
+def _register_session(
+    session, kind: str, label: str, *, cleanup: ExitStack,
+    resume_on_rollback: Optional[bool] = False,
+) -> str:
     session_id = _new_session_id(kind)
     _sessions[session_id] = {"session": session, "kind": kind, "label": label}
-    # resume=False: an open that never returned an id leaves the target as it
-    # found it. Resuming stays an explicit choice through close_kd_session.
-    cleanup.callback(_close_session, session_id, kind, False)
+    # An open that never returned an id leaves the target as it found it.
+    # False never resumes; None lets a session that knows how it found the
+    # target restore that, so a running target the open broke into runs again.
+    cleanup.callback(_close_session, session_id, kind, resume_on_rollback)
     return session_id
 
 
@@ -420,8 +424,9 @@ def _create_server(
                 ), call_id)
 
             if name == "close_cdb_session":
+                close_args = CloseCdbSession(**arguments)
                 return filter_tool_content(name, await _run_debugger_handler(
-                    _handle_close, CloseCdbSession(**arguments).session_id, "cdb"
+                    _handle_close, close_args.session_id, "cdb", close_args.resume
                 ), call_id)
 
             if name == "close_kd_session":
@@ -513,17 +518,42 @@ def _create_server(
         except Exception as e:
             raise MCPError(INTERNAL_ERROR, f"Failed to open cdb remote session: {e}")
 
-        session_id = _register_session(session, "cdb", f"remote {args.connection_string}", cleanup=cleanup)
+        running = getattr(session, "target_running", False)
+        session_id = _register_session(
+            session, "cdb", f"remote {args.connection_string}", cleanup=cleanup,
+            resume_on_rollback=None,
+        )
         results = [_session_header(session_id, "cdb", f"remote target {args.connection_string}")]
-        if getattr(session, "target_running", False):
+        if running and not args.break_in:
+            # A debug server's target may be someone else's process, so
+            # stopping it is the caller's decision, not a side effect of
+            # attaching. Every triage command would break in, so none runs;
+            # the init commands wait for the first command that stops it.
+            init = _init_for(kernel=False)
+            if init:
+                _sessions[session_id]["pending_init"] = init
+            results.append(
+                "### Target State\n"
+                "The target is running, and this open left it running, so "
+                "nothing has been gathered from it yet"
+                + (" and the init commands have not run" if init else "")
+                + ". Any run_cdb_command breaks in first"
+                + (", after the init commands" if init else "")
+                + "; send_ctrl_break stops it, wait_for_break waits for it to "
+                "stop on its own, and break_in: true on the open stops it for "
+                "the initial triage.\n\n"
+            )
+            return [TextContent(type="text", text="".join(results))]
+        if running:
             # The triage below breaks in, as any command on a running target
-            # does. Say so: the caller did not ask for the stop, and it is
-            # the caller who decides whether the target runs again.
+            # does. Say so: it is the caller who decides whether the target
+            # runs again.
             results.append(
                 "### Target State\n"
                 "The target was running when the client attached. The commands "
                 "below broke into it, so it is now stopped and stays stopped "
-                "until you resume it with `g` or close the session.\n\n"
+                "until you resume it with `g` or close the session, which "
+                "resumes it unless you close with resume: false.\n\n"
             )
         results.extend(_init_sections(session, _init_for(kernel=False), effective))
 
@@ -583,9 +613,18 @@ def _create_server(
     def _handle_run_command(args, kind, tool_default, server_timeout) -> list[TextContent]:
         session = _require_session(args.session_id, kind)
         effective = _effective_timeout(args.timeout_seconds, tool_default, server_timeout)
+        init = []
+        record = _sessions.get(args.session_id, {})
+        if "pending_init" in record and not session._is_go_command(args.command):
+            # Held back by an open that left its target running. This command
+            # stops the target anyway, so they run first, as they would have
+            # on the open. A go-class command does not stop it, so they wait.
+            pending = record.pop("pending_init", None)
+            if pending:
+                init = _init_sections(session, pending, effective)
         output = session.send_command(args.command, timeout=effective)
         text = f"Command: {args.command}\n\nOutput:\n```\n" + "\n".join(output) + "\n```"
-        return [TextContent(type="text", text=text)]
+        return [TextContent(type="text", text="".join(init) + text)]
 
     def _handle_close(session_id, kind, resume=None) -> list[TextContent]:
         try:
