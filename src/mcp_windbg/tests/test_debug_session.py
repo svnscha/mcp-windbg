@@ -332,6 +332,83 @@ def test_a_debugger_crash_mid_command_reports_the_exit_status(make_session):
     assert "[ComMethodFrame: 000000c0]" in str(exc.value)
 
 
+@pytest.mark.parametrize("tail", [[], ["Debugger detached"]])
+@pytest.mark.parametrize("prompt", ["0:000> ", "?:???> "])
+def test_completed_output_survives_eof_before_the_waiter_reads_it(
+    make_session, monkeypatch, tail, prompt
+):
+    session, proc = make_session(prompt=prompt)
+    handle = proc._handle
+
+    def complete_and_exit(line):
+        handle(line)
+        if line.startswith(".echo "):
+            proc.exit_with(*tail)
+
+    monkeypatch.setattr(proc, "_handle", complete_and_exit)
+    wait = session.ready_event.wait
+
+    def wait_for_eof(timeout):
+        landed = wait(timeout)
+        session.reader_thread.join(timeout=2)
+        assert not session.reader_thread.is_alive(), "reader did not reach EOF"
+        return landed
+
+    # Force the reported ordering: the marker and EOF are both processed before
+    # send_command can take the output, without racing a timer against the reader.
+    monkeypatch.setattr(session.ready_event, "wait", wait_for_eof)
+    assert session.send_command("r rip") == ["OUT:r rip", *tail]
+    assert session._take_output() == []
+    with pytest.raises(DebuggerExitedError, match="open a new one"):
+        session.send_command("k")
+
+
+def test_eof_does_not_republish_output_already_taken(make_session, monkeypatch):
+    session, proc = make_session()
+    take = session._take_output
+
+    def take_before_eof():
+        result = take()
+        proc.exit_with("Debugger detached")
+        session.reader_thread.join(timeout=2)
+        assert not session.reader_thread.is_alive()
+        return result
+
+    monkeypatch.setattr(session, "_take_output", take_before_eof)
+    assert session.send_command("r rip") == ["OUT:r rip"]
+    assert take() == ["Debugger detached"]
+    assert take() == []
+
+
+@pytest.mark.parametrize("count", [4, 6])
+def test_completed_output_and_exit_tail_share_the_retention_limit(
+    make_session, monkeypatch, count
+):
+    monkeypatch.setattr(debug_session, "MAX_RETAINED_LINES", 4)
+    session, proc = make_session()
+    handle = proc._handle
+
+    def complete_and_exit(line):
+        handle(line)
+        if line.startswith(".echo "):
+            proc.exit_with("exit tail 1", "exit tail 2")
+
+    monkeypatch.setattr(proc, "_handle", complete_and_exit)
+    wait = session.ready_event.wait
+
+    def wait_for_eof(timeout):
+        landed = wait(timeout)
+        session.reader_thread.join(timeout=2)
+        assert not session.reader_thread.is_alive()
+        return landed
+
+    monkeypatch.setattr(session.ready_event, "wait", wait_for_eof)
+    assert session.send_command(f".flood {count}") == [
+        *(f"flood line {i}" for i in range(4)),
+        "... output truncated at 4 lines ...",
+    ]
+
+
 def test_a_debugger_that_exits_during_startup_reports_its_last_words(monkeypatch):
     """A mistyped -remote string makes cdb print why and exit at once; the
     caller should see that, not 'initialization timed out' a minute later."""
@@ -831,29 +908,38 @@ def test_a_remote_client_keeps_the_pipe_even_on_a_multibyte_code_page(monkeypatc
         session.shutdown()
 
 
-def test_a_live_session_detaches_with_ctrl_b_when_it_may_resume(make_session):
-    """The default close of a live user-mode remote resumes the target."""
+@pytest.mark.parametrize(
+    "found_running,resume,running_now,expected",
+    [
+        # The default restores what the client found.
+        (False, None, False, ["\x02"]),
+        (True, None, False, ["g\n", "\x02"]),
+        # An explicit choice overrides it.
+        (False, True, False, ["g\n", "\x02"]),
+        (True, False, False, ["\x02"]),
+        # Never a g behind a running target: it would sit queued and resume
+        # the target again the next time anyone stopped it.
+        (True, None, True, ["\x02"]),
+        (False, True, True, ["\x02"]),
+    ],
+)
+def test_a_live_session_resumes_with_g_before_ctrl_b(
+    make_session, monkeypatch, found_running, resume, running_now, expected
+):
+    """CTRL+B only ends a -remote client; measured against real cdb, it never
+    resumes the target. Closing used to rely on it doing so, and left every
+    target it had broken into stopped. Resuming takes a g, sent first."""
+    monkeypatch.setattr(debug_session, "REMOTE_RESUME_SETTLE", 0)
     session, proc = make_session(live=True)
+    session._found_running = found_running
+    session._target_running = running_now
+    session.resume_on_close = resume
     written: list = []
     proc.stdin.write = written.append
 
     session._release_target()
 
-    assert written == ["\x02"]
-
-
-def test_a_live_session_writes_nothing_when_it_may_not_resume(make_session):
-    """CTRL+B detaches *and* resumes, so a session closing with resume disabled
-    must send nothing at all: dropping the client then leaves the server's
-    target exactly as it is. This is what a rolled-back open relies on."""
-    session, proc = make_session(live=True)
-    session.resume_on_close = False
-    written: list = []
-    proc.stdin.write = written.append
-
-    session._release_target()
-
-    assert written == []
+    assert written == expected
 
 
 def test_a_dump_session_always_quits(make_session):

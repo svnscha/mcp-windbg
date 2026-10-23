@@ -21,18 +21,36 @@ process by PID. If the user wants a local process, tell them to start a `cdb -se
 first. The first output line carries a `session_id` (like `cdb-1a2b3c4d`) - keep it, every
 follow-up command needs it.
 
+**Safety before starting a server:** CDB 10.0.29661.1004 with stdin redirected to `NUL`
+(`/dev/null` or `subprocess.DEVNULL`), or a stdin pipe that reaches EOF, can exhaust Windows
+nonpaged pool and freeze the host. For unattended startup use:
+
+```text
+cdb -server tcp:port=5005 -noio <program>
+```
+
+Keep `-server` and its transport first, followed by `-noio`. This disables local console I/O;
+use the remote client for commands and output. Apply `-noio` only to the external `-server`
+process, never to the MCP-managed -remote client. Never use NUL/EOF stdin without `-noio`.
+Arrange cleanup before launching, including failed connections and interrupted
+investigations; record the spawned server PID. If `Could not write to pipe, 1450` repeats, stop only your
+owned server instead of retrying. See [the CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402).
+
 ### Step 2: Break in, if the target is running
 
-If the target was running when the client attached, Step 1 broke into it for the initial
-triage and said so under **Target State**, so it is stopped now. It only runs again if it is
-resumed, by you or by someone at the server. If that happened, pause it before inspecting
-state, or you will read values that are already stale.
+If the target was running when the client attached, Step 1 left it running, gathered nothing,
+and said so under **Target State**. Stopping it freezes the process, and on a shared debug
+server it may be someone else's, so do it deliberately. It also has to happen before you
+inspect state, or you will read values that are already stale. The same applies if the
+target was resumed later, by you or by someone at the server.
 
 **Tool:** `send_ctrl_break`
 - **Parameters:**
   - `session_id`: the id from Step 1
 
-Skip this if the target is already stopped (at a breakpoint or an exception).
+Any `run_cdb_command` also breaks in first, after the server's init commands if Step 1 held
+them back. Opening with `break_in: true` stops a running target for the initial triage
+instead. Skip this step if the target is already stopped (at a breakpoint or an exception).
 
 ### Step 3: Orient
 
@@ -72,7 +90,11 @@ an earlier one, say so rather than smoothing it over.
 - **Parameters:**
   - `session_id`: the id from Step 1
 
-This detaches and lets the target continue.
+This leaves the target as the client found it: running again if it was running when you
+attached, stopped if it was stopped. Pass `resume: true` or `resume: false` to choose
+otherwise, and say which state you left it in. It closes only the MCP client, not the external
+debug server. Separately stop any server you started and verify it exited; leave
+pre-existing servers alone.
 
 ## REQUIRED OUTPUT FORMAT:
 

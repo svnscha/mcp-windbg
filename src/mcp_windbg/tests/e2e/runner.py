@@ -287,7 +287,7 @@ async def _run_step(
 
     if "list_tools" in step:
         result = await session.list_tools()
-        text = "\n".join(tool.name for tool in result.tools)
+        text = "\n".join(f"{tool.name}\n{tool.description or ''}" for tool in result.tools)
         _check(scenario, index, "list_tools", expect, text, is_error=False)
         return
 

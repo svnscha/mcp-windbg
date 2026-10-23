@@ -98,6 +98,13 @@ BREAK_IN_PROBE_TIMEOUT = 2
 # headroom for a loaded link.
 RESUME_CONFIRM_TIMEOUT = 0.5
 
+# How long a closing -remote client lets a ``g`` reach the server before it
+# exits with CTRL+B. The client quits on CTRL+B at once, dropping a ``g`` still
+# in its input: measured against cdb 10.0.28000 on localhost, a ``g`` written
+# together with CTRL+B was lost, while 0.2s was enough. The rest is headroom
+# for a remote link.
+REMOTE_RESUME_SETTLE = 1.0
+
 # How many of the debugger's final output lines an exit error carries.
 _EXIT_TAIL_LINES = 20
 
@@ -284,11 +291,11 @@ class DebuggerSession:
     #: break in) and are detached with CTRL+B instead of quit with ``q``.
     is_live_session: bool = False
 
-    #: Whether closing this session should let the target run again. Only live
-    #: sessions have anything to resume; a dump ignores it. Set False to close
-    #: without resuming, which is what a rolled-back open does: an open that
-    #: never returned a session id must leave the target as it found it.
-    resume_on_close: bool = True
+    #: Whether closing this session should let a stopped target run again. Only
+    #: live sessions have anything to resume; a dump ignores it. None leaves the
+    #: target as the session found it: resumed if it was running when the
+    #: client attached, stopped otherwise. Closing never stops a running target.
+    resume_on_close: Optional[bool] = None
 
     #: Whether this session's debug engine is our own subprocess (a dump or a
     #: kernel target on the wire), rather than a remote server we are only a
@@ -332,6 +339,9 @@ class DebuggerSession:
         #: True between a go-class command and the next break-in. While set, the
         #: debugger is not reading its input, so the marker protocol is unusable.
         self._target_running = False
+        #: Whether the target was running when the client attached, which is
+        #: the state a default close restores.
+        self._found_running = False
         #: Set by shutdown so a parked wait stops rather than outliving the session.
         self._closing = False
         #: Set by the reader at EOF: the debugger is gone and no marker can land.
@@ -479,7 +489,12 @@ class DebuggerSession:
             # why it exited - and wake any waiter rather than let it time out.
             with self.lock:
                 self._debugger_exited = True
-                self.output_lines = buffer
+                # The waiter may not have taken a reply published by its marker.
+                self.output_lines.extend(buffer)
+                if len(self.output_lines) > MAX_RETAINED_LINES:
+                    self.output_lines[MAX_RETAINED_LINES:] = [
+                        f"... output truncated at {MAX_RETAINED_LINES} lines ..."
+                    ]
             self._on_debugger_exit()
             self.ready_event.set()
 
@@ -1136,18 +1151,25 @@ class DebuggerSession:
         """Tell the debugger to release the target before the process is dropped.
 
         - A dump session quits with ``q``.
-        - A live user-mode remote detaches with CTRL+B, which resumes the target.
+        - A live user-mode remote exits with CTRL+B, after a ``g`` if it is to
+          resume the target.
 
-        Kernel sessions override this: CTRL+B does not resume a kernel target
-        (only ``g`` does), so :class:`~mcp_windbg.kd_session.KDSession` handles it.
+        Kernel sessions override this, so :class:`~mcp_windbg.kd_session.KDSession`
+        handles its own release.
         """
         if self.is_live_session:
-            if not self.resume_on_close:
-                # CTRL+B detaches *and* resumes. With resume disabled there is
-                # nothing to send: dropping the client leaves the server's
-                # target exactly as it is, stopped if it was stopped.
-                return
-            self.process.stdin.write("\x02")  # CTRL+B detaches a user-mode remote
+            resume = (
+                self._found_running if self.resume_on_close is None else self.resume_on_close
+            )
+            # CTRL+B only ends the client: the target stays exactly as it is,
+            # stopped or running. So resuming takes a ``g`` first, and only at
+            # a target we know is stopped - one queued behind a running target
+            # would resume it again the next time anyone stops it.
+            if resume and not self._target_running:
+                self.process.stdin.write("g\n")
+                self.process.stdin.flush()
+                time.sleep(REMOTE_RESUME_SETTLE)
+            self.process.stdin.write("\x02")  # CTRL+B ends a user-mode remote client
         else:
             self.process.stdin.write("q\n")
         self.process.stdin.flush()

@@ -53,6 +53,7 @@ def test_a_stopped_target_opens_at_its_prompt(open_remote):
     proc = _RemoteProc(running=False)
     session = open_remote(proc)
     assert not session.target_running
+    assert not session._found_running  # so a default close leaves it stopped
     assert not proc.signals
     assert session.send_command("r") == ["OUT:r"]
 
@@ -69,6 +70,21 @@ def test_a_running_target_opens_running_and_the_first_command_breaks_in(open_rem
     # the server answers once the target stops, is not published as output.
     assert output == ["Break instruction exception - code 80000003 (first chance)", "OUT:r"]
     assert not session.target_running
+    assert session._found_running  # so a default close resumes it
+
+
+def test_a_default_close_resumes_a_target_found_running(open_remote, monkeypatch):
+    monkeypatch.setattr(debug_session, "REMOTE_RESUME_SETTLE", 0)
+    proc = _RemoteProc(running=True)
+    session = open_remote(proc, timeout=60)
+    session.send_command("r")  # breaks in
+    written: list = []
+    feed = proc._feed
+    proc._feed = lambda text: (written.append(text), feed(text))
+
+    session.shutdown()
+
+    assert written == ["g\n", "\x02"]
 
 
 def test_a_failed_connect_reports_the_exit_not_a_timeout(open_remote):

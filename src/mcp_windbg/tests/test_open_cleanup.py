@@ -9,7 +9,7 @@ import pytest
 from mcp.types import CallToolRequestParams
 
 from mcp_windbg import server as server_module
-from mcp_windbg.debug_session import DebuggerError
+from mcp_windbg.debug_session import DebuggerError, DebuggerSession
 
 
 OPEN_CALLS = [
@@ -33,6 +33,9 @@ def open_handler(monkeypatch):
     class Session:
         failure = None
         shutdown_failure = False
+        target_running = False
+        resume_on_close = None
+        _is_go_command = staticmethod(DebuggerSession._is_go_command)
 
         def __init__(self, **kwargs):
             self.commands = []
@@ -193,7 +196,10 @@ async def test_output_filter_failure_rolls_back_open(open_handler, tool, argumen
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("tool,arguments,first,second,kind", OPEN_CALLS)
+@pytest.mark.parametrize(
+    "tool,arguments,first,second,kind",
+    [call for call in OPEN_CALLS if call[0] != "open_cdb_remote"],
+)
 async def test_rollback_does_not_resume_the_target(open_handler, tool, arguments, first, second, kind):
     """A rolled-back open must leave the target as it found it.
 
@@ -212,6 +218,102 @@ async def test_rollback_does_not_resume_the_target(open_handler, tool, arguments
     assert created[0].shutdown_calls == 1
     assert created[0].resume_on_close is False
     assert not server_module._sessions
+
+
+REMOTE = CallToolRequestParams(name="open_cdb_remote", arguments={"connection_string": "test remote"})
+
+
+def _run(session_id, command):
+    return CallToolRequestParams(
+        name="run_cdb_command", arguments={"session_id": session_id, "command": command}
+    )
+
+
+@pytest.mark.anyio
+async def test_a_running_remote_target_is_left_running(open_handler):
+    """Attaching must not stop a shared server's target as a side effect.
+
+    No triage runs, since every command would break in, and the init commands
+    wait for the first command that stops the target anyway.
+    """
+    make_handler, session_type, created = open_handler
+    session_type.target_running = True
+    handler = make_handler()
+
+    result = await handler(None, REMOTE)
+    text = result.content[0].text
+    assert created[0].commands == []
+    assert "### Target State" in text
+    assert "left it running" in text
+    assert "init commands have not run" in text
+    session_id = next(iter(server_module._sessions))
+
+    # A go-class command does not stop the target, so the init commands wait.
+    await handler(None, _run(session_id, "g"))
+    assert created[0].commands == ["g"]
+
+    result = await handler(None, _run(session_id, "k"))
+    assert created[0].commands == ["g", "!init", "k"]
+    assert "### Initialization" in result.content[0].text
+    assert "output: !init" in result.content[0].text
+
+    await handler(None, _run(session_id, "r"))
+    assert created[0].commands == ["g", "!init", "k", "r"]
+
+
+@pytest.mark.anyio
+async def test_break_in_triages_a_running_remote_target(open_handler):
+    make_handler, session_type, created = open_handler
+    session_type.target_running = True
+
+    result = await make_handler()(None, CallToolRequestParams(
+        name="open_cdb_remote", arguments={"connection_string": "test remote", "break_in": True}
+    ))
+    assert created[0].commands == ["!init", "!peb", "r"]
+    assert "broke into it" in result.content[0].text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("break_in", [True, False])
+async def test_a_remote_rollback_restores_the_target_as_found(open_handler, break_in):
+    """A remote open's rollback does not force resume off.
+
+    The session knows how it found the target, and its default close restores
+    that: an open that broke into a running target and then failed lets it run
+    again, where forcing resume off would strand it stopped with nobody holding
+    a session id to resume it.
+    """
+    class FailingFilter:
+        def process_input(self, tool_name, arguments, transport, call_id):
+            return arguments
+
+        def process_output(self, tool_name, content, transport, call_id):
+            raise RuntimeError("output filter failed")
+
+    make_handler, session_type, created = open_handler
+    session_type.target_running = True
+    with pytest.raises(server_module.MCPError, match="output filter failed"):
+        await make_handler(FailingFilter())(None, CallToolRequestParams(
+            name="open_cdb_remote",
+            arguments={"connection_string": "test remote", "break_in": break_in},
+        ))
+    assert created[0].shutdown_calls == 1
+    assert created[0].resume_on_close is None
+    assert not server_module._sessions
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("arguments,expected", [({}, None), ({"resume": False}, False), ({"resume": True}, True)])
+async def test_close_cdb_session_passes_resume_through(open_handler, arguments, expected):
+    make_handler, _, created = open_handler
+    handler = make_handler()
+    await handler(None, REMOTE)
+    session_id = next(iter(server_module._sessions))
+
+    await handler(None, CallToolRequestParams(
+        name="close_cdb_session", arguments={"session_id": session_id, **arguments}
+    ))
+    assert created[0].resume_on_close is expected
 
 
 @pytest.mark.anyio

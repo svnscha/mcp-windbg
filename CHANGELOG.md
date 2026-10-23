@@ -5,6 +5,40 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Agent-visible remote-server startup warnings in the MCP tool descriptions,
+  remote-triage prompt, optional debug-remote skill, and documentation. They
+  explain the CDB NUL/EOF stdin nonpaged-pool exhaustion risk, the `-noio`
+  workaround, and cleanup of separately launched servers
+  ([CDB upstream report](https://github.com/microsoft/WinDbg-Feedback/issues/402)).
+- `close_cdb_session` takes `resume`, like `close_kd_session`, to choose whether
+  a remote target runs again after the close.
+
+### Changed
+
+- `open_cdb_remote` no longer stops a target that is running when the client
+  attaches. A debug server's target may be someone else's process, so the open
+  returns its session id with the target still running and says so under
+  `Target State`. Init commands wait for the first command that stops it.
+  `break_in: true` restores the 1.5.1 behavior of breaking in for the initial
+  triage (#140).
+
+### Fixed
+
+- Closing a remote session left every target it had broken into stopped. The
+  close relied on CTRL+B resuming the target, but measured against cdb it only
+  ends the client and leaves the target as it is. A close now restores the
+  state the client found: it resumes a target that was running at attach with
+  a `g` before CTRL+B, and leaves a target found stopped alone. A failed open
+  rolls back the same way, so it no longer strands a running target stopped
+  (#140).
+- Preserve completed command output when the debugger exits before the caller
+  reads it. Any final debugger output is appended within the existing retention
+  limit instead of replacing the completed reply (#151).
+
 ## [1.5.1] - 2026-10-10
 
 ### Fixed

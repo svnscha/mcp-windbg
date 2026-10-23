@@ -21,6 +21,18 @@ pwsh scripts/Switch-McpWindbg.ps1 Local       # Claude Code in this checkout: us
 pwsh scripts/Switch-McpWindbg.ps1 Released    # back to the published plugins, updated
 ```
 
+### Signing releases
+
+The isolated `sign` job reads `SIGNING_URL` and `SIGNING_API_KEY` through its environment.
+The API key is a repository Actions secret, separate from the hardware PIN; the `signing`
+environment must not shadow it with an older value. A missing key or HTTP failure stops the
+job before a signed artifact is uploaded. `release-please.yml` forwards secrets with
+`secrets: inherit`; reusable callers must also supply `SIGNING_API_KEY`.
+
+For acceptance, dispatch `publish-mcp.yml` on `develop` with `rehearsal=true` and leave `tag`
+empty. This signs and verifies the binary and runs its Windows scenarios, without publishing
+to PyPI or attaching a release asset. Keep the signing job free of checkouts and write tokens.
+
 ### Standalone binary
 
 `scripts/Build-Exe.ps1` freezes the checkout into `dist/mcp-windbg.exe` with PyInstaller, for
@@ -107,7 +119,8 @@ shipping a kernel change, run the `kernel` marker against a real target.
 src/mcp_windbg/
   __init__.py        main(): CLI argument parsing, picks the transport
   __main__.py        module entry point
-  server.py          MCP server: tool param models + list_tools + call_tool dispatch
+  server.py          MCP server: session lifecycle + call_tool dispatch
+  server_api.py      Tool param models + list_tools + packaged prompt handlers
   cdb_session.py     CDBSession: spawns cdb.exe, sends commands, reads output
   filter_script.py   --filter-script loader and tool content hooks
   prompts/           prompt templates (dump-triage.prompt.md)
@@ -131,7 +144,7 @@ matching file:
 - `documentation.md` - authoring style for the `docs/` user guide (scenario-first, link to
   the reference, sentence-case). (`docs/**`)
 
-Tool and CLI facts come from `src/mcp_windbg/server.py` (tool schemas) and
+Tool and CLI facts come from `src/mcp_windbg/server_api.py` (tool schemas) and
 `src/mcp_windbg/__init__.py` (command-line options). Keep `docs/reference/` in sync with them.
 
 **The plugin has two names, and they do different jobs.** The marketplace entry in

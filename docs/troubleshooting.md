@@ -73,11 +73,20 @@ Cannot connect to a remote target:
 - `Timed out connecting to the debug server` means the client reached neither the server nor
   an error within the timeout, which points at the network rather than the target. A refused
   connection fails fast with `DebugConnect failed`, and a target that is merely running is
-  not a connect failure: the open breaks into it.
+  not a connect failure: the open succeeds and reports it under `Target State`.
 - `open_cdb_remote` is user-mode only (`-remote`). For kernel targets (`-k`) use
   `open_kd_session`, see [Debug a kernel target](scenarios/kernel-debugging.md). A kernel
   connect that times out with `no_debuggee` means the target isn't transmitting or another
   debugger already holds the (point-to-point) connection.
+
+### Unattended CDB server consumes nonpaged pool
+
+CDB 10.0.29661.1004 with NUL/EOF stdin can exhaust Windows nonpaged pool and
+freeze the host. Repeated `Could not write to pipe, 1450` is a reason to stop
+the server you started, not retry commands. For unattended startup use
+`cdb -server tcp:port=5005 -noio <program>` and arrange PID-based cleanup.
+Closing an MCP session does not stop the external server. See
+[safe server startup](scenarios/remote-debugging.md#start-an-unattended-server-safely).
 
 ## HTTP transport will not connect
 
