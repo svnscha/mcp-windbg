@@ -101,6 +101,10 @@ without triage, and the result says so under `Target State`. Init commands wait 
 command that stops it. With `break_in: true` the open breaks in for the triage (`!peb`, `r`)
 instead, and the target stays stopped until it is resumed with `g` or the session is closed.
 
+The triage trims the environment-variable block that `!peb` prints: on a typical machine it is
+hundreds of lines - most of the open's output. The result states how many variables were trimmed
+and how to see them; run `!peb` through `run_cdb_command` for the full block.
+
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `connection_string` | yes | Remote connection string, see formats below. |
