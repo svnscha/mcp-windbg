@@ -1,0 +1,53 @@
+name: Remote open trims the !peb environment block
+description: The trimmed open lacks the variables, while include_environment and an explicit !peb return them in full.
+requires:
+  remote: true
+steps:
+  - call: open_cdb_remote
+    arguments:
+      connection_string: "{remote}"
+    capture:
+      sid: 'session_id:\s*(cdb-[0-9a-f]+)'
+    expect:
+      isError: false
+      contains:
+        - "session_id: cdb-"
+        - "Target Process Information"
+        - "environment variables trimmed"
+      not_contains:
+        - "PATH="
+
+  - call: run_cdb_command
+    arguments:
+      session_id: "{sid}"
+      command: "!peb"
+    expect:
+      contains:
+        - "PATH="
+
+  - call: close_cdb_session
+    arguments:
+      session_id: "{sid}"
+    expect:
+      contains:
+        - "Successfully closed cdb session"
+
+  - call: open_cdb_remote
+    arguments:
+      connection_string: "{remote}"
+      include_environment: true
+    capture:
+      sid2: 'session_id:\s*(cdb-[0-9a-f]+)'
+    expect:
+      isError: false
+      contains:
+        - "PATH="
+      not_contains:
+        - "environment variables trimmed"
+
+  - call: close_cdb_session
+    arguments:
+      session_id: "{sid2}"
+    expect:
+      contains:
+        - "Successfully closed cdb session"
