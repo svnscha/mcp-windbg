@@ -116,3 +116,18 @@ async def test_the_triage_trims_the_block_but_an_explicit_peb_is_full(make_handl
         CallToolRequestParams(name="run_cdb_command", arguments={"session_id": session_id, "command": "!peb"}),
     )
     assert "API_KEY=hunter2" in run_result.content[0].text
+
+
+@pytest.mark.anyio
+async def test_include_environment_keeps_the_block_in_the_open(make_handler):
+    handler = make_handler()
+    open_result = await handler(
+        None,
+        CallToolRequestParams(
+            name="open_cdb_remote",
+            arguments={"connection_string": "tcp:Port=5005,Server=host", "include_environment": True},
+        ),
+    )
+    text = open_result.content[0].text
+    assert "API_KEY=hunter2" in text
+    assert "environment variables trimmed" not in text

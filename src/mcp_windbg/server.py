@@ -609,7 +609,8 @@ def _create_server(
             )
         results.extend(_init_sections(session, _init_for(kernel=False), effective))
 
-        target_info = _trim_peb_environment(session.send_command("!peb", timeout=effective))
+        peb_output = session.send_command("!peb", timeout=effective)
+        target_info = peb_output if args.include_environment else _trim_peb_environment(peb_output)
         results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
         registers = session.send_command("r", timeout=effective)
         results.append("### Current Registers\n```\n" + "\n".join(registers) + "\n```\n\n")

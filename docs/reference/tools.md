@@ -103,7 +103,8 @@ instead, and the target stays stopped until it is resumed with `g` or the sessio
 
 The triage trims the environment-variable block that `!peb` prints: on a typical machine it is
 hundreds of lines - most of the open's output. The result states how many variables were trimmed
-and how to see them; run `!peb` through `run_cdb_command` for the full block.
+and how to see them; pass `include_environment: true` or run `!peb` through `run_cdb_command`
+for the full block.
 
 | Parameter | Required | Description |
 | --- | --- | --- |
@@ -112,6 +113,7 @@ and how to see them; run `!peb` through `run_cdb_command` for the full block.
 | `include_stack_trace` | no | Include the stack trace. Defaults to `false`. |
 | `include_modules` | no | Include loaded module information. Defaults to `false`. |
 | `include_threads` | no | Include thread information. Defaults to `false`. |
+| `include_environment` | no | Include the full `!peb` environment-variable block. Defaults to `false`: the block is trimmed, with a note stating the count. |
 | `symbols_path` | no | Extra symbol search path. |
 | `timeout_seconds` | no | Override the connect timeout (default 60s). |
 

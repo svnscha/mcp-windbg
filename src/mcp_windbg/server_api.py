@@ -41,6 +41,7 @@ class OpenCdbRemote(BaseModel):
     include_stack_trace: bool = Field(default=False, description="Include a stack trace (kb) in the initial output.")
     include_modules: bool = Field(default=False, description="Include loaded modules (lm) in the initial output.")
     include_threads: bool = Field(default=False, description="Include threads (~) in the initial output.")
+    include_environment: bool = Field(default=False, description="Include the full !peb environment-variable block in the initial output. Defaults to false: the block is trimmed, with a note stating the count and how to get it in full.")
     timeout_seconds: Optional[int] = Field(default=None, description="Override the connect timeout (seconds).")
     break_in: bool = Field(default=False, description="If the target is running when the client attaches, break into it for the initial triage and leave it stopped. By default a running target is left running and the open returns without triage.")
 
@@ -136,8 +137,9 @@ async def on_list_tools(ctx, params) -> ListToolsResult:
             with 'cdb -server tcp:port=5005 -noio <program>'. A target that is running when the
             client attaches is left running and the open returns without triage, unless break_in
             is true, which breaks in for the triage and leaves it stopped. The triage trims the
-            !peb environment-variable block, which alone can dwarf the rest of the output; run !peb
-            via run_cdb_command when the full list is wanted. Returns a session_id for run_cdb_command
+            !peb environment-variable block, which alone can dwarf the rest of the output; pass
+            include_environment: true to keep it, or run !peb via run_cdb_command. Returns a
+            session_id for run_cdb_command
             / send_ctrl_break / close_cdb_session. For kernel targets use open_kd_session instead.
             WARNING: CDB 10.0.29661.1004 in -server mode with NUL stdin (/dev/null, subprocess.DEVNULL), or a
             stdin pipe at EOF, can exhaust Windows nonpaged pool and freeze the host. For
