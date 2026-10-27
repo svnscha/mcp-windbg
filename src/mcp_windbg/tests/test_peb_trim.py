@@ -49,7 +49,7 @@ def test_the_block_is_trimmed_with_a_count_and_a_pointer_to_the_full_list():
     assert "ImageFile:    'C:\\apps\\target.exe'" in text
     # The block's address survives, so memory can still be walked by hand.
     assert "Environment:  0000018371a614b0" in text
-    assert "(6 environment variables trimmed; run `!peb` for the full list)" in text
+    assert "(6 environment variables trimmed; run `!peb` or pass include_environment: true for the full list)" in text
 
 
 def test_output_without_an_environment_section_is_returned_unchanged():
@@ -75,7 +75,7 @@ def test_a_line_that_is_not_a_variable_stops_the_block():
         "NatVis script unloaded from 'C:\\debuggers\\Visualizers\\windows.natvis'",
     ])
     text = "\n".join(trimmed)
-    assert "(2 environment variables trimmed; run `!peb` for the full list)" in text
+    assert "(2 environment variables trimmed; run `!peb` or pass include_environment: true for the full list)" in text
     assert "quit:" in text
     assert "NatVis script unloaded" in text
     assert "ALLUSERSPROFILE" not in text and "PATH=" not in text

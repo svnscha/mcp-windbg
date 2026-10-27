@@ -209,10 +209,10 @@ def _init_sections(session, init_commands: Optional[List[str]], timeout: int) ->
 # `!peb` prints the environment-variable block as indented `NAME=value`
 # lines - drive-relative entries such as `=C:=C:\dir` start with `=` -
 # running to the end of its output. Every other line it prints separates
-# its field from its value with `:` and whitespace, which `\S+` cannot
-# cross, so these cannot match the struct or the process parameters.
+# its field from its value with `:` and whitespace, which a name here cannot
+# contain, so these cannot match the struct or the process parameters.
 _PEB_ENVIRONMENT_HEADER = re.compile(r"^\s*Environment:\s")
-_PEB_ENV_VAR = re.compile(r"^\s*=?\S+=")
+_PEB_ENV_VAR = re.compile(r"^\s*(?:=[^\s=]+|[^\s=:]+)=")
 
 
 def _trim_peb_environment(lines: list[str]) -> list[str]:
@@ -232,7 +232,7 @@ def _trim_peb_environment(lines: list[str]) -> list[str]:
     end = start
     while end < len(lines) and _PEB_ENV_VAR.match(lines[end]):
         end += 1
-    note = f"     ({end - start} environment variables trimmed; run `!peb` for the full list)"
+    note = f"     ({end - start} environment variables trimmed; run `!peb` or pass include_environment: true for the full list)"
     return lines[:start] + [note] + lines[end:]
 
 
