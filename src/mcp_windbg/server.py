@@ -206,6 +206,36 @@ def _init_sections(session, init_commands: Optional[List[str]], timeout: int) ->
     return ["### Initialization\n```\n" + "\n".join(lines) + "\n```\n\n"]
 
 
+# `!peb` prints the environment-variable block as indented `NAME=value`
+# lines - drive-relative entries such as `=C:=C:\dir` start with `=` -
+# running to the end of its output. Every other line it prints separates
+# its field from its value with `:` and whitespace, which a name here cannot
+# contain, so these cannot match the struct or the process parameters.
+_PEB_ENVIRONMENT_HEADER = re.compile(r"^\s*Environment:\s")
+_PEB_ENV_VAR = re.compile(r"^\s*(?:=[^\s=]+|[^\s=:]+)=")
+
+
+def _trim_peb_environment(lines: list[str]) -> list[str]:
+    """Trim the environment-variable block `!peb` prints, keeping the rest.
+
+    The block is often hundreds of lines the initial triage does not need, and
+    it alone can dwarf the rest of the open's output. Only the automatic triage
+    is trimmed: a run_cdb_command call that asks for `!peb` explicitly still
+    gets it in full.
+    """
+    header = next((i for i, line in enumerate(lines) if _PEB_ENVIRONMENT_HEADER.match(line)), None)
+    if header is None:
+        return lines
+    start = next((i for i in range(header + 1, len(lines)) if _PEB_ENV_VAR.match(lines[i])), None)
+    if start is None:
+        return lines
+    end = start
+    while end < len(lines) and _PEB_ENV_VAR.match(lines[end]):
+        end += 1
+    note = f"     ({end - start} environment variables trimmed; run `!peb` or pass include_environment: true for the full list)"
+    return lines[:start] + [note] + lines[end:]
+
+
 def _is_kernel_dump(dump_path: str) -> bool:
     """True for a kernel crash dump, whatever debugger opens it."""
     try:
@@ -581,7 +611,8 @@ def _create_server(
             )
         results.extend(_init_sections(session, _init_for(kernel=False), effective))
 
-        target_info = session.send_command("!peb", timeout=effective)
+        peb_output = session.send_command("!peb", timeout=effective)
+        target_info = peb_output if args.include_environment else _trim_peb_environment(peb_output)
         results.append("### Target Process Information\n```\n" + "\n".join(target_info) + "\n```\n\n")
         registers = session.send_command("r", timeout=effective)
         results.append("### Current Registers\n```\n" + "\n".join(registers) + "\n```\n\n")
