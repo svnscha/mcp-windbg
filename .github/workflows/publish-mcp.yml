@@ -220,9 +220,11 @@ jobs:
 
   # Trusted Publishing: PyPI accepts a short-lived OIDC token minted for this
   # job, so there is no long-lived API token to steal. The PyPI project's trusted
-  # publisher entries must name this repository, the `pypi` environment, and the
-  # *top-level* workflow - release-please.yml for releases, publish-mcp.yml for a
-  # manual run - because PyPI matches the caller of a reusable workflow.
+  # publisher must name this repository, the `pypi` environment, and this file,
+  # publish-mcp.yml. PyPI looks the publisher up by the token's job_workflow_ref
+  # claim, which names the workflow file the job is defined in - this one -
+  # whether release-please.yml calls it or it is started by hand. So one entry
+  # covers both, and renaming this file breaks publishing until it is updated.
   publish-pypi:
     runs-on: ubuntu-24.04
     needs: build-and-test
