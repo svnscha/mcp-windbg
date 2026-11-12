@@ -76,7 +76,7 @@ async def test_without_a_log_dir_nothing_is_logged(server):
     assert created[0].log_path is None
 
     with pytest.raises(server_module.MCPError, match="--log-dir"):
-        await handler(None, _read("cdb-0123abcd"))
+        await handler(None, _read("cdb-0123abcd0123abcd0123abcd0123abcd"))
 
 
 @pytest.mark.anyio
@@ -84,13 +84,13 @@ async def test_read_returns_the_newest_matching_lines(server, tmp_path, monkeypa
     monkeypatch.setattr(server_module, "MAX_RETAINED_LINE_CHARS", 20)
     make, _ = server
     handler = make(str(tmp_path))
-    (tmp_path / "kd-0123abcd.log").write_text(
+    (tmp_path / "kd-0123abcd0123abcd0123abcd0123abcd.log").write_text(
         "".join(f"10:00:0{i} line {i} {'HIT' if i % 2 else 'miss'}\n" for i in range(8))
         + "10:00:09 HIT " + "x" * 50 + "\n",
         encoding="utf-8",
     )
 
-    result = await handler(None, _read("kd-0123abcd", lines=3, grep="hit"))
+    result = await handler(None, _read("kd-0123abcd0123abcd0123abcd0123abcd", lines=3, grep="hit"))
     text = result.content[0].text
     assert "last 3 lines matching 'hit'" in text
     assert "line 5 HIT" in text and "line 7 HIT" in text
@@ -99,7 +99,10 @@ async def test_read_returns_the_newest_matching_lines(server, tmp_path, monkeypa
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("session_id", ["..\\secret", "cdb-0123abcd.log", "C:\\x", "cdb-XYZ"])
+@pytest.mark.parametrize("session_id", [
+    "cdb-0123abcd",  # the 8-hex form this server no longer issues
+    "..\\secret", "cdb-0123abcd0123abcd0123abcd0123abcd.log", "C:\\x", "cdb-XYZ",
+])
 async def test_read_only_takes_a_session_id(server, tmp_path, session_id):
     make, _ = server
     with pytest.raises(server_module.MCPError, match="Not a session_id"):
@@ -109,5 +112,5 @@ async def test_read_only_takes_a_session_id(server, tmp_path, session_id):
 @pytest.mark.anyio
 async def test_read_reports_a_session_without_a_log(server, tmp_path):
     make, _ = server
-    with pytest.raises(server_module.MCPError, match="No debugger log for session cdb-0123abcd"):
-        await make(str(tmp_path))(None, _read("cdb-0123abcd"))
+    with pytest.raises(server_module.MCPError, match="No debugger log for session cdb-0123abcd0123abcd0123abcd0123abcd"):
+        await make(str(tmp_path))(None, _read("cdb-0123abcd0123abcd0123abcd0123abcd"))

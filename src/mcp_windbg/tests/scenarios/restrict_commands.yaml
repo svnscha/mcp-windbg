@@ -1,0 +1,42 @@
+name: Restricted command mode
+description: --restrict-commands refuses host-reaching commands and network paths before any debugger runs.
+server:
+  args: ["--restrict-commands"]
+steps:
+  - call: run_cdb_command
+    arguments:
+      session_id: "cdb-deadbeef"
+      command: ".shell calc"
+    expect:
+      isError: true
+      contains:
+        - "--restrict-commands"
+        - "'.shell'"
+
+  - call: run_kd_command
+    arguments:
+      session_id: "kd-deadbeef"
+      command: "kb; .load C:\\evil.dll"
+    expect:
+      isError: true
+      contains:
+        - "--restrict-commands"
+
+  - call: list_dumps
+    arguments:
+      directory_path: "\\\\attacker\\share"
+    expect:
+      isError: true
+      contains:
+        - "network paths are not allowed"
+
+  - call: run_cdb_command      # an ordinary command passes the policy and fails on the session
+    arguments:
+      session_id: "cdb-deadbeef"
+      command: "kb"
+    expect:
+      isError: true
+      contains:
+        - "Unknown session_id"
+      not_contains:
+        - "--restrict-commands"
