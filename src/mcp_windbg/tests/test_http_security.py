@@ -165,3 +165,28 @@ def test_exposed_bind_without_token_is_refused():
 ])
 def test_exposure_check_passes(host, token, allow):
     check_http_exposure(host, token, allow)
+
+
+def test_ipv6_allowed_host_is_bracketed():
+    settings = build_transport_security("0.0.0.0", ["fe80::1"])
+    assert "[fe80::1]:*" in settings.allowed_hosts
+
+
+def test_empty_token_is_rejected():
+    from mcp_windbg.http_security import BearerTokenMiddleware
+
+    with pytest.raises(ValueError):
+        BearerTokenMiddleware(lambda *a: None, "")
+
+
+@pytest.mark.anyio
+async def test_token_check_passes_non_http_scopes_through():
+    from mcp_windbg.http_security import BearerTokenMiddleware
+
+    seen = []
+
+    async def inner(scope, receive, send):
+        seen.append(scope["type"])
+
+    await BearerTokenMiddleware(inner, "s3cret")({"type": "lifespan"}, None, None)
+    assert seen == ["lifespan"]

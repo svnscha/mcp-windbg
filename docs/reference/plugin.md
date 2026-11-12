@@ -135,7 +135,8 @@ compromised upload is usually caught, and to turn on
 ]
 ```
 
-The cooldown needs uv 0.9.27 or later; older versions reject these flags.
+Use the version the bundle pins in place of `1.4.0`. The cooldown needs uv 0.9.27 or later;
+older versions reject these flags.
 
 ## Upgrade from bundled skills and agent
 
