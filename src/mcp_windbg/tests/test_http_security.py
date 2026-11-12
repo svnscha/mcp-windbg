@@ -125,11 +125,28 @@ async def test_specific_bind_address_is_served():
 
 
 @pytest.mark.anyio
+async def test_other_loopback_bind_address_is_served():
+    assert await _with_app(bind_host="127.0.0.2", host="127.0.0.2:8000") == 200
+
+
+@pytest.mark.anyio
 async def test_token_required_when_configured():
     assert await _with_app(auth_token="s3cret") == 401
     assert await _with_app(auth_token="s3cret", authorization="Bearer wrong") == 401
     assert await _with_app(auth_token="s3cret", authorization="s3cret") == 401
     assert await _with_app(auth_token="s3cret", authorization="Bearer s3cret") == 200
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("authorization", ["bearer s3cret", "BEARER s3cret", "Bearer  s3cret "])
+async def test_bearer_scheme_is_case_insensitive(authorization):
+    assert await _with_app(auth_token="s3cret", authorization=authorization) == 200
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("authorization", ["Basic s3cret", "Bearer", "Bearers3cret", "Bearer s3cret extra"])
+async def test_other_authorization_forms_are_refused(authorization):
+    assert await _with_app(auth_token="s3cret", authorization=authorization) == 401
 
 
 def test_allowed_host_with_port_pins_that_port():

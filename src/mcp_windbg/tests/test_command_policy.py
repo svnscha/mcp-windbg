@@ -10,6 +10,7 @@ from mcp_windbg import server as server_module
 from mcp_windbg.command_policy import (
     CommandPolicyError,
     check_command,
+    check_connection_string,
     check_local_path,
     check_symbols_path,
 )
@@ -62,6 +63,24 @@ BLOCKED = [
     ".if (1) { .shell calc }",
     "bp kernel32!CreateFileW \".shell calc; g\"",
     "~*e .shell calc",
+    # Commands that open a file at a chosen path, a share included.
+    ".readmem \\\\attacker\\share\\x 0 L1",
+    "lsf \\\\attacker\\share\\a.c",
+    "lsf- a.c",
+    ".cmdtree \\\\attacker\\share\\tree.txt",
+    ".nvload \\\\attacker\\share\\x.natvis",
+    ".dml_start \\\\attacker\\share\\x.dml",
+    ".settings save C:\\Users\\me\\x.xml",
+    ".settings load \\\\attacker\\share\\x.xml",
+    # A path argument with no space before it.
+    ".sympath+\\\\attacker\\share",
+    ".sympath\"\\\\attacker\\share\"",
+    # Aliases defined behind a prefix that runs a command.
+    "~0e aS x .she",
+    "!for_each_module as x y",
+    # The dx objects reached through a variable.
+    "dx @$u = Debugger.Utility",
+    "dx @$u.FileSystem.CreateFile(\"C:\\\\x\")",
 ]
 
 ALLOWED = [
@@ -94,6 +113,11 @@ ALLOWED = [
     "r $t0 = 5",
     "da poi(@rsp)",
     "!sym noisy",
+    ".symfix",
+    ".symfix+",
+    ".sympath;kb",
+    "lsa @rip",
+    "dx Debugger.Sessions",
 ]
 
 
@@ -115,6 +139,7 @@ def test_ordinary_analysis_commands_are_allowed(command):
     "https://attacker.example/x.dmp",
     "file://attacker/share/x.dmp",
     r'"\\attacker\share\x.dmp"',
+    r"\??\UNC\attacker\share\x.dmp",
 ])
 def test_network_paths_are_refused(path):
     with pytest.raises(CommandPolicyError, match="network paths"):
@@ -125,6 +150,7 @@ def test_network_paths_are_refused(path):
     r"C:\dumps\app.dmp",
     r"\\?\C:\very\long\path\app.dmp",
     r"\\.\C:\dumps\app.dmp",
+    r"\??\C:\dumps\app.dmp",
     r"dumps\app.dmp",
     None,
     "",
@@ -147,6 +173,28 @@ def test_network_symbol_paths_are_refused(symbols):
 @pytest.mark.parametrize("symbols", [None, "", r"C:\build\out", r"C:\a;D:\b", r"cache*C:\cache"])
 def test_local_symbol_paths_are_allowed(symbols):
     check_symbols_path(symbols)
+
+
+@pytest.mark.parametrize("connection", [
+    "npipe:server=attacker,pipe=dbg",
+    "NPIPE:Pipe=dbg,Server=attacker.example",
+    "spipe:proto=tls,certuser=me,server=attacker,pipe=dbg",
+    r"com:pipe,port=\\attacker\pipe\com_1,resets=0",
+])
+def test_pipes_on_other_machines_are_refused(connection):
+    with pytest.raises(CommandPolicyError, match="named pipe"):
+        check_connection_string(connection)
+
+
+@pytest.mark.parametrize("connection", [
+    None,
+    "tcp:Port=5005,Server=192.168.0.100",
+    "npipe:server=localhost,pipe=dbg",
+    r"com:pipe,port=\\.\pipe\com_1,resets=0,reconnect",
+    "net:port=50000,key=1.2.3.4",
+])
+def test_tcp_kdnet_and_local_pipes_are_allowed(connection):
+    check_connection_string(connection)
 
 
 # -- Server integration -------------------------------------------------------
@@ -236,6 +284,8 @@ async def test_unrestricted_server_passes_any_command(make_handler):
                          "symbols_path": "srv*https://attacker.example"}),
     ("open_kd_session", {"connection_string": "net:port=50000,key=1.2.3.4",
                          "symbols_path": r"\\attacker\sym"}),
+    ("open_cdb_remote", {"connection_string": "npipe:server=attacker,pipe=dbg"}),
+    ("open_kd_session", {"connection_string": r"com:pipe,port=\\attacker\pipe\com_1"}),
 ])
 async def test_restricted_server_refuses_network_paths(make_handler, tool, arguments):
     handler = make_handler(restrict_commands=True)

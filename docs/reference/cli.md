@@ -112,14 +112,18 @@ your machine rather than the target. `--restrict-commands` refuses those command
 | --- | --- |
 | `.shell`, `.create`, `.attach`, `.dbgdbg`, `.server`, `.remote`, `.netuse` | Run processes or open listeners on the host. |
 | `.load`, `.loadby`, `.setdll`, `.cordll -lp`, `.scriptload`, `.scriptrun`, `!<path>.<command>` | Load code into the debugger. |
-| `.writemem`, `.dump`, `.dumpcab`, `.logopen`, `.logappend`, `.write_cmd_hist`, `.kdfiles`, `.send_file` | Write or send files. |
+| `.writemem`, `.dump`, `.dumpcab`, `.logopen`, `.logappend`, `.write_cmd_hist`, `.kdfiles`, `.send_file`, `.settings` | Write or send files, or change debugger settings. |
+| `.readmem`, `lsf`, `.cmdtree`, `.nvload`, `.dml_start` | Open a file at a chosen path, which can be a network share. |
 | `.opendump`, `.ocommand`, `$<` and the other script-file commands | Open other targets or run commands from elsewhere. |
-| `.sympath`, `.symfix`, `.srcpath`, `.exepath`, `.extpath` (and the `fix`/`l` variants) with an argument | Point the debugger at network locations. |
-| `as`, `aS`, `$u0` to `$u9`, `.foreach`, `dx` `ExecuteCommand` and `Utility.FileSystem` | Can build a refused command out of harmless pieces. |
+| `.sympath`, `.symfix`, `.srcpath`, `.exepath`, `.extpath` (and the `fix`/`l` variants) with any argument | Point the debugger at network locations. |
+| `as`, `aS`, `$u0` to `$u9`, `.foreach`, and `dx` expressions naming `ExecuteCommand`, `FileSystem` or `Utility` | Can build a refused command out of harmless pieces. |
 
 It also refuses network locations, meaning UNC paths and URLs, in `dump_path`, `list_dumps`'
 `directory_path`, and per-call `symbols_path`. Opening one sends your Windows credentials to that
-server. Configure symbol servers with `--symbols-path` or `_NT_SYMBOL_PATH` instead.
+server. Configure symbol servers with `--symbols-path` or `_NT_SYMBOL_PATH` instead. For the same
+reason it refuses a `connection_string` that opens a named pipe on another machine:
+`npipe:server=<host>` or `spipe:` for `open_cdb_remote`, and `com:pipe,port=\\<host>\pipe\...` for
+`open_kd_session`. `tcp:` remotes, KDNET `net:` targets and pipes on this machine are allowed.
 
 A refused token is refused wherever it appears in the command, even in a quoted breakpoint
 command. Your own `--init-command` list is not restricted, so load extensions there. This is a

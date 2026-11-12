@@ -30,6 +30,7 @@ from typing import Optional
 __all__ = [
     "CommandPolicyError",
     "check_command",
+    "check_connection_string",
     "check_local_path",
     "check_symbols_path",
 ]
@@ -72,6 +73,11 @@ _BLOCKED_META = (
     "kdfiles",         # replace driver files on a kernel target
     "send_file",       # copy files to a remote target
     "foreach",         # run commands built from output tokens
+    "readmem",         # read a host file (or a share) into target memory
+    "cmdtree",         # open a command-tree file at a chosen path
+    "nvload",          # load a NatVis file from a chosen path
+    "dml_start",       # open a DML file at a chosen path
+    "settings",        # load, save or set debugger settings, symbol path included
 )
 
 # Path-setting meta-commands: refused only with an argument, so displaying the
@@ -88,7 +94,9 @@ _RULES = (
         "it can run code, open a listener, or write files on the debugging host",
     ),
     (
-        re.compile(_START + r"\.(?:" + "|".join(_PATH_META) + r")\+?[ \t]+[^\s;]", re.IGNORECASE),
+        # Any argument at all, even one with no space before it (.sympath+\\host).
+        re.compile(_START + r"\.(?:" + "|".join(_PATH_META) + r")(?![\w])\+?[ \t]*[^\s;+]",
+                   re.IGNORECASE),
         "setting a search path can make the debugger connect to a network location",
     ),
     (
@@ -102,13 +110,19 @@ _RULES = (
         "it runs debugger commands from a script file",
     ),
     (
+        # lsf / lsf- load a source file from a chosen path.
+        re.compile(_START + r"lsf-?(?![\w])", re.IGNORECASE),
+        "it opens a file at a chosen path on the debugging host",
+    ),
+    (
         # !C:\path\ext.cmd or !\\server\share\ext.cmd loads an extension by path.
         re.compile(_START + r"![^\s;]*[\\/:]"),
         "it loads a debugger extension from a path",
     ),
     (
-        # as / aS define aliases, which are expanded into later commands.
-        re.compile(r"(?:^|(?<=[;{}\"'\n]))\s*as\s", re.IGNORECASE),
+        # as / aS define aliases, which are expanded into later commands. Matched
+        # wherever a command can start, including after ~e and !for_each_* prefixes.
+        re.compile(_START + r"as\s", re.IGNORECASE),
         "aliases can assemble a blocked command at run time",
     ),
     (
@@ -118,8 +132,10 @@ _RULES = (
     ),
     (
         # dx Debugger.Utility.Control.ExecuteCommand("...") runs a command built
-        # from a string expression; Debugger.Utility.FileSystem writes files.
-        re.compile(r"ExecuteCommand|Utility\s*\.\s*(?:Control|FileSystem)", re.IGNORECASE),
+        # from a string expression; Debugger.Utility.FileSystem writes files. The
+        # names are refused on their own, since dx can hold Debugger.Utility in a
+        # variable and reach FileSystem through it.
+        re.compile(r"ExecuteCommand|FileSystem|\bUtility\b", re.IGNORECASE),
         "the dx command-execution and file-system objects are not allowed",
     ),
 )
@@ -138,14 +154,18 @@ def check_command(command: str) -> None:
             )
 
 
-_NETWORK_PATH = re.compile(r"^(?:[\\/]{2}(?![?.][\\/][A-Za-z]:)|[A-Za-z][\w+.-]*://)")
+_NETWORK_PATH = re.compile(
+    r"^(?:[\\/]{2}(?![?.][\\/][A-Za-z]:)"     # \\server\share, \\?\UNC\..., //server/share
+    r"|[\\/]\?\?[\\/](?![A-Za-z]:)"           # \??\UNC\server\share (NT namespace)
+    r"|[A-Za-z][\w+.-]*://)"                  # URLs
+)
 
 
 def _is_network_location(path: str) -> bool:
     """True for a UNC path (``\\\\server\\share``) or a URL; False for a local path.
 
-    A ``\\\\?\\C:\\...`` long path, or ``\\\\.\\C:\\...``, names a local drive and is
-    allowed.
+    A ``\\\\?\\C:\\...`` long path, ``\\\\.\\C:\\...`` or ``\\??\\C:\\...`` names a local drive
+    and is allowed.
     """
     return bool(_NETWORK_PATH.match(path.strip().strip('"')))
 
@@ -177,4 +197,33 @@ def check_symbols_path(symbols_path: Optional[str]) -> None:
                 f"--restrict-commands: per-call symbol paths must be local folders. "
                 f"Configure symbol servers with the server's --symbols-path or "
                 f"_NT_SYMBOL_PATH instead."
+            )
+
+
+_LOCAL_HOSTS = {".", "localhost", "127.0.0.1", "::1", "[::1]"}
+_UNC_HOST = re.compile(r"[\\/]{2}([^\\/,]+)")
+_PIPE_SERVER = re.compile(r"^\s*[ns]pipe:.*?\bserver=([^,\s]+)", re.IGNORECASE)
+
+
+def check_connection_string(connection_string: Optional[str]) -> None:
+    """Refuse a connection string that opens a named pipe on another machine.
+
+    Named pipes travel over SMB, which authenticates with the user's Windows
+    credentials: ``npipe:server=host,...`` / ``spipe:...`` for a remote cdb, and
+    ``com:pipe,port=\\\\host\\pipe\\...`` for kd. A ``tcp:``/``ssl:`` remote and a
+    KDNET ``net:`` target send no credentials and are left alone, as are pipes
+    on this machine (``\\\\.\\pipe\\...``, ``server=localhost``).
+    """
+    if not connection_string:
+        return
+    hosts = [m.group(1) for m in _UNC_HOST.finditer(connection_string)]
+    if m := _PIPE_SERVER.match(connection_string):
+        hosts.append(m.group(1))
+    for host in hosts:
+        if host.lower() not in _LOCAL_HOSTS:
+            raise CommandPolicyError(
+                f"connection_string {connection_string!r} refused by --restrict-commands: "
+                f"it opens a named pipe on {host!r}, and a pipe on another machine "
+                f"authenticates with the user's Windows credentials. Use a tcp: connection, "
+                f"or ask the user to open this session without --restrict-commands."
             )

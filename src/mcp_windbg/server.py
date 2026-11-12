@@ -15,6 +15,7 @@ from .kd_session import KDSession
 from .command_policy import (
     CommandPolicyError,
     check_command,
+    check_connection_string,
     check_local_path,
     check_symbols_path,
 )
@@ -416,6 +417,8 @@ def _create_server(
                 check_local_path(text("dump_path"), "dump_path")
             if tool_name == "list_dumps":
                 check_local_path(text("directory_path"), "directory_path")
+            if tool_name in ("open_cdb_remote", "open_kd_session"):
+                check_connection_string(text("connection_string"))
             if tool_name.startswith("open_"):
                 check_symbols_path(text("symbols_path"))
         except CommandPolicyError as e:
@@ -764,7 +767,9 @@ def _create_server(
             ))
         # The id names the file, so it must be one this server could have
         # issued, never a path.
-        if not re.fullmatch(r"(cdb|kd)-[0-9a-f]{32}", args.session_id):
+        # 8 hex digits is the form 1.6.0 issued; a --log-dir kept across the
+        # upgrade still holds logs named that way.
+        if not re.fullmatch(r"(cdb|kd)-(?:[0-9a-f]{32}|[0-9a-f]{8})", args.session_id):
             raise MCPError(INVALID_PARAMS, f"Not a session_id: {args.session_id!r}")
         path = _session_log_path(args.session_id)
         if not os.path.isfile(path):

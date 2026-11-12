@@ -100,13 +100,21 @@ async def test_read_returns_the_newest_matching_lines(server, tmp_path, monkeypa
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("session_id", [
-    "cdb-0123abcd",  # the 8-hex form this server no longer issues
     "..\\secret", "cdb-0123abcd0123abcd0123abcd0123abcd.log", "C:\\x", "cdb-XYZ",
+    "cdb-0123abcd0", "cdb-0123abcd0123abcd0123abcd0123abcd0",
 ])
 async def test_read_only_takes_a_session_id(server, tmp_path, session_id):
     make, _ = server
     with pytest.raises(server_module.MCPError, match="Not a session_id"):
         await make(str(tmp_path))(None, _read(session_id))
+
+
+@pytest.mark.anyio
+async def test_a_log_from_a_short_1_6_0_session_id_is_still_readable(server, tmp_path):
+    make, _ = server
+    (tmp_path / "cdb-0123abcd.log").write_text("10:00:00 kept across the upgrade\n", encoding="utf-8")
+    result = await make(str(tmp_path))(None, _read("cdb-0123abcd"))
+    assert "kept across the upgrade" in result.content[0].text
 
 
 @pytest.mark.anyio

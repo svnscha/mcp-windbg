@@ -62,8 +62,8 @@ def build_transport_security(
     accepted.
     """
     names: List[str] = list(_LOOPBACK_NAMES)
-    if not _is_wildcard_bind(bind_host) and not is_loopback_host(bind_host):
-        names.append(bind_host)
+    if not _is_wildcard_bind(bind_host):
+        names.append(bind_host)  # also a loopback address other than 127.0.0.1
     names.extend(h.strip() for h in (allowed_hosts or []) if h and h.strip())
 
     hosts: List[str] = []
@@ -96,7 +96,7 @@ class BearerTokenMiddleware:
         if not token:
             raise ValueError("token must be non-empty")
         self.app = app
-        self._expected = f"Bearer {token}".encode()
+        self._expected = token.encode()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -105,7 +105,11 @@ class BearerTokenMiddleware:
         supplied = b""
         for name, value in scope.get("headers", []):
             if name.lower() == b"authorization":
-                supplied = value
+                # The scheme is case-insensitive (RFC 9110), and the token may be
+                # set off by more than one space.
+                scheme, _, credentials = value.strip().partition(b" ")
+                if scheme.lower() == b"bearer":
+                    supplied = credentials.strip()
                 break
         if not hmac.compare_digest(supplied, self._expected):
             await send({

@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--allow-unauthenticated` is passed.
 - `--restrict-commands` refuses debugger commands that reach past the target (`.shell`,
   `.create`, `.load`, `.writemem`, `.server`, script files, aliases, and similar) and network
-  paths in tool arguments, as a guard against instructions planted in a dump. Off by default;
-  `--init-command` is not restricted.
+  paths in tool arguments and named pipes on other machines in connection strings, as a guard
+  against instructions planted in a dump. Off by default; `--init-command` is not restricted.
 - Unexpected errors no longer return a Python stack trace to the client, and Starlette debug mode
   is never enabled. The trace goes to the server log.
 - Session ids carry the full 128 random bits, since HTTP clients share the session registry.
