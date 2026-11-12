@@ -45,20 +45,34 @@ That `C:\dumps\app.dmp` is read on the Windows host.
 
 ## Expose it beyond localhost
 
-`--host 127.0.0.1` keeps the server local. To accept connections from other machines, bind a
-reachable address and open the port:
+`--host 127.0.0.1` keeps the server local. To accept connections from other machines, set a
+token, bind a reachable address, name the host clients will use, and open the port in the host
+firewall:
 
 ```powershell
-mcp-windbg --transport streamable-http --host 0.0.0.0 --port 8000
+$env:MCP_WINDBG_AUTH_TOKEN = "<a long random string>"
+mcp-windbg --transport streamable-http --host 0.0.0.0 --port 8000 --allowed-host debugbox
 ```
 
-!!! warning "The HTTP transport has no authentication"
-    Anyone who can reach the port can drive `cdb.exe` on the host. Keep the server on `127.0.0.1`
-    or a trusted network. To reach it remotely, prefer an SSH tunnel or an authenticating reverse
-    proxy rather than binding `0.0.0.0` on an untrusted network. Also allow the port through the
-    host firewall.
+Clients then send the token:
+
+```json
+{
+    "servers": {
+        "mcp_windbg_http": {
+            "type": "http",
+            "url": "http://debugbox:8000/mcp",
+            "headers": { "Authorization": "Bearer <the same token>" }
+        }
+    }
+}
+```
+
+Plain HTTP sends the token in clear text, so across an untrusted network use an SSH tunnel or a
+TLS reverse proxy. See [HTTP security](../reference/cli.md#http-security) for the checks the
+server applies.
 
 ## Related
 
-- [Command-line options](../reference/cli.md#transports) - the transport, host, and port flags.
+- [Command-line options](../reference/cli.md#transports) - the transport, host, port, and token flags.
 - [Client configuration](../reference/clients.md#http-transport) - the HTTP client snippet.

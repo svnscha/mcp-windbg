@@ -118,6 +118,25 @@ For custom `--cdb-path`, `--kd-path`, `--filter-script`, or timeout settings,
 [register the server directly](clients.md#registering-the-server-directly) and add
 either optional plugin. Edits to the installed uvx bundle are overwritten on update.
 
+### Harden a direct registration
+
+The bundle pins `mcp-windbg` itself, but uvx resolves its dependencies to the newest versions
+allowed when it installs. To skip dependency releases newer than a week, which is when a
+compromised upload is usually caught, and to turn on
+[restricted commands](cli.md#restricted-commands), register the server with:
+
+```json
+"command": "uvx",
+"args": [
+  "--exclude-newer", "7 days",
+  "--exclude-newer-package", "mcp-windbg=false",
+  "mcp-windbg@1.4.0",
+  "--restrict-commands"
+]
+```
+
+The cooldown needs uv 0.9.27 or later; older versions reject these flags.
+
 ## Upgrade from bundled skills and agent
 
 Earlier uvx plugin versions included four skills and `crash-analyst`. After updating,

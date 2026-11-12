@@ -198,8 +198,9 @@ Then point the client at the endpoint:
 }
 ```
 
-This transport has no authentication, so keep it on localhost or a trusted network. See
-[Debug from another machine](../scenarios/http-service.md) for the full workflow.
+To reach it from another machine, set a token and send it from the client, see
+[Debug from another machine](../scenarios/http-service.md) and
+[HTTP security](cli.md#http-security).
 
 ## Other install methods
 

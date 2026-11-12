@@ -95,9 +95,14 @@ the server:
 
 - The endpoint includes the `/mcp` path, for example `http://host:8000/mcp`.
 - The server binds `127.0.0.1` by default. To reach it from another machine, start it with
-  `--host 0.0.0.0` and open the port in the host firewall.
-- There is no authentication, so keep it on localhost or a trusted network, see
+  `--host 0.0.0.0`, set a token, and open the port in the host firewall, see
   [Debug from another machine](scenarios/http-service.md).
+- `421 Invalid Host header`: the client uses a host name the server does not serve. Add it with
+  `--allowed-host`.
+- `401 Unauthorized`: the client must send `Authorization: Bearer <token>` matching
+  `MCP_WINDBG_AUTH_TOKEN`.
+- The server exits with `Refusing to bind ... without authentication`: set
+  `MCP_WINDBG_AUTH_TOKEN`, see [HTTP security](reference/cli.md#http-security).
 
 ## Filter script stops the server from starting
 
