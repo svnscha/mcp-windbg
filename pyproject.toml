@@ -46,7 +46,10 @@ Changelog = "https://github.com/svnscha/mcp-windbg/blob/main/CHANGELOG.md"
 mcp-windbg = "mcp_windbg:main"
 
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+# Pinned exactly: the build backend runs in the release job and is resolved
+# fresh from PyPI on every build (uv.lock does not cover it), so a range would
+# let a newly published setuptools into the package unreviewed.
+requires = ["setuptools==84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-data]

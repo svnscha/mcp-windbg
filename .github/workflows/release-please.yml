@@ -48,7 +48,7 @@ jobs:
     # and a release should not change runner images by surprise.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Assert every version and the CHANGELOG agree
         shell: pwsh
@@ -78,7 +78,7 @@ jobs:
       # The release commit on develop. main is fast-forwarded onto exactly this.
       sha: ${{ steps.release.outputs.sha }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           config-file: release-please-config.json
@@ -104,7 +104,7 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -126,10 +126,10 @@ jobs:
           fi
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         if: steps.find.outputs.branch != ''
         with:
-          version: "latest"
+          version: "0.13.6"   # pinned; bump deliberately, Dependabot does not
 
       - name: Regenerate uv.lock and commit it if it moved
         if: steps.find.outputs.branch != ''
@@ -159,7 +159,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Use the hand-written CHANGELOG entry as the release notes
         env:
@@ -185,6 +185,10 @@ jobs:
             echo "::warning::No CHANGELOG section for $CLEAN_VERSION - keeping the generated notes."
           fi
 
+  # PyPI publishing uses Trusted Publishing (OIDC), so the called workflow needs
+  # id-token, and a reusable workflow can never hold more permissions than its
+  # caller grants it here. No PyPI token is needed; `secrets: inherit` below is
+  # for the signing job's SIGNING_URL and SIGNING_API_KEY.
   publish:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
@@ -196,6 +200,7 @@ jobs:
     # uploaded to the release.
     permissions:
       contents: write
+      id-token: write
     uses: ./.github/workflows/publish-mcp.yml
     # The tag the signed mcp-windbg.exe is attached to. release-please has
     # created both it and the release by this point.
@@ -223,7 +228,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
