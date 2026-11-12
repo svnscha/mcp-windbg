@@ -18,7 +18,7 @@ The target is a **live process**, not a frozen dump. It keeps running unless you
 
 This attaches to an existing debugging *server* (`cdb`/WinDbg started with `-server`), not to a
 process by PID. If the user wants a local process, tell them to start a `cdb -server` on it
-first. The first output line carries a `session_id` (like `cdb-1a2b3c4d`) - keep it, every
+first. The first output line carries a `session_id` (like `cdb-1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6`) - keep it, every
 follow-up command needs it.
 
 **Safety before starting a server:** CDB 10.0.29661.1004 with stdin redirected to `NUL`

@@ -172,7 +172,7 @@ the model reads it back with [`read_debugger_log`](tools.md#read_debugger_log). 
 session yourself while it runs:
 
 ```powershell
-Get-Content C:\DebugLogs\cdb-1a2b3c4d.log -Wait -Tail 50
+Get-Content C:\DebugLogs\cdb-1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6.log -Wait -Tail 50
 ```
 
 The files are raw debugger output: a [filter script](#filter-script-hooks) does not apply to

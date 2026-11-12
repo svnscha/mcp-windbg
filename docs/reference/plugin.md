@@ -130,12 +130,12 @@ compromised upload is usually caught, and to turn on
 "args": [
   "--exclude-newer", "7 days",
   "--exclude-newer-package", "mcp-windbg=false",
-  "mcp-windbg@1.4.0",
+  "mcp-windbg@1.6.0",
   "--restrict-commands"
 ]
 ```
 
-Use the version the bundle pins in place of `1.4.0`. The cooldown needs uv 0.9.27 or later;
+Use the version the bundle pins in place of `1.6.0`. The cooldown needs uv 0.9.27 or later;
 older versions reject these flags.
 
 ## Upgrade from bundled skills and agent

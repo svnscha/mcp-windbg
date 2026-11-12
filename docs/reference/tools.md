@@ -24,7 +24,7 @@ Every `open_*` tool starts a debugger process and returns an opaque **`session_i
 first line of its output, for example:
 
 ```
-session_id: cdb-1a2b3c4d
+session_id: cdb-1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6
 ```
 
 Pass that id to every follow-up call for the session - `run_*`, `close_*`, `send_ctrl_break`,

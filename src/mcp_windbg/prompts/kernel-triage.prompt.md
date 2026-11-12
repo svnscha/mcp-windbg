@@ -18,7 +18,7 @@ A kernel target is a whole machine, not a process, and it is **halted while you 
 
 The server waits for the target to connect, breaks in for you, and returns a session already
 stopped at a prompt. Do **not** send CTRL+BREAK after opening; the target is already halted.
-The first output line carries a `session_id` (like `kd-1a2b3c4d`) - keep it, every follow-up
+The first output line carries a `session_id` (like `kd-1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6`) - keep it, every follow-up
 command needs it.
 
 If this times out mentioning `no_debuggee`, the target is not transmitting: it is not booted
