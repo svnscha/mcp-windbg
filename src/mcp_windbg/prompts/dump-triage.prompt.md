@@ -17,7 +17,7 @@ Perform comprehensive analysis of a single Windows crash dump with detailed meta
   - `include_threads`: true
 
 The `open_cdb_dump` tool automatically runs `!analyze -v` and provides initial analysis output. It returns a
-`session_id` (like `cdb-1a2b3c4d`) on its first line - keep it; every follow-up command needs it.
+`session_id` (like `cdb-1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6`) on its first line - keep it; every follow-up command needs it.
 
 **Kernel dump?** A blue-screen dump (`MEMORY.DMP`, or a file under `C:\Windows\Minidump`) opens with
 `open_kd_dump` instead, with the same parameters. Use `run_kd_command` for the commands below, skip

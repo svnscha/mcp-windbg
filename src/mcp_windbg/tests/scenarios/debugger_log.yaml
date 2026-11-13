@@ -38,7 +38,7 @@ steps:
       not_contains:
         - "COMMAND_COMPLETED_MARKER"
       regex:
-        - 'cdb-[0-9a-f]{8}\.log'
+        - 'cdb-[0-9a-f]{32}\.log'
 
   - call: close_cdb_session
     arguments:

@@ -123,6 +123,8 @@ src/mcp_windbg/
   server_api.py      Tool param models + list_tools + packaged prompt handlers
   cdb_session.py     CDBSession: spawns cdb.exe, sends commands, reads output
   filter_script.py   --filter-script loader and tool content hooks
+  command_policy.py  --restrict-commands deny-list for commands and paths
+  http_security.py   HTTP transport Host/Origin checks and bearer-token auth
   prompts/           prompt templates (dump-triage.prompt.md)
   tests/             e2e harness: e2e/ (runner + harness), scenarios/*.yaml, dumps/
 scripts/             check-version-consistency.ps1, validate-server-schema.py, Format-Docs.ps1,

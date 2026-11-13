@@ -5,6 +5,35 @@ All notable changes to the MCP Server for WinDbg Crash Analysis project will be 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- The streamable-http transport validates the `Host` and `Origin` headers. Before, a web page
+  could reach a server bound to `127.0.0.1` through DNS rebinding and run debugger commands,
+  `.shell` included. Loopback names and a specific `--host` are accepted; list any other name
+  clients use with `--allowed-host`.
+- Optional bearer-token authentication for the HTTP transport, with `MCP_WINDBG_AUTH_TOKEN` or
+  `--auth-token`. The server now refuses to bind a non-loopback `--host` without a token, unless
+  `--allow-unauthenticated` is passed.
+- `--restrict-commands` refuses debugger commands that reach past the target (`.shell`,
+  `.create`, `.load`, `.writemem`, `.server`, script files, aliases, and similar) and network
+  paths in tool arguments and named pipes on other machines in connection strings, as a guard
+  against instructions planted in a dump. Off by default; `--init-command` is not restricted.
+- Unexpected errors no longer return a Python stack trace to the client, and Starlette debug mode
+  is never enabled. The trace goes to the server log.
+- Session ids carry the full 128 random bits, since HTTP clients share the session registry.
+  `--log-dir` file names and `read_debugger_log` follow the longer ids.
+- The Unicode log is created inside a private temporary directory.
+- Releases publish to PyPI with Trusted Publishing instead of an API token. Workflow actions are
+  pinned to commit SHAs, and uv, `mcp-publisher` (checksum-verified), and the setuptools build
+  backend are pinned to exact versions.
+
+### Changed
+
+- Binding the HTTP transport to `0.0.0.0` now needs `--allowed-host` for the names remote
+  clients use, and a token or `--allow-unauthenticated`.
+
 ## [1.6.0] - 2026-10-23
 
 ### Added

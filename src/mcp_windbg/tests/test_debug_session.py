@@ -1034,13 +1034,13 @@ def test_the_unicode_log_opens_on_a_path_containing_spaces(make_session, monkeyp
     spaced.mkdir()
     monkeypatch.setattr(debug_session, "_acp_is_multibyte", lambda: True)
 
-    real_mkstemp = debug_session.tempfile.mkstemp
+    real_mkdtemp = debug_session.tempfile.mkdtemp
 
-    def spaced_mkstemp(*a, **kw):
+    def spaced_mkdtemp(*a, **kw):
         kw["dir"] = str(spaced)
-        return real_mkstemp(*a, **kw)
+        return real_mkdtemp(*a, **kw)
 
-    monkeypatch.setattr(debug_session.tempfile, "mkstemp", spaced_mkstemp)
+    monkeypatch.setattr(debug_session.tempfile, "mkdtemp", spaced_mkdtemp)
     session, proc = make_session()
 
     assert session._log_active is True

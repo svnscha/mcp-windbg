@@ -7,6 +7,16 @@ on:
   workflow_call:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# mcp-publisher runs with an OIDC token that can publish to the registry, so it
+# is a pinned release verified against a known SHA-256, never "latest". To
+# update, take both values from the release's registry_<version>_checksums.txt.
+env:
+  MCP_PUBLISHER_VERSION: v1.8.9
+  MCP_PUBLISHER_SHA256: 4d527ca8f1ced0394c962dc925c2a4a4addef441cbefd62501c875e9481823a8
+
 jobs:
   publish-mcp-registry:
     # Pinned: the ubuntu-latest label moves to Ubuntu 26 on 2026-10-19,
@@ -18,32 +28,28 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          version: "latest"
+          version: "0.13.6"   # pinned; bump deliberately, Dependabot does not
           enable-cache: false
 
       - name: Validate server.json schema
         run: uv run scripts/validate-server-schema.py
 
-      - name: Get latest MCP Publisher version
-        id: publisher-version
-        run: |
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/modelcontextprotocol/registry/releases/latest | jq -r '.tag_name')
-          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          echo "Using MCP Publisher version: $LATEST_VERSION"
-
       - name: Install MCP Publisher
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/${{ steps.publisher-version.outputs.version }}/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64.tar.gz" | tar xz mcp-publisher
+          curl -fsSL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check --strict
+          tar xzf mcp-publisher.tar.gz mcp-publisher
 
       - name: Login to MCP Registry
         run: ./mcp-publisher login github-oidc

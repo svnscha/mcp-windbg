@@ -1,5 +1,6 @@
 import os
 
+from .http_security import AUTH_TOKEN_ENV, check_http_exposure, resolve_auth_token
 from .server import serve, serve_http
 
 INIT_COMMANDS_ENV = "MCP_WINDBG_INIT_COMMANDS"
@@ -43,6 +44,12 @@ def main():
                         help="Write every line each debugger session prints to DIR/<session_id>.log, "
                              "unfiltered, for read_debugger_log. Off by default")
 
+    parser.add_argument("--restrict-commands", action="store_true",
+                        help="Refuse debugger commands that reach past the target - .shell, .load, "
+                             ".writemem, .server, script files, aliases and similar - and network "
+                             "paths in tool arguments. Guards against instructions planted in a "
+                             "dump. --init-command is not restricted")
+
     # Transport options
     parser.add_argument(
         "--transport",
@@ -53,6 +60,16 @@ def main():
     )
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind HTTP server to (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind HTTP server to (default: 8000)")
+    parser.add_argument("--allowed-host", action="append", metavar="HOST",
+                        help="Extra Host header value the HTTP server accepts, e.g. 'debugbox' or "
+                             "'debugbox:8000' (no port means any port). Repeatable. Loopback names "
+                             "and a specific --host are always accepted")
+    parser.add_argument("--auth-token", type=str,
+                        help="Require 'Authorization: Bearer <token>' on HTTP requests. Prefer the "
+                             f"{AUTH_TOKEN_ENV} environment variable, which other users cannot see "
+                             "in the process list")
+    parser.add_argument("--allow-unauthenticated", action="store_true",
+                        help="Allow binding a non-loopback --host without an auth token")
 
     args = parser.parse_args()
 
@@ -86,8 +103,11 @@ def main():
             init_commands=init_commands,
             kernel_init_commands=kernel_init_commands,
             log_dir=args.log_dir,
+            restrict_commands=args.restrict_commands,
         ))
     else:  # pragma: no cover - HTTP transport is verified behaviorally (http_transport.yaml), not line-counted
+        auth_token = resolve_auth_token(args.auth_token)
+        check_http_exposure(args.host, auth_token, args.allow_unauthenticated)
         asyncio.run(serve_http(
             host=args.host,
             port=args.port,
@@ -101,6 +121,9 @@ def main():
             init_commands=init_commands,
             kernel_init_commands=kernel_init_commands,
             log_dir=args.log_dir,
+            restrict_commands=args.restrict_commands,
+            allowed_hosts=args.allowed_host,
+            auth_token=auth_token,
         ))
 
 

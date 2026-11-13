@@ -15,6 +15,10 @@ The `mcp-windbg` entry point is equivalent, if its scripts directory is on your 
 | `--transport {stdio,streamable-http}` | `stdio` | Transport protocol. See [Transports](#transports). |
 | `--host HOST` | `127.0.0.1` | Host to bind for the HTTP transport. |
 | `--port PORT` | `8000` | Port to bind for the HTTP transport. |
+| `--allowed-host HOST` | none | Extra `Host` name the HTTP server accepts. Repeatable. See [HTTP security](#http-security). |
+| `--auth-token TOKEN` | `MCP_WINDBG_AUTH_TOKEN` | Bearer token HTTP clients must send. See [HTTP security](#http-security). |
+| `--allow-unauthenticated` | off | Allow a non-loopback `--host` without a token. |
+| `--restrict-commands` | off | Refuse commands that reach past the target, and network paths. See [Restricted commands](#restricted-commands). |
 | `--cdb-path PATH` | auto-detect | Full path to `cdb.exe`. See [Symbols and CDB](#symbols-and-cdb). |
 | `--kd-path PATH` | auto-detect | Full path to `kd.exe`, used for kernel debugging. See [Symbols and CDB](#symbols-and-cdb). |
 | `--symbols-path PATH` | `_NT_SYMBOL_PATH` | Symbol search path used when opening a session. |
@@ -59,9 +63,24 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
 [Client configuration](clients.md#http-transport) for the matching client snippet and
 [Debug from another machine](../scenarios/http-service.md) for the full workflow.
 
-!!! warning "The HTTP transport has no authentication"
-    Anyone who can reach the port can drive `cdb.exe` on the host. Keep `--host 127.0.0.1`, or
-    expose it only on a trusted network or behind an SSH tunnel or authenticating proxy.
+### HTTP security
+
+Anyone who can send requests to the endpoint can run debugger commands on the host, so the
+HTTP transport checks every request:
+
+- **Host check.** Requests must name a host the server serves in their `Host` header:
+  `127.0.0.1`, `localhost`, `[::1]`, a specific `--host` address, or a name listed with
+  `--allowed-host` (`debugbox`, or `debugbox:8000` for one port only). This stops a web page from
+  reaching a localhost server through DNS rebinding. Behind `--host 0.0.0.0`, list the names
+  clients use with `--allowed-host`; other names get `421 Invalid Host header`.
+- **Bearer token.** With `MCP_WINDBG_AUTH_TOKEN` (or `--auth-token`) set, every request must send
+  `Authorization: Bearer <token>`. Prefer the environment variable; other users can read
+  command-line arguments from the process list.
+- **No unauthenticated exposure.** The server refuses to bind a non-loopback `--host` without a
+  token, unless you pass `--allow-unauthenticated` for a network you trust.
+
+The token is sent in clear text over plain HTTP. Across an untrusted network, use an SSH tunnel
+or a TLS reverse proxy.
 
 ## Symbols and CDB
 
@@ -81,6 +100,35 @@ The endpoint is then `http://127.0.0.1:8000/mcp`. See
 Per-call symbol paths are also available on the `open_*` tools, see
 [`open_cdb_dump`](tools.md#open_cdb_dump), [`open_cdb_remote`](tools.md#open_cdb_remote), and
 [`open_kd_dump`](tools.md#open_kd_dump).
+
+## Restricted commands
+
+Everything the target prints, including text stored in a dump, reaches the model, and the model
+picks the next command. A crafted dump can try to talk it into running a command that acts on
+your machine rather than the target. `--restrict-commands` refuses those commands in
+`run_cdb_command` and `run_kd_command`:
+
+| Refused | Why |
+| --- | --- |
+| `.shell`, `.create`, `.attach`, `.dbgdbg`, `.server`, `.remote`, `.netuse` | Run processes or open listeners on the host. |
+| `.load`, `.loadby`, `.setdll`, `.cordll -lp`, `.scriptload`, `.scriptrun`, `!<path>.<command>` | Load code into the debugger. |
+| `.writemem`, `.dump`, `.dumpcab`, `.logopen`, `.logappend`, `.write_cmd_hist`, `.kdfiles`, `.send_file`, `.settings` | Write or send files, or change debugger settings. |
+| `.readmem`, `lsf`, `.cmdtree`, `.nvload`, `.dml_start` | Open a file at a chosen path, which can be a network share. |
+| `.opendump`, `.ocommand`, `$<` and the other script-file commands | Open other targets or run commands from elsewhere. |
+| `.sympath`, `.symfix`, `.srcpath`, `.exepath`, `.extpath` (and the `fix`/`l` variants) with any argument | Point the debugger at network locations. |
+| `as`, `aS`, `$u0` to `$u9`, `.foreach`, and `dx` expressions naming `ExecuteCommand`, `FileSystem` or `Utility` | Can build a refused command out of harmless pieces. |
+
+It also refuses network locations, meaning UNC paths and URLs, in `dump_path`, `list_dumps`'
+`directory_path`, and per-call `symbols_path`. Opening one sends your Windows credentials to that
+server. Configure symbol servers with `--symbols-path` or `_NT_SYMBOL_PATH` instead. For the same
+reason it refuses a `connection_string` that opens a named pipe on another machine:
+`npipe:server=<host>` or `spipe:` for `open_cdb_remote`, and `com:pipe,port=\\<host>\pipe\...` for
+`open_kd_session`. `tcp:` remotes, KDNET `net:` targets and pipes on this machine are allowed.
+
+A refused token is refused wherever it appears in the command, even in a quoted breakpoint
+command. Your own `--init-command` list is not restricted, so load extensions there. This is a
+deny-list, not a sandbox: it narrows what a prompt injection can reach, but review what the model
+runs on a dump you do not trust.
 
 ## Init commands
 
@@ -128,7 +176,7 @@ the model reads it back with [`read_debugger_log`](tools.md#read_debugger_log). 
 session yourself while it runs:
 
 ```powershell
-Get-Content C:\DebugLogs\cdb-1a2b3c4d.log -Wait -Tail 50
+Get-Content C:\DebugLogs\cdb-1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6.log -Wait -Tail 50
 ```
 
 The files are raw debugger output: a [filter script](#filter-script-hooks) does not apply to
