@@ -299,11 +299,7 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
         auto_dump_dir_symbols, init_commands, kernel_init_commands, log_dir,
     )
 
-    # Create the session manager
-    session_manager = StreamableHTTPSessionManager(
-        app=server,
-        json_response=True,
-    )
+    session_manager = _http_session_manager(server)
 
     # ASGI handler for streamable HTTP connections
     async def handle_streamable_http(scope: Scope, receive: Receive, send: Send) -> None:
@@ -329,6 +325,18 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     config = uvicorn.Config(app, host=host, port=port, log_level="info" if verbose else "warning")
     server_instance = uvicorn.Server(config)
     await server_instance.serve()
+
+
+def _http_session_manager(server: Server) -> StreamableHTTPSessionManager:
+    """The streamable-http session manager, answering tool calls over SSE.
+
+    With a plain JSON response nothing reaches the client until the tool
+    finishes, and clients give up on a silent request: Claude Code reports "The
+    operation timed out." after about 60 s even when the server finishes the
+    command later (#165). An SSE response starts at once and is kept alive by
+    pings while the tool runs. Streamable HTTP clients must accept both forms.
+    """
+    return StreamableHTTPSessionManager(app=server, json_response=False)
 
 
 def _create_server(
