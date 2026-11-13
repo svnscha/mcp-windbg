@@ -45,7 +45,7 @@ import sys
 import threading
 import time
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # Detects a CDB/KD prompt line such as ``0:000>`` or ``3: kd>``.
 PROMPT_REGEX = re.compile(r"^\d+:.*>\s*$")
@@ -129,15 +129,37 @@ class DebuggerExitedError(DebuggerError):
 class _ReleaseOnExit:
     """Context manager that releases an already-acquired lock on exit."""
 
-    def __init__(self, lock):
+    def __init__(self, lock, before_release=None):
         self._lock = lock
+        self._before_release = before_release
 
     def __enter__(self):
         return self
 
     def __exit__(self, *_exc):
+        if self._before_release is not None:
+            self._before_release()
         self._lock.release()
         return False
+
+
+#: The ``_exclusive`` activity of ``wait_for_break``, which gets its own advice.
+WAIT_FOR_BREAK_ACTIVITY = "wait_for_break"
+
+
+def _describe_command(command: str, limit: int = 80) -> str:
+    """Quote *command* for a busy message, on one line and cut to *limit* chars."""
+    flat = " ".join(command.split())
+    if len(flat) > limit:
+        flat = flat[: limit - 3] + "..."
+    return f"'{flat}'"
+
+
+def _format_elapsed(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 120:
+        return f"{seconds} s"
+    return f"{seconds // 60} min"
 
 
 def build_debugger_args(
@@ -319,6 +341,10 @@ class DebuggerSession:
         #: real overlap to guard against. ``send_ctrl_break`` deliberately does
         #: not take it - it is the escape hatch from a long wait.
         self._io_lock = threading.RLock()
+        #: What holds ``_io_lock`` and since when (``time.monotonic()``), so a
+        #: refused caller is told what it is waiting on. Only the outermost
+        #: ``_exclusive`` sets it; the lock is reentrant.
+        self._busy_with: Optional[Tuple[str, float]] = None
         self.ready_event = threading.Event()
         self._marker_seq = 0
         #: Random per session, so a marker from one session can never
@@ -623,20 +649,45 @@ class DebuggerSession:
         self.ready_event.clear()
         return False
 
-    def _exclusive(self):
+    def _exclusive(self, activity: str):
         """Acquire the session's I/O lock, or explain why the session is busy.
 
         Never waits: queued operations on a busy session would occupy debugger
         workers needed by other sessions. ``send_ctrl_break`` remains available
         without acquiring this lock.
+
+        *activity* says what the caller is about to do, and a caller refused
+        meanwhile is told it, with how long it has been running. The common case
+        is a slow command whose client stopped waiting: it keeps running on its
+        worker thread and holds the session until it finishes.
         """
         if not self._io_lock.acquire(blocking=False):
-            raise DebuggerError(
-                "This session is busy with another operation - most likely a "
-                "wait_for_break parked on a running target. Use send_ctrl_break "
-                "to stop the target, which ends the wait."
+            raise DebuggerError(self._busy_message())
+        outermost = self._busy_with is None
+        if outermost:
+            self._busy_with = (activity, time.monotonic())
+        return _ReleaseOnExit(self._io_lock, self._clear_busy if outermost else None)
+
+    def _clear_busy(self) -> None:
+        self._busy_with = None
+
+    def _busy_message(self) -> str:
+        busy_with = self._busy_with
+        if busy_with is None:  # released in the meantime
+            return "This session is busy with another operation. Retry the call."
+        activity, since = busy_with
+        elapsed = _format_elapsed(time.monotonic() - since)
+        if activity == WAIT_FOR_BREAK_ACTIVITY:
+            return (
+                f"This session is busy waiting for the target to stop (wait_for_break, "
+                f"started {elapsed} ago). Use send_ctrl_break to stop the target, which "
+                f"ends the wait."
             )
-        return _ReleaseOnExit(self._io_lock)
+        return (
+            f"This session is busy running {activity} (started {elapsed} ago). If a "
+            f"client stopped waiting for it, it is still running here. Wait for it to "
+            f"finish and retry, or use send_ctrl_break to interrupt it."
+        )
 
     def _wait_for_prompt(self, timeout: Optional[int] = None) -> None:
         """Send a bare marker and wait for it, proving the prompt is ready."""
@@ -743,7 +794,7 @@ class DebuggerSession:
 
         cmd_timeout = timeout or self.timeout
 
-        with self._exclusive():
+        with self._exclusive(_describe_command(command)):
             if self.is_live_session:
                 go_at = self._go_segment_index(command)
                 if go_at is not None:
@@ -1115,7 +1166,7 @@ class DebuggerSession:
         if not self.process or self.process.poll() is not None:
             raise DebuggerError("Debugger process is not running")
 
-        with self._exclusive():
+        with self._exclusive(WAIT_FOR_BREAK_ACTIVITY):
             return self._wait_for_break_locked(timeout)
 
     def _wait_for_break_locked(self, timeout: Optional[int]) -> List[str]:
