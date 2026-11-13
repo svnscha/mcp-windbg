@@ -54,6 +54,13 @@ A command that exceeds the per-command limit reports a timeout.
   produces more than the diagnostic limit, the response ends with a truncation note; increase
   the timeout or inspect the target directly for the complete output.
 
+A client can give up on a long call before the server does, and report its own timeout while
+the server goes on to finish the command. To keep it waiting, the server answers HTTP tool calls
+as an SSE stream and sends a progress notification every 30 s while a call runs. Claude Code, for
+example, drops an HTTP call that sends nothing for 300 s. If a client still stops early, raise its
+own limit above the longest command you expect. A command the client abandoned still holds its
+session until it finishes, so the next call on that session is refused as busy.
+
 ## Module not found (pip installs)
 
 `No module named 'mcp_windbg'` from a pip-based config:
