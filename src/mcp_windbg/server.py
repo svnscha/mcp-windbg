@@ -63,6 +63,11 @@ KD_COMMAND_TIMEOUT = 120
 # on a running target waiting for it to bugcheck or hit a breakpoint.
 WAIT_FOR_BREAK_TIMEOUT = DEFAULT_WAIT_FOR_BREAK_TIMEOUT
 
+#: How often a running tool call sends the client a progress notification. A
+#: client may give up on a call that is silent for too long whatever its
+#: timeout: Claude Code aborts after 300 s with no response or progress (#165).
+PROGRESS_INTERVAL = 30
+
 
 def _effective_timeout(per_call: Optional[int], tool_default: int, server_timeout: int) -> int:
     """Resolve a call's timeout: explicit override, else max(default, floor)."""
@@ -390,8 +395,43 @@ def _create_server(
         it into a JSON-RPC error response - so the handlers below keep raising
         rather than hand-building error results.
         """
-        content = await _dispatch_tool(params.name, params.arguments or {})
+        content = await _with_progress(
+            ctx, params.name, lambda: _dispatch_tool(params.name, params.arguments or {})
+        )
         return CallToolResult(content=content)
+
+    async def _with_progress(ctx, name: str, call):
+        """Await *call*, telling the client every PROGRESS_INTERVAL that it still runs.
+
+        The notifications carry the caller's progress token and go nowhere when
+        it sent none. They are what keeps a long command or wait_for_break from
+        being dropped by a client that times out silent calls.
+        """
+        async def heartbeat():
+            elapsed = 0
+            while True:
+                await anyio.sleep(PROGRESS_INTERVAL)
+                elapsed += PROGRESS_INTERVAL
+                try:
+                    await ctx.session.report_progress(elapsed, None, f"{name} still running ({elapsed} s)")
+                except Exception as e:  # a lost notification must not fail the call
+                    logger.debug("Progress notification for %s failed: %s", name, e)
+                    return
+
+        # The call's own error is raised outside the task group, which would
+        # otherwise wrap it in an exception group the SDK does not unwrap.
+        error = None
+        async with anyio.create_task_group() as heartbeats:
+            heartbeats.start_soon(heartbeat)
+            try:
+                result = await call()
+            except Exception as e:
+                error = e
+            finally:
+                heartbeats.cancel_scope.cancel()
+        if error is not None:
+            raise error
+        return result
 
     async def _run_debugger_handler(handler, *args, **kwargs):
         # Debugger startup, commands, and shutdown can wait for seconds or minutes.
