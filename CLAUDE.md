@@ -102,7 +102,9 @@ there.
 
 **Kernel scenarios.** `kernel_dump.yaml` opens a committed kernel minidump and needs only
 `kd.exe`, so it runs in CI. `kernel_session.yaml` drives a real kernel target through `kd.exe`. CI has
-no target machine, so it skips there; locally, point it at a debuggable VM or box and it runs:
+no target machine, so it skips there; locally, point it at a debuggable VM or box and it runs.
+`scripts/kernel-target/` builds one: a Windows Server evaluation guest in QEMU/KVM whose
+`hv-syndbg` device carries KDNET to the debugger, with a GCP setup script.
 
 ```powershell
 $env:MCP_WINDBG_KERNEL_CONNECTION = "net:port=50005,key=1.2.3.4"   # the -k connection string
