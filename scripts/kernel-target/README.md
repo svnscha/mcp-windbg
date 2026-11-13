@@ -55,7 +55,8 @@ run on that provider's own VMs. The debugger VM can use one, because it runs whe
    uv run pytest src/mcp_windbg/tests/ -m kernel -v
    ```
 
-7. **Afterwards**: `gcp-rig.sh down` deletes both VMs and the firewall rule and keeps the
+7. **Afterwards**: stop each target with `stop-target.sh` (resume it first if it is stopped in
+   the debugger), then `gcp-rig.sh down`. It deletes both VMs and the firewall rule and keeps the
    targets disk, so the next run starts at step 2 with nothing left to install.
 
 ## Things that are not obvious
