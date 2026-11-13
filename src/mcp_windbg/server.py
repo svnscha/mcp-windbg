@@ -65,7 +65,8 @@ WAIT_FOR_BREAK_TIMEOUT = DEFAULT_WAIT_FOR_BREAK_TIMEOUT
 
 #: How often a running tool call sends the client a progress notification. A
 #: client may give up on a call that is silent for too long whatever its
-#: timeout: Claude Code aborts after 300 s with no response or progress (#165).
+#: timeout: over an SSE response, Claude Code aborts a call that sends no
+#: response or progress for 300 s (#165).
 PROGRESS_INTERVAL = 30
 
 
@@ -336,10 +337,14 @@ def _http_session_manager(server: Server) -> StreamableHTTPSessionManager:
     """The streamable-http session manager, answering tool calls over SSE.
 
     With a plain JSON response nothing reaches the client until the tool
-    finishes, and clients give up on a silent request: Claude Code reports "The
-    operation timed out." after about 60 s even when the server finishes the
-    command later (#165). An SSE response starts at once and is kept alive by
-    pings while the tool runs. Streamable HTTP clients must accept both forms.
+    finishes, and Claude Code gives up on such a request after about 60 s with
+    "The operation timed out.", even though the server finishes the command
+    later (#165). An SSE response starts at once; the progress heartbeat in
+    on_call_tool then keeps it from looking idle.
+
+    The SDK then requires every POST to accept both application/json and
+    text/event-stream, as the Streamable HTTP spec asks of clients. A client
+    that accepts only application/json gets 406.
     """
     return StreamableHTTPSessionManager(app=server, json_response=False)
 
@@ -408,15 +413,18 @@ def _create_server(
         being dropped by a client that times out silent calls.
         """
         async def heartbeat():
-            elapsed = 0
+            started = anyio.current_time()
             while True:
                 await anyio.sleep(PROGRESS_INTERVAL)
-                elapsed += PROGRESS_INTERVAL
+                elapsed = round(anyio.current_time() - started)
                 try:
-                    await ctx.session.report_progress(elapsed, None, f"{name} still running ({elapsed} s)")
-                except Exception as e:  # a lost notification must not fail the call
+                    await ctx.session.report_progress(
+                        elapsed, None, f"{name} still running ({elapsed} s)"
+                    )
+                except Exception as e:
+                    # A lost notification must not fail the call, and the next
+                    # one may well get through, so keep beating.
                     logger.debug("Progress notification for %s failed: %s", name, e)
-                    return
 
         # The call's own error is raised outside the task group, which would
         # otherwise wrap it in an exception group the SDK does not unwrap.

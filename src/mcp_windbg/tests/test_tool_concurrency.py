@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 
 import anyio
 import pytest
@@ -321,9 +322,11 @@ class _ProgressRecorder:
 
     def __init__(self, fail=False):
         self.reports = []
+        self.attempts = 0
         self._fail = fail
 
     async def report_progress(self, progress, total=None, message=None):
+        self.attempts += 1
         if self._fail:
             raise RuntimeError("client went away")
         self.reports.append((progress, total, message))
@@ -335,20 +338,34 @@ class _Ctx:
 
 
 class SlowSession:
+    """A command that runs until the heartbeat has made *beats* attempts."""
+
+    def __init__(self, recorder, beats=3):
+        self._recorder = recorder
+        self._beats = beats
+
     def send_command(self, command, timeout):
-        threading.Event().wait(0.35)
+        deadline = time.monotonic() + 10
+        while self._recorder.attempts < self._beats:
+            if time.monotonic() > deadline:
+                raise RuntimeError("the heartbeat never beat")
+            time.sleep(0.01)
         return ["slow output"]
+
+
+def _register(session):
+    server_module._sessions["test-session"] = {
+        "session": session, "kind": "kd", "label": "test target",
+    }
 
 
 @pytest.mark.anyio
 async def test_a_long_call_reports_progress_until_it_returns(tool_handler, monkeypatch):
     """Claude Code drops a call that sends nothing for 300 s (#165): a long
     command has to keep saying it is alive, and stop once it has answered."""
-    monkeypatch.setattr(server_module, "PROGRESS_INTERVAL", 0.1)
-    server_module._sessions["test-session"] = {
-        "session": SlowSession(), "kind": "kd", "label": "test target",
-    }
+    monkeypatch.setattr(server_module, "PROGRESS_INTERVAL", 0.05)
     recorder = _ProgressRecorder()
+    _register(SlowSession(recorder))
     result = await tool_handler(
         _Ctx(recorder),
         CallToolRequestParams(
@@ -356,28 +373,30 @@ async def test_a_long_call_reports_progress_until_it_returns(tool_handler, monke
         ),
     )
     assert "slow output" in result.content[0].text
-    assert len(recorder.reports) >= 2
+    assert len(recorder.reports) >= 3
     progress = [p for p, _, _ in recorder.reports]
-    assert progress == sorted(set(progress))  # strictly increasing, as the spec requires
+    assert progress == sorted(progress)  # the spec requires it never to go down
     assert recorder.reports[0][2].startswith("run_kd_command still running")
     reported = len(recorder.reports)
-    await anyio.sleep(0.3)
+    await anyio.sleep(0.2)
     assert len(recorder.reports) == reported
 
 
 @pytest.mark.anyio
-async def test_a_failing_progress_notification_does_not_fail_the_call(tool_handler, monkeypatch):
-    monkeypatch.setattr(server_module, "PROGRESS_INTERVAL", 0.1)
-    server_module._sessions["test-session"] = {
-        "session": SlowSession(), "kind": "kd", "label": "test target",
-    }
+async def test_a_failing_progress_notification_does_not_stop_the_heartbeat(tool_handler, monkeypatch):
+    """One lost notification must neither fail the call nor end the beating:
+    a silent rest of the call is what makes the client give up."""
+    monkeypatch.setattr(server_module, "PROGRESS_INTERVAL", 0.05)
+    recorder = _ProgressRecorder(fail=True)
+    _register(SlowSession(recorder, beats=3))  # returns only after three attempts
     result = await tool_handler(
-        _Ctx(_ProgressRecorder(fail=True)),
+        _Ctx(recorder),
         CallToolRequestParams(
             name="run_kd_command", arguments={"session_id": "test-session", "command": "k"},
         ),
     )
     assert "slow output" in result.content[0].text
+    assert recorder.attempts >= 3
 
 
 @pytest.mark.anyio
@@ -385,18 +404,17 @@ async def test_errors_leave_the_heartbeat_unwrapped(tool_handler, monkeypatch):
     """The SDK turns an MCPError into a JSON-RPC error only if it arrives as one,
     not inside an exception group from the heartbeat's task group."""
     monkeypatch.setattr(server_module, "PROGRESS_INTERVAL", 0.05)
+    recorder = _ProgressRecorder()
 
-    class SlowFailingSession:
+    class SlowFailingSession(SlowSession):
         def send_command(self, command, timeout):
-            threading.Event().wait(0.2)
+            super().send_command(command, timeout)
             raise RuntimeError("test command failure")
 
-    server_module._sessions["test-session"] = {
-        "session": SlowFailingSession(), "kind": "kd", "label": "test target",
-    }
+    _register(SlowFailingSession(recorder, beats=2))
     with pytest.raises(server_module.MCPError, match="test command failure"):
         await tool_handler(
-            _Ctx(_ProgressRecorder()),
+            _Ctx(recorder),
             CallToolRequestParams(
                 name="run_kd_command", arguments={"session_id": "test-session", "command": "kb"},
             ),
