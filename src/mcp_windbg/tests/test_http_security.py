@@ -15,6 +15,7 @@ from mcp_windbg.http_security import (
     build_transport_security,
     check_http_exposure,
     is_loopback_host,
+    resolve_auth_token,
 )
 
 INITIALIZE = {
@@ -207,3 +208,15 @@ async def test_token_check_passes_non_http_scopes_through():
 
     await BearerTokenMiddleware(inner, "s3cret")({"type": "lifespan"}, None, None)
     assert seen == ["lifespan"]
+
+
+@pytest.mark.parametrize("cli, env, expected", [
+    ("abc ", None, "abc"),          # cmd: set TOKEN=abc && ... keeps the space
+    (None, " abc\r\n", "abc"),
+    (None, "   ", None),            # whitespace only is no token, so exposure is checked
+    (None, None, None),
+    ("cli", "env", "cli"),          # the flag wins over the environment
+])
+def test_auth_token_is_resolved_without_stray_whitespace(cli, env, expected):
+    environ = {} if env is None else {"MCP_WINDBG_AUTH_TOKEN": env}
+    assert resolve_auth_token(cli, environ) == expected

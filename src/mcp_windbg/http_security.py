@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
+import os
 from typing import Iterable, List, Optional
 
 from mcp.server.transport_security import TransportSecuritySettings
@@ -87,6 +88,18 @@ def build_transport_security(
         allowed_hosts=list(dict.fromkeys(hosts)),
         allowed_origins=list(dict.fromkeys(origins)),
     )
+
+
+def resolve_auth_token(cli_value: Optional[str], environ=os.environ) -> Optional[str]:
+    """The bearer token from ``--auth-token`` or the environment, without stray whitespace.
+
+    A token never matches with surrounding whitespace, because the
+    ``Authorization`` header is stripped before the comparison. cmd's
+    ``set TOKEN=abc && ...`` stores ``"abc "``, and every request then failed
+    with 401. A value that is only whitespace counts as no token.
+    """
+    raw = cli_value or environ.get(AUTH_TOKEN_ENV) or ""
+    return raw.strip() or None
 
 
 class BearerTokenMiddleware:

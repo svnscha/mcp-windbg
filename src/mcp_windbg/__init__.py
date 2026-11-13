@@ -1,6 +1,6 @@
 import os
 
-from .http_security import AUTH_TOKEN_ENV, check_http_exposure
+from .http_security import AUTH_TOKEN_ENV, check_http_exposure, resolve_auth_token
 from .server import serve, serve_http
 
 INIT_COMMANDS_ENV = "MCP_WINDBG_INIT_COMMANDS"
@@ -106,7 +106,7 @@ def main():
             restrict_commands=args.restrict_commands,
         ))
     else:  # pragma: no cover - HTTP transport is verified behaviorally (http_transport.yaml), not line-counted
-        auth_token = args.auth_token or os.environ.get(AUTH_TOKEN_ENV) or None
+        auth_token = resolve_auth_token(args.auth_token)
         check_http_exposure(args.host, auth_token, args.allow_unauthenticated)
         asyncio.run(serve_http(
             host=args.host,
