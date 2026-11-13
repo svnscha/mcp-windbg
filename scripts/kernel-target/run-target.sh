@@ -7,6 +7,8 @@ set -euo pipefail
 name=$1 dbg=$2 port=${3:-50000} hcalls=${4:-off}
 dir=${KD_DIR:-/srv/kd}
 [ "$hcalls" = on ] && hcalls=true || hcalls=false
+# A host that went away under a running guest leaves the image unclean; catch that before booting.
+qemu-img check -q "$dir/$name.qcow2" || { echo "$dir/$name.qcow2 needs: qemu-img check -r all" >&2; exit 1; }
 exec qemu-system-x86_64 -name "$name" -machine q35,accel=kvm -smp 4 -m 6G \
   -cpu host,hv-relaxed,hv-spinlocks=0x1fff,hv-time,hv-vapic,hv-vpindex,hv-synic,hv-runtime,hv-stimer,hv-syndbg \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \

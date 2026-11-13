@@ -13,7 +13,8 @@ sudo usermod -aG kvm "$USER"
 sudo blkid "$dev" >/dev/null || sudo mkfs.ext4 -q -L kdimages "$dev"
 sudo mkdir -p "$dir"
 mountpoint -q "$dir" || sudo mount "$dev" "$dir"
-sudo chown "$USER" "$dir"
+# A new host can give $USER a different uid than the one that wrote the images.
+sudo chown -R "$USER" "$dir"
 
 # Windows Server evaluation media from Microsoft's Evaluation Center, used here only as a test
 # target. An evaluation install expires 180 days after it is made; rebuild it then. GCE's own Windows

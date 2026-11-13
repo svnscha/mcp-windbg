@@ -44,6 +44,7 @@ up)
   "$0" ips
   ;;
 down)
+  # Stop every target first (stop-target.sh): deleting the host under a running guest leaves its image unclean.
   g compute instances delete "$host" "$dbg" --zone "$zone" --quiet
   g compute firewall-rules delete "$rule" --quiet
   echo "kept $disk"
