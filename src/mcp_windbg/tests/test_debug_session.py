@@ -722,7 +722,7 @@ def test_a_command_during_a_parked_wait_is_refused_not_interleaved(make_session)
     elapsed = time.monotonic() - began
     waiter.join(10)
 
-    assert errors and "busy" in errors[0]
+    assert errors and "busy waiting for the target to stop (wait_for_break" in errors[0]
     assert "send_ctrl_break" in errors[0]
     # It must fail fast, not sit out its own 60s timeout: this call is made from
     # the server's event loop, so waiting here would stall every other session -
@@ -833,6 +833,48 @@ def test_resume_after_ctrl_break_reports_why_the_target_had_stopped(make_session
     out = session.send_command("g")
     assert any("Break instruction exception" in line for line in out)
     assert any("resumed" in line.lower() for line in out)
+
+
+def test_a_command_during_a_slow_command_is_told_what_is_running(make_session):
+    """The usual way to meet a busy session is a slow command the client gave
+    up on: it keeps running here. The refusal names it instead of blaming a
+    wait_for_break nobody called (#164)."""
+    session, proc = make_session(timeout=3)
+    proc._swallow = True  # the first command never finishes on its own
+
+    def _slow():
+        try:
+            session.send_command("!process   0 0", timeout=2)
+        except DebuggerError:
+            pass
+
+    worker = threading.Thread(target=_slow, daemon=True)
+    worker.start()
+    time.sleep(0.2)  # let the worker take the session
+    with pytest.raises(DebuggerError) as exc:
+        session.send_command("lm m nt")
+    worker.join(10)
+
+    message = str(exc.value)
+    assert "busy running '!process 0 0' (started 0 s ago)" in message
+    assert "wait_for_break" not in message
+    assert "still running here" in message
+
+
+def test_the_busy_record_is_cleared_with_the_lock(make_session):
+    """A stale record would describe an operation that has already finished."""
+    session, proc = make_session()
+    session.send_command("r")
+    assert session._busy_with is None
+    proc._swallow = True
+    with pytest.raises(DebuggerError):
+        session.send_command("hangs", timeout=1)
+    assert session._busy_with is None
+
+
+def test_long_commands_are_cut_in_the_busy_message():
+    described = debug_session._describe_command("dt nt!_EPROCESS " + "x" * 200)
+    assert len(described) == 82 and described.endswith("...'")
 
 
 def test_a_timed_out_prefix_still_reports_why_the_target_stopped(make_session):
