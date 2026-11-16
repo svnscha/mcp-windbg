@@ -63,6 +63,12 @@ KD_COMMAND_TIMEOUT = 120
 # on a running target waiting for it to bugcheck or hit a breakpoint.
 WAIT_FOR_BREAK_TIMEOUT = DEFAULT_WAIT_FOR_BREAK_TIMEOUT
 
+#: How often a running tool call sends the client a progress notification. A
+#: client may give up on a call that is silent for too long whatever its
+#: timeout: over an SSE response, Claude Code aborts a call that sends no
+#: response or progress for 300 s (#165).
+PROGRESS_INTERVAL = 30
+
 
 def _effective_timeout(per_call: Optional[int], tool_default: int, server_timeout: int) -> int:
     """Resolve a call's timeout: explicit override, else max(default, floor)."""
@@ -299,11 +305,7 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
         auto_dump_dir_symbols, init_commands, kernel_init_commands, log_dir,
     )
 
-    # Create the session manager
-    session_manager = StreamableHTTPSessionManager(
-        app=server,
-        json_response=True,
-    )
+    session_manager = _http_session_manager(server)
 
     # ASGI handler for streamable HTTP connections
     async def handle_streamable_http(scope: Scope, receive: Receive, send: Send) -> None:
@@ -329,6 +331,22 @@ async def serve_http(  # pragma: no cover - HTTP transport cannot flush coverage
     config = uvicorn.Config(app, host=host, port=port, log_level="info" if verbose else "warning")
     server_instance = uvicorn.Server(config)
     await server_instance.serve()
+
+
+def _http_session_manager(server: Server) -> StreamableHTTPSessionManager:
+    """The streamable-http session manager, answering tool calls over SSE.
+
+    With a plain JSON response nothing reaches the client until the tool
+    finishes, and Claude Code gives up on such a request after about 60 s with
+    "The operation timed out.", even though the server finishes the command
+    later (#165). An SSE response starts at once; the progress heartbeat in
+    on_call_tool then keeps it from looking idle.
+
+    The SDK then requires every POST to accept both application/json and
+    text/event-stream, as the Streamable HTTP spec asks of clients. A client
+    that accepts only application/json gets 406.
+    """
+    return StreamableHTTPSessionManager(app=server, json_response=False)
 
 
 def _create_server(
@@ -382,8 +400,46 @@ def _create_server(
         it into a JSON-RPC error response - so the handlers below keep raising
         rather than hand-building error results.
         """
-        content = await _dispatch_tool(params.name, params.arguments or {})
+        content = await _with_progress(
+            ctx, params.name, lambda: _dispatch_tool(params.name, params.arguments or {})
+        )
         return CallToolResult(content=content)
+
+    async def _with_progress(ctx, name: str, call):
+        """Await *call*, telling the client every PROGRESS_INTERVAL that it still runs.
+
+        The notifications carry the caller's progress token and go nowhere when
+        it sent none. They are what keeps a long command or wait_for_break from
+        being dropped by a client that times out silent calls.
+        """
+        async def heartbeat():
+            started = anyio.current_time()
+            while True:
+                await anyio.sleep(PROGRESS_INTERVAL)
+                elapsed = round(anyio.current_time() - started)
+                try:
+                    await ctx.session.report_progress(
+                        elapsed, None, f"{name} still running ({elapsed} s)"
+                    )
+                except Exception as e:
+                    # A lost notification must not fail the call, and the next
+                    # one may well get through, so keep beating.
+                    logger.debug("Progress notification for %s failed: %s", name, e)
+
+        # The call's own error is raised outside the task group, which would
+        # otherwise wrap it in an exception group the SDK does not unwrap.
+        error = None
+        async with anyio.create_task_group() as heartbeats:
+            heartbeats.start_soon(heartbeat)
+            try:
+                result = await call()
+            except Exception as e:
+                error = e
+            finally:
+                heartbeats.cancel_scope.cancel()
+        if error is not None:
+            raise error
+        return result
 
     async def _run_debugger_handler(handler, *args, **kwargs):
         # Debugger startup, commands, and shutdown can wait for seconds or minutes.
