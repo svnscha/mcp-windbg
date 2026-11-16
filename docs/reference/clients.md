@@ -110,6 +110,18 @@ Add to `claude_desktop_config.json` (at `%APPDATA%\Claude\claude_desktop_config.
 Restart Claude Desktop completely after saving. For background, see
 [Connect local MCP servers](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
+## Cross-client setup
+
+After installing the server above, use [Agent Add](https://github.com/pea3nut/agent-add)
+and select your client:
+
+```bash
+npx -y agent-add --global --mcp '{"mcp-windbg":{"command":"python","args":["-m","mcp_windbg"],"env":{"_NT_SYMBOL_PATH":"SRV*C:\\Symbols*https://msdl.microsoft.com/download/symbols"}}}'
+```
+
+Needs Node.js 18+. `--global` configures your user account; omit it for project scope
+where supported by the client.
+
 ## VS Code (GitHub Copilot)
 
 Create `.vscode/mcp.json` in your workspace, or use **MCP: Open User Configuration** (press
